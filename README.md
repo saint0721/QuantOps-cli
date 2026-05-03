@@ -1,8 +1,27 @@
-# Quant CLI Lab
+# TossQuant
 
-CLI-first quant learning tools around `tossctl` read-only data.
+Codex/Claude-style terminal-first quant learning CLI around `tossctl` read-only data.
 
-## Commands
+## Interactive mode
+
+```bash
+./bin/tossquant
+# or
+./bin/quant
+```
+
+Then type:
+
+```text
+tossquant> doctor
+tossquant> quote AAPL
+tossquant> history AAPL
+tossquant> classify AAPL
+tossquant> portfolio
+tossquant> exit
+```
+
+## Subcommand mode
 
 ```bash
 python3 -m quant_cli_lab doctor

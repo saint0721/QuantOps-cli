@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,34 @@ from . import __version__
 from .analysis import classify as classify_records, history_rows
 from .storage import append_jsonl, quote_history_path, read_jsonl, redact, snapshot_path, utc_now
 from . import toss
+
+APP_NAME = "TossQuant"
+PROMPT = "tossquant> "
+
+BANNER = r"""
+████████╗ ██████╗ ███████╗███████╗ ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗████████╗
+╚══██╔══╝██╔═══██╗██╔════╝██╔════╝██╔═══██╗██║   ██║██╔══██╗████╗  ██║╚══██╔══╝
+   ██║   ██║   ██║███████╗███████╗██║   ██║██║   ██║███████║██╔██╗ ██║   ██║
+   ██║   ██║   ██║╚════██║╚════██║██║▄▄ ██║██║   ██║██╔══██║██║╚██╗██║   ██║
+   ██║   ╚██████╔╝███████║███████║╚██████╔╝╚██████╔╝██║  ██║██║ ╚████║   ██║
+   ╚═╝    ╚═════╝ ╚══════╝╚══════╝ ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝
+"""
+
+HELP_TEXT = """TossQuant commands:
+  doctor
+  quote fetch <TICKER>        fetch quote through tossctl and save history
+  quote history <TICKER>      show saved quote history and changes
+  classify <TICKER>           classify ticker from quote history
+  portfolio snapshot          save read-only account/portfolio snapshot
+  order preview --symbol ...  preview only; no real order mutation
+  help
+  exit | quit
+
+Short aliases inside interactive mode:
+  quote <TICKER>              same as quote fetch <TICKER>
+  history <TICKER>            same as quote history <TICKER>
+  portfolio                   same as portfolio snapshot
+"""
 
 
 def print_json(value: Any) -> None:
@@ -18,7 +47,8 @@ def print_json(value: Any) -> None:
 def command_doctor(args: argparse.Namespace) -> int:
     data = Path(args.data_dir)
     checks = {
-        "quant_cli_lab": __version__,
+        "app": APP_NAME,
+        "version": __version__,
         "tossctl_path": toss.tossctl_path(),
         "data_dir": str(data),
         "trading_mutations": "disabled",
@@ -102,8 +132,14 @@ def command_order_preview(args: argparse.Namespace) -> int:
     return result.returncode or 1
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="quant", description="CLI-first quant learning tools around tossctl")
+class TossQuantArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ValueError(message)
+
+
+def build_parser(*, interactive: bool = False) -> argparse.ArgumentParser:
+    parser_cls = TossQuantArgumentParser if interactive else argparse.ArgumentParser
+    parser = parser_cls(prog="tossquant", description="TossQuant: CLI-first quant learning tools around tossctl")
     parser.add_argument("--data-dir", default="data", help="Local non-sensitive data directory")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor").set_defaults(func=command_doctor)
@@ -141,10 +177,60 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def normalize_interactive_command(parts: list[str]) -> list[str]:
+    if not parts:
+        return parts
+    if parts[0] == "quote" and len(parts) == 2:
+        return ["quote", "fetch", parts[1]]
+    if parts[0] == "history" and len(parts) == 2:
+        return ["quote", "history", parts[1]]
+    if parts[0] == "portfolio" and len(parts) == 1:
+        return ["portfolio", "snapshot"]
+    return parts
+
+
+def run_once(argv: list[str]) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))
+
+
+def run_interactive() -> int:
+    print("\033[96m" + BANNER + "\033[0m")
+    print(f"{APP_NAME} {__version__}  ·  tossctl read-only quant lab  ·  trading mutations disabled")
+    print("data: ./data  ·  mode: interactive  ·  type 'help' for commands, 'exit' to quit")
+    parser = build_parser(interactive=True)
+    while True:
+        try:
+            line = input(PROMPT).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        if not line:
+            continue
+        if line in {"exit", "quit", ":q"}:
+            return 0
+        if line in {"help", "?"}:
+            print(HELP_TEXT)
+            continue
+        try:
+            parts = normalize_interactive_command(shlex.split(line))
+            args = parser.parse_args(parts)
+            args.func(args)
+        except SystemExit:
+            continue
+        except Exception as exc:
+            print(f"error: {exc}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        import sys
+        argv = sys.argv[1:]
+    if not argv:
+        return run_interactive()
+    return run_once(argv)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
+tossquant = "quant_cli_lab.cli:main"
 quant = "quant_cli_lab.cli:main"
 
 [build-system]
