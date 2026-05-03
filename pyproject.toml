@@ -1,0 +1,13 @@
+[project]
+name = "quant-cli-lab"
+version = "0.1.0"
+description = "CLI-first quant learning tools around tossctl read-only data"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+quant = "quant_cli_lab.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
