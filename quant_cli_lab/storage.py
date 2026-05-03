@@ -51,3 +51,25 @@ def quote_history_path(ticker: str, base: str | Path | None = None) -> Path:
 
 def snapshot_path(name: str, base: str | Path | None = None) -> Path:
     return data_dir(base) / "snapshots" / f"{name}.jsonl"
+
+
+def watchlist_path(base: str | Path | None = None) -> Path:
+    return data_dir(base) / "watchlist.json"
+
+
+def read_watchlist(base: str | Path | None = None) -> list[str]:
+    path = watchlist_path(base)
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        return []
+    return sorted({str(item).upper() for item in payload if str(item).strip()})
+
+
+def write_watchlist(tickers: list[str], base: str | Path | None = None) -> Path:
+    path = watchlist_path(base)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cleaned = sorted({str(item).upper() for item in tickers if str(item).strip()})
+    path.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path

@@ -10,21 +10,43 @@ Codex/Claude-style terminal-first quant learning CLI around `tossctl` read-only 
 ./bin/quant
 ```
 
-Then type:
+Then type. Press `Tab` to autocomplete commands and slash modes:
 
 ```text
-tossquant> /help
-tossquant> doctor
-tossquant> quote AAPL
-tossquant> history AAPL
-tossquant> classify AAPL
-tossquant> portfolio
-tossquant> /ask what should I study next?
-tossquant> /codex
-tossquant/codex> explain my AAPL history file
-tossquant/codex> /quant
-tossquant> exit
+TossQuant quant ❯ /help
+TossQuant quant ❯ doctor
+TossQuant quant ❯ quote AAPL
+TossQuant quant ❯ history AAPL
+TossQuant quant ❯ classify AAPL
+TossQuant quant ❯ portfolio
+TossQuant quant ❯ /ask what should I study next?
+TossQuant quant ❯ /codex
+TossQuant codex ❯ explain my AAPL history file
+TossQuant codex ❯ /quant
+TossQuant quant ❯ exit
 ```
+
+## Guided learning flow
+
+Inside interactive mode, these slash commands explain what to do next instead of only listing syntax:
+
+```text
+TossQuant quant ❯ /start
+TossQuant quant ❯ /status
+TossQuant quant ❯ /next
+TossQuant quant ❯ /watchlist add AAPL
+TossQuant quant ❯ /watchlist list
+TossQuant quant ❯ /watchlist fetch
+TossQuant quant ❯ /learn momentum
+```
+
+Recommended beginner loop:
+
+1. `/start` to see the workflow.
+2. `/watchlist add AAPL` to choose one symbol.
+3. `quote AAPL` several times over time.
+4. `/status` to check whether enough samples exist.
+5. `classify AAPL` once at least 3 samples are saved.
 
 ## Subcommand mode
 
