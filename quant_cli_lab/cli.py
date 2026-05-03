@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,7 @@ from . import toss
 
 APP_NAME = "TossQuant"
 PROMPT = "tossquant> "
+CODEX_PROMPT = "tossquant/codex> "
 
 BANNER = r"""
 ████████╗ ██████╗ ███████╗███████╗ ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗████████╗
@@ -30,13 +33,39 @@ HELP_TEXT = """TossQuant commands:
   classify <TICKER>           classify ticker from quote history
   portfolio snapshot          save read-only account/portfolio snapshot
   order preview --symbol ...  preview only; no real order mutation
-  help
+  help | /help
   exit | quit
 
 Short aliases inside interactive mode:
   quote <TICKER>              same as quote fetch <TICKER>
   history <TICKER>            same as quote history <TICKER>
   portfolio                   same as portfolio snapshot
+
+Codex bridge slash commands:
+  /ask <QUESTION>             ask Codex once, using read-only sandbox
+  /codex                      enter Codex conversation mode
+  /quant                      return to normal quant command mode
+  /modes                      show current modes and safety defaults
+"""
+
+START_HERE_TEXT = """Start here:
+  1) doctor                   check tossctl/auth/data setup
+  2) quote AAPL               fetch one quote sample into ./data
+  3) history AAPL             inspect saved samples
+  4) classify AAPL            get a simple strategy-candidate label
+  5) /ask what should I study next?
+
+Type /help for every command. TossQuant stays quiet until you run a command.
+"""
+
+MODES_TEXT = """Modes:
+  quant   default; local TossQuant commands only
+  codex   only after /codex; each message is sent to: codex exec --sandbox read-only
+
+Safety defaults:
+  - Codex bridge is opt-in, never always-on
+  - Codex runs read-only by default from this project directory
+  - Trading remains preview-only; TossQuant has no real order mutation command
 """
 
 
@@ -177,6 +206,33 @@ def build_parser(*, interactive: bool = False) -> argparse.ArgumentParser:
     return parser
 
 
+
+def run_codex_prompt(prompt: str) -> int:
+    """Ask Codex once from TossQuant without granting write access."""
+    prompt = prompt.strip()
+    if not prompt:
+        print("usage: /ask <QUESTION>")
+        return 2
+    codex = shutil.which("codex")
+    if not codex:
+        print("error: codex CLI not found in PATH")
+        return 127
+    command = [codex, "exec", "--sandbox", "read-only", "--cd", str(Path.cwd()), prompt]
+    print("codex: running read-only. Use /quant to return after /codex mode.")
+    completed = subprocess.run(command)
+    if completed.returncode != 0:
+        print(f"codex: exited with status {completed.returncode}")
+    return int(completed.returncode)
+
+
+def print_start_here() -> None:
+    print(START_HERE_TEXT)
+
+
+def print_modes(active_mode: str) -> None:
+    print(MODES_TEXT.rstrip())
+    print(f"Current mode: {active_mode}")
+
 def normalize_interactive_command(parts: list[str]) -> list[str]:
     if not parts:
         return parts
@@ -198,11 +254,13 @@ def run_once(argv: list[str]) -> int:
 def run_interactive() -> int:
     print("\033[96m" + BANNER + "\033[0m")
     print(f"{APP_NAME} {__version__}  ·  tossctl read-only quant lab  ·  trading mutations disabled")
-    print("data: ./data  ·  mode: interactive  ·  type 'help' for commands, 'exit' to quit")
+    print("data: ./data  ·  mode: quant  ·  type /help for commands, exit to quit")
+    print_start_here()
     parser = build_parser(interactive=True)
+    mode = "quant"
     while True:
         try:
-            line = input(PROMPT).strip()
+            line = input(CODEX_PROMPT if mode == "codex" else PROMPT).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
@@ -210,8 +268,28 @@ def run_interactive() -> int:
             continue
         if line in {"exit", "quit", ":q"}:
             return 0
-        if line in {"help", "?"}:
+        if line in {"help", "?", "/help"}:
             print(HELP_TEXT)
+            continue
+        if line == "/modes":
+            print_modes(mode)
+            continue
+        if line == "/codex":
+            mode = "codex"
+            print("Codex mode enabled. Normal text now goes to Codex read-only. Type /quant to return.")
+            continue
+        if line == "/quant":
+            mode = "quant"
+            print("Quant mode enabled. Normal text is parsed as TossQuant commands again.")
+            continue
+        if line.startswith("/ask "):
+            run_codex_prompt(line.removeprefix("/ask "))
+            continue
+        if line.startswith("/"):
+            print(f"unknown slash command: {line.split()[0]}  (try /help)")
+            continue
+        if mode == "codex":
+            run_codex_prompt(line)
             continue
         try:
             parts = normalize_interactive_command(shlex.split(line))

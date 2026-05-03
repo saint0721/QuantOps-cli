@@ -7,6 +7,7 @@ from unittest import mock
 
 from quant_cli_lab.analysis import classify, history_rows
 from quant_cli_lab.storage import append_jsonl, quote_history_path, read_jsonl, redact
+from quant_cli_lab.cli import run_codex_prompt
 from quant_cli_lab.toss import run_toss
 
 
@@ -41,6 +42,20 @@ class QuantCliLabTests(unittest.TestCase):
             result = run_toss(["quote", "get", "AAPL"])
             self.assertTrue(result.ok)
             self.assertIn("--output", run.call_args.args[0])
+
+    def test_run_codex_prompt_uses_read_only_sandbox(self):
+        with mock.patch("shutil.which", return_value="/usr/local/bin/codex"), mock.patch("subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0)
+            code = run_codex_prompt("explain this project")
+            self.assertEqual(code, 0)
+            command = run.call_args.args[0]
+            self.assertEqual(command[:4], ["/usr/local/bin/codex", "exec", "--sandbox", "read-only"])
+            self.assertIn("--cd", command)
+            self.assertEqual(command[-1], "explain this project")
+
+    def test_run_codex_prompt_requires_codex_binary(self):
+        with mock.patch("shutil.which", return_value=None):
+            self.assertEqual(run_codex_prompt("hello"), 127)
 
 
 if __name__ == "__main__":

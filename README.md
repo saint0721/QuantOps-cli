@@ -13,11 +13,16 @@ Codex/Claude-style terminal-first quant learning CLI around `tossctl` read-only 
 Then type:
 
 ```text
+tossquant> /help
 tossquant> doctor
 tossquant> quote AAPL
 tossquant> history AAPL
 tossquant> classify AAPL
 tossquant> portfolio
+tossquant> /ask what should I study next?
+tossquant> /codex
+tossquant/codex> explain my AAPL history file
+tossquant/codex> /quant
 tossquant> exit
 ```
 
@@ -37,3 +42,13 @@ Safety defaults:
 - no sensitive credential/session/account identifier storage in project data
 - no order mutation command in V1
 - order preview only
+
+## Codex bridge
+
+TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls Codex when you explicitly ask:
+
+- `/ask <question>` runs one Codex request.
+- `/codex` changes the prompt to `tossquant/codex>`; normal text is sent to Codex.
+- `/quant` returns to normal TossQuant commands.
+
+Codex is launched as `codex exec --sandbox read-only --cd <project> ...` so the first integration is intentionally read-only.
