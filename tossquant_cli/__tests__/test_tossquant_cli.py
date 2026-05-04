@@ -11,8 +11,9 @@ from tossquant_cli.analysis import classify, history_rows
 from tossquant_cli.audit import audit_all
 from tossquant_cli.codex_tools import build_local_context, build_task_prompt, filtered_codex_output, run_codex_task
 from tossquant_cli.data import DownloadRequest, download_history, list_datasets, market_dataset_path, parse_stooq_csv, stooq_url
+from tossquant_cli.market_analysis import market_stats
 from tossquant_cli.storage import append_jsonl, quote_history_path, read_jsonl, read_watchlist, redact, write_watchlist
-from tossquant_cli.cli import command_audit, completion_candidates, handle_audit, handle_data, handle_watchlist, main, prompt_for_mode, run_codex_prompt, slash_command_name, status_summary
+from tossquant_cli.cli import command_audit, completion_candidates, handle_audit, handle_data, handle_stats, handle_watchlist, main, prompt_for_mode, run_codex_prompt, slash_command_name, status_summary
 from tossquant_cli.hud import launch_tmux_hud, launch_tmux_runtime
 from tossquant_cli.runtime import build_runtime_snapshot, read_runtime_snapshot, record_runtime, render_runtime_line, runtime_state_path
 from tossquant_cli.toss import run_toss, tossctl_path
@@ -79,9 +80,12 @@ class QuantCliLabTests(unittest.TestCase):
         self.assertIn("runtime", completion_candidates("", "quant"))
         self.assertIn("tmux", completion_candidates("", "quant"))
         self.assertIn("data", completion_candidates("", "quant"))
+        self.assertIn("stats", completion_candidates("", "quant"))
+        self.assertIn("/stats", completion_candidates("", "quant"))
         self.assertIn("start", completion_candidates("tmux ", "quant"))
         self.assertIn("download", completion_candidates("data ", "quant"))
         self.assertIn("watchlist", completion_candidates("/data ", "quant"))
+        self.assertEqual(completion_candidates("/stats AAPL ", "quant"), [])
         self.assertIn("momentum", completion_candidates("/strategy AAPL ", "quant"))
         self.assertIn("/quant", completion_candidates("hello", "codex"))
 
@@ -159,6 +163,31 @@ class QuantCliLabTests(unittest.TestCase):
         self.assertEqual(datasets[0]["name"], "spy_us_d")
         self.assertEqual(datasets[0]["rows"], 1)
         self.assertEqual(datasets[0]["latest_date"], "2026-01-02")
+
+
+    def test_market_stats_summarizes_downloaded_ohlcv_dataset(self):
+        csv_text = "Date,Open,High,Low,Close,Volume\n" + "\n".join(
+            f"2026-01-{day:02d},{100 + day},{101 + day},{99 + day},{100 + day},{1000 + day}"
+            for day in range(1, 62)
+        ) + "\n"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            download_history(DownloadRequest(symbol="AAPL"), base=tmp, fetcher=lambda _url: csv_text)
+            result = market_stats("AAPL", base=tmp)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["ticker"], "AAPL")
+        self.assertEqual(result["rows"], 61)
+        self.assertEqual(result["latest_close"], 161)
+        self.assertTrue(result["readiness"]["backtest_ready"])
+        self.assertIn(result["regime"], {"trend-up", "watch", "range-bound", "high-volatility"})
+
+    def test_market_stats_reports_missing_dataset_with_next_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = market_stats("MSFT", base=tmp)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["next_command"], "data download MSFT")
 
     def test_runtime_snapshot_counts_watchlist_quotes_and_writes_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -251,6 +280,13 @@ class QuantCliLabTests(unittest.TestCase):
             self.assertEqual(read_watchlist(tmp), ["AAPL"])
             self.assertEqual(handle_watchlist(["/watchlist", "remove", "AAPL"], tmp), 0)
             self.assertEqual(read_watchlist(tmp), [])
+
+    def test_handle_stats_routes_slash_command_to_stats_handler(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("tossquant_cli.cli.market_stats", return_value={"ok": True, "rows": 10}) as stats:
+            with redirect_stdout(StringIO()):
+                self.assertEqual(handle_stats(["/stats", "AAPL"], tmp), 0)
+        self.assertEqual(stats.call_args.args[0], "AAPL")
+        self.assertEqual(stats.call_args.kwargs["base"], tmp)
 
     def test_handle_data_routes_slash_command_to_download_handler(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch("tossquant_cli.cli.download_history", return_value={"ok": True, "rows": 1}) as download:

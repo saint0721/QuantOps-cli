@@ -115,6 +115,8 @@ quant doctor
 quant collect plan AAPL
 quant collect quote AAPL
 quant collect watchlist
+quant data download AAPL
+quant stats AAPL
 quant quote fetch AAPL
 quant quote history AAPL
 quant classify AAPL
@@ -128,7 +130,7 @@ quant tmux start
 quant order preview --symbol AAPL --side buy --qty 1 --price 100
 ```
 
-Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`.
+Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, and `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics.
 
 Safety defaults:
 - no web UI

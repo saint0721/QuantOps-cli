@@ -24,6 +24,7 @@ const ROOT_COMMANDS: &[&str] = &[
     "/status",
     "/collect",
     "/data",
+    "/stats",
     "/quote",
     "/history",
     "/classify",
@@ -294,8 +295,8 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "flow     /watchlist add AAPL → /collect quote AAPL → /data download AAPL → /classify AAPL".to_string(),
-        "commands /status · /collect plan|quote|watchlist · /data download|watchlist|list · /watchlist list|fetch".to_string(),
+        "flow     /watchlist add AAPL → /data download AAPL → /stats AAPL → /classify AAPL".to_string(),
+        "commands /status · /collect plan|quote|watchlist · /data download|watchlist|list · /stats <SYMBOL>".to_string(),
         "tools    /runtime line · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
@@ -311,6 +312,7 @@ fn command_candidates(command: &str, parts: &[&str], trailing_space: bool) -> &'
     match command {
         "/collect" => collect_candidates(parts, trailing_space),
         "/data" => one_level_candidates(parts, trailing_space, &["download", "watchlist", "list"]),
+        "/stats" => &[],
         "/quote" => one_level_candidates(parts, trailing_space, &["fetch", "history"]),
         "/watchlist" => one_level_candidates(parts, trailing_space, &["add", "fetch", "list", "remove"]),
         "/runtime" => one_level_candidates(parts, trailing_space, &["line", "snapshot"]),
@@ -764,6 +766,7 @@ mod tests {
     fn completion_search_filters_candidates_and_tab_fills_the_first_match() {
         assert!(completion_matches("", "quant").contains(&"/collect".to_string()));
         assert!(completion_matches("", "quant").contains(&"/data".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/stats".to_string()));
         assert_eq!(completion_matches("/co", "quant"), vec!["/collect".to_string(), "/codex".to_string()]);
         assert_eq!(completion_matches("/collect p", "quant"), vec!["plan".to_string()]);
         assert_eq!(completion_matches("/collect plan ", "quant"), vec!["--watchlist".to_string()]);
@@ -771,6 +774,7 @@ mod tests {
         assert_eq!(completion_matches("/collect quote AAPL ", "quant"), Vec::<String>::new());
         assert_eq!(completion_matches("/data ", "quant"), vec!["download".to_string(), "watchlist".to_string(), "list".to_string()]);
         assert_eq!(completion_matches("/data list ", "quant"), Vec::<String>::new());
+        assert_eq!(completion_matches("/stats AAPL ", "quant"), Vec::<String>::new());
 
         let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
         app.set_input("/collect p".to_string());

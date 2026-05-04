@@ -20,8 +20,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['doctor', 'collect', 'data', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup', 'exit', 'quit'];
-export const SLASH_COMPLETIONS = ['/help', '/status', '/collect', '/data', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit', '/quit'];
+export const ROOT_COMPLETIONS = ['doctor', 'collect', 'data', 'stats', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup', 'exit', 'quit'];
+export const SLASH_COMPLETIONS = ['/help', '/status', '/collect', '/data', '/stats', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit', '/quit'];
 
 export function completionCandidates(line: string, mode = 'quant'): string[] {
   const trimmed = line.trimStart();
@@ -40,6 +40,7 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
     return parts.length <= 2 ? ['plan', 'quote', 'watchlist'] : [];
   }
   if (command === 'data') return parts.length <= 2 ? ['download', 'watchlist', 'list'] : [];
+  if (command === 'stats') return [];
   if (command === 'quote') return parts.length <= 2 ? ['fetch', 'history'] : [];
   if (command === 'portfolio') return parts.length <= 2 ? ['snapshot'] : [];
   if (command === 'order') return parts.length <= 2 ? ['preview'] : [];
@@ -148,6 +149,21 @@ function commandCollect(dataDir: string, sub?: string, tail: string[] = []): num
   }
   warn('usage: collect [plan [TICKER...|--watchlist]|quote <TICKER>|watchlist]');
   return 2;
+}
+
+function commandPythonStats(dataDir: string, symbol?: string, tail: string[] = []): number {
+  if (!symbol) { warn('usage: stats <SYMBOL>'); return 2; }
+  const command = ['-m', 'tossquant_cli.cli', '--data-dir', dataDir, 'stats', symbol, ...tail];
+  const result = spawnSync('python3', command, { encoding: 'utf8', cwd: process.cwd() });
+  const stdout = result.stdout?.trim();
+  const stderr = result.stderr?.trim();
+  if (stdout) {
+    if (INTERACTIVE_CHAT_UI) emitChat(stdout);
+    else console.log(stdout);
+  }
+  if (stderr) warn(stderr);
+  if (result.error) warn(result.error.message);
+  return result.status ?? (result.error ? 127 : 1);
 }
 
 function commandPythonData(dataDir: string, sub?: string, tail: string[] = []): number {
@@ -269,8 +285,8 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'start       /watchlist add AAPL  →  /collect quote AAPL  →  /data download AAPL  →  /classify AAPL',
-    'commands    /status · /collect plan|quote|watchlist · /data download|watchlist|list · /watchlist list|fetch · /runtime line · /hud · /doctor · /exit',
+    'start       /watchlist add AAPL  →  /data download AAPL  →  /stats AAPL  →  /classify AAPL',
+    'commands    /status · /collect plan|quote|watchlist · /data download|watchlist|list · /stats <SYMBOL> · /runtime line · /hud · /doctor · /exit',
     'codex       /ask <question> · /codex · /quant',
     'plain mode  quant --no-tmux',
     '',
@@ -332,6 +348,7 @@ export function runOnce(argv: string[], opts: { quietUnknown?: boolean } = {}): 
   if (cmd === 'doctor') return commandDoctor(dataDir);
   if (cmd === 'collect') return commandCollect(dataDir, sub, tail);
   if (cmd === 'data') return commandPythonData(dataDir, sub, tail);
+  if (cmd === 'stats') return commandPythonStats(dataDir, sub, tail);
   if (cmd === 'quote' && sub === 'fetch') return commandQuoteFetch(dataDir, tail[0]);
   if (cmd === 'quote' && sub === 'history') return commandQuoteHistory(dataDir, tail[0]);
   if (cmd === 'quote' && sub) return commandQuoteFetch(dataDir, sub);
