@@ -32,6 +32,23 @@ export function interactiveCommand(base = 'data', session?: string): string {
   return shellCommand([...envPrefix, process.execPath, new URL('./cli.ts', import.meta.url).pathname, '--no-tmux', '--data-dir', base]);
 }
 
+export function tmuxRuntimeOptions(session: string): string[][] {
+  const target = `${session}:main`;
+  return [
+    ['set-option', '-t', session, 'mouse', 'on'],
+    ['set-option', '-t', session, 'history-limit', '50000'],
+    ['set-option', '-t', session, 'status-keys', 'vi'],
+    ['set-option', '-t', session, 'renumber-windows', 'on'],
+    ['set-window-option', '-t', target, 'mode-keys', 'vi'],
+  ];
+}
+
+function applyTmuxRuntimeOptions(tmux: string, session: string): void {
+  for (const args of tmuxRuntimeOptions(session)) {
+    spawnSync(tmux, args, { encoding: 'utf8' });
+  }
+}
+
 export function shutdownManagedTmuxRuntime(env: NodeJS.ProcessEnv = process.env): { code: number; message: string; skipped: boolean } {
   const session = managedTmuxSession(env);
   if (!session) return { code: 0, message: 'not a TossQuant-managed tmux runtime', skipped: true };
@@ -72,11 +89,13 @@ export function launchTmuxRuntime(base = 'data', session = DEFAULT_SESSION, heig
   if (create.status !== 0) {
     const exists = spawnSync(tmux, ['has-session', '-t', session], { encoding: 'utf8' });
     if (exists.status === 0) {
+      applyTmuxRuntimeOptions(tmux, session);
       const attachExisting = spawnSync(tmux, ['attach-session', '-t', session], { encoding: 'utf8', stdio: 'inherit' });
       return { code: attachExisting.status ?? 0, message: 'attached existing TossQuant tmux session' };
     }
     return { code: create.status ?? 1, message: (create.stderr || create.stdout || 'failed to create tmux session').trim() };
   }
+  applyTmuxRuntimeOptions(tmux, session);
   const target = `${session}:main`;
   const split = spawnSync(tmux, ['split-window', '-t', target, '-v', '-l', String(Math.max(1, height)), '-c', cwd, hudWatchCommand(base, interval)], { encoding: 'utf8' });
   if (split.status !== 0) return { code: split.status ?? 1, message: (split.stderr || split.stdout || 'failed to create HUD pane').trim() };

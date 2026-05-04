@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
+    MouseEvent, MouseEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -17,7 +20,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Terminal;
 
 const TOSS_BLUE: Color = Color::Rgb(0, 100, 255);
-const CHAT_BG: Color = Color::Rgb(245, 247, 250);
+const CHAT_BG: Color = Color::Rgb(250, 238, 238);
 const PROMPT_LABEL: &str = " ❯ ";
 const INPUT_PLACEHOLDER: &str = "명령어를 입력하세요. 예: /data list";
 const ROOT_COMMANDS: &[&str] = &[
@@ -38,7 +41,6 @@ const ROOT_COMMANDS: &[&str] = &[
     "/codex",
     "/quant",
     "/exit",
-    "/quit",
 ];
 
 struct App {
@@ -52,6 +54,7 @@ struct App {
     history_index: Option<usize>,
     draft_input: String,
     transcript: Vec<String>,
+    scroll_offset: usize,
 }
 
 impl App {
@@ -67,6 +70,7 @@ impl App {
             history_index: None,
             draft_input: String::new(),
             transcript: welcome_lines("quant"),
+            scroll_offset: 0,
         }
     }
 
@@ -192,9 +196,16 @@ impl App {
         }
         self.history_index = None;
         self.draft_input.clear();
-        if matches!(line.as_str(), "/exit" | "exit" | "/quit" | "quit" | "/:q" | ":q") {
+        if line == "/exit" {
             shutdown_managed_tmux_runtime();
             return true;
+        }
+        if matches!(line.as_str(), "exit" | "/quit" | "quit" | "/:q" | ":q") {
+            self.append_exchange(
+                &line,
+                "Use /exit to close TossQuant and its managed tmux session.",
+            );
+            return false;
         }
         if line == "/codex" {
             self.mode = "codex".to_string();
@@ -211,7 +222,16 @@ impl App {
         false
     }
 
+    fn scroll_up(&mut self, amount: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_add(amount);
+    }
+
+    fn scroll_down(&mut self, amount: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(amount);
+    }
+
     fn append_exchange(&mut self, command: &str, output: &str) {
+        self.scroll_offset = 0;
         if self.transcript.last().is_some_and(|line| !line.is_empty()) {
             self.transcript.push(String::new());
         }
@@ -308,13 +328,19 @@ fn split_args(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
 }
 
-fn command_candidates(command: &str, parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+fn command_candidates(
+    command: &str,
+    parts: &[&str],
+    trailing_space: bool,
+) -> &'static [&'static str] {
     match command {
         "/collect" => collect_candidates(parts, trailing_space),
         "/data" => one_level_candidates(parts, trailing_space, &["download", "watchlist", "list"]),
         "/stats" => &[],
         "/quote" => one_level_candidates(parts, trailing_space, &["fetch", "history"]),
-        "/watchlist" => one_level_candidates(parts, trailing_space, &["add", "fetch", "list", "remove"]),
+        "/watchlist" => {
+            one_level_candidates(parts, trailing_space, &["add", "fetch", "list", "remove"])
+        }
         "/runtime" => one_level_candidates(parts, trailing_space, &["line", "snapshot"]),
         "/hud" => one_level_candidates(parts, trailing_space, &["tmux"]),
         "/portfolio" => one_level_candidates(parts, trailing_space, &["snapshot"]),
@@ -323,7 +349,11 @@ fn command_candidates(command: &str, parts: &[&str], trailing_space: bool) -> &'
     }
 }
 
-fn one_level_candidates(parts: &[&str], trailing_space: bool, candidates: &'static [&'static str]) -> &'static [&'static str] {
+fn one_level_candidates(
+    parts: &[&str],
+    trailing_space: bool,
+    candidates: &'static [&'static str],
+) -> &'static [&'static str] {
     if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
         candidates
     } else {
@@ -446,13 +476,17 @@ fn main() -> io::Result<()> {
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let mut app = App::new(entry, data_dir, node);
     let result = run(&mut terminal, &mut app);
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        DisableMouseCapture,
+        LeaveAlternateScreen
+    )?;
     terminal.show_cursor()?;
     result
 }
@@ -463,11 +497,23 @@ fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) 
         if !event::poll(Duration::from_millis(250))? {
             continue;
         }
-        if let Event::Key(key) = event::read()? {
-            if handle_key(app, key) {
-                return Ok(());
+        match event::read()? {
+            Event::Key(key) => {
+                if handle_key(app, key) {
+                    return Ok(());
+                }
             }
+            Event::Mouse(mouse) => handle_mouse(app, mouse),
+            _ => {}
         }
+    }
+}
+
+fn handle_mouse(app: &mut App, mouse: MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => app.scroll_up(3),
+        MouseEventKind::ScrollDown => app.scroll_down(3),
+        _ => {}
     }
 }
 
@@ -517,15 +563,19 @@ fn handle_key(app: &mut App, key: KeyEvent) -> bool {
 fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3), Constraint::Length(2)])
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(3),
+            Constraint::Length(2),
+        ])
         .split(frame.area());
 
     let visible_height = chunks[0].height.saturating_sub(1) as usize;
     let visual_lines = visual_transcript_lines(&app.transcript, chunks[0].width.saturating_sub(1));
-    let start = visual_lines.len().saturating_sub(visible_height.max(1));
-    let history = visual_lines
+    let visible_lines =
+        visible_transcript_window(&visual_lines, visible_height.max(1), app.scroll_offset);
+    let history = visible_lines
         .iter()
-        .skip(start)
         .map(|line| transcript_line(line))
         .collect::<Vec<_>>();
     let history = Paragraph::new(history)
@@ -563,11 +613,11 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
         .style(Style::default().bg(CHAT_BG));
     frame.render_widget(input, chunks[1]);
 
-    let suggestions = Paragraph::new(suggestion_line(app))
-    .style(Style::default().bg(CHAT_BG));
+    let suggestions = Paragraph::new(suggestion_line(app)).style(Style::default().bg(CHAT_BG));
     frame.render_widget(suggestions, chunks[2]);
 
-    let cursor_x = chunks[1].x + display_width(PROMPT_LABEL) + input_cursor_column(&app.input, app.cursor);
+    let cursor_x =
+        chunks[1].x + display_width(PROMPT_LABEL) + input_cursor_column(&app.input, app.cursor);
     let cursor_y = chunks[1].y + 1;
     frame.set_cursor_position(Position::new(cursor_x, cursor_y));
 }
@@ -595,10 +645,16 @@ fn suggestion_line(app: &App) -> Line<'static> {
         Style::default().fg(TOSS_BLUE).add_modifier(Modifier::BOLD),
     )];
     if matches.is_empty() {
-        spans.push(Span::styled("Tab complete", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            "Tab complete",
+            Style::default().fg(Color::DarkGray),
+        ));
         return Line::from(spans);
     }
-    spans.push(Span::styled("Tab complete  ", Style::default().fg(Color::DarkGray)));
+    spans.push(Span::styled(
+        "Tab complete  ",
+        Style::default().fg(Color::DarkGray),
+    ));
     for (index, candidate) in matches.iter().take(6).enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
@@ -616,16 +672,16 @@ fn active_completion_token(input: &str) -> String {
 
 fn highlight_candidate(candidate: &str, token: &str) -> Vec<Span<'static>> {
     if token.is_empty() || !candidate.starts_with(token) {
-        return vec![Span::styled(candidate.to_string(), Style::default().fg(Color::Black))];
+        return vec![Span::styled(
+            candidate.to_string(),
+            Style::default().fg(Color::Black),
+        )];
     }
     let rest = candidate[token.len()..].to_string();
     vec![
         Span::styled(
             token.to_string(),
-            Style::default()
-                .fg(Color::White)
-                .bg(TOSS_BLUE)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(TOSS_BLUE).add_modifier(Modifier::BOLD),
         ),
         Span::styled(rest, Style::default().fg(Color::Black)),
     ]
@@ -665,16 +721,32 @@ fn transcript_line(line: &str) -> Line<'static> {
             Span::styled(rest.to_string(), Style::default().fg(Color::Black)),
         ]);
     }
-    if line.starts_with('{') || line.starts_with('}') || line.starts_with('[') || line.starts_with(']') {
-        return Line::from(Span::styled(line.to_string(), Style::default().fg(Color::DarkGray)));
+    if line.starts_with('{')
+        || line.starts_with('}')
+        || line.starts_with('[')
+        || line.starts_with(']')
+    {
+        return Line::from(Span::styled(
+            line.to_string(),
+            Style::default().fg(Color::DarkGray),
+        ));
     }
     if line.contains("ok") || line.contains("ready") {
-        return Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Green)));
+        return Line::from(Span::styled(
+            line.to_string(),
+            Style::default().fg(Color::Green),
+        ));
     }
     if line.contains("error") || line.contains("failed") || line.contains("unknown") {
-        return Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Red)));
+        return Line::from(Span::styled(
+            line.to_string(),
+            Style::default().fg(Color::Red),
+        ));
     }
-    Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Black)))
+    Line::from(Span::styled(
+        line.to_string(),
+        Style::default().fg(Color::Black),
+    ))
 }
 
 fn visual_transcript_lines(lines: &[String], width: u16) -> Vec<String> {
@@ -685,6 +757,17 @@ fn visual_transcript_lines(lines: &[String], width: u16) -> Vec<String> {
         out.extend(wrapped);
     }
     out
+}
+
+fn visible_transcript_window(lines: &[String], height: usize, scroll_offset: usize) -> &[String] {
+    if lines.is_empty() {
+        return lines;
+    }
+    let height = height.max(1);
+    let clamped_offset = scroll_offset.min(lines.len().saturating_sub(1));
+    let end = lines.len().saturating_sub(clamped_offset);
+    let start = end.saturating_sub(height);
+    &lines[start..end]
 }
 
 fn wrap_visual_line(line: &str, width: usize) -> Vec<String> {
@@ -710,7 +793,11 @@ fn wrap_visual_line(line: &str, width: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{active_completion_token, completion_matches, display_width, input_cursor_column, suggestion_line, transcript_line, visual_transcript_lines, welcome_lines, App, INPUT_PLACEHOLDER};
+    use super::{
+        active_completion_token, completion_matches, display_width, input_cursor_column,
+        suggestion_line, transcript_line, visible_transcript_window, visual_transcript_lines,
+        welcome_lines, App, INPUT_PLACEHOLDER,
+    };
 
     #[test]
     fn cursor_column_uses_terminal_display_width_for_korean() {
@@ -735,10 +822,31 @@ mod tests {
     #[test]
     fn slash_commands_are_forwarded_to_the_node_entrypoint() {
         let app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
-        assert_eq!(app.command_args("/collect plan AAPL"), vec!["collect", "plan", "AAPL"]);
-        assert_eq!(app.command_args("/data download AAPL"), vec!["data", "download", "AAPL"]);
-        assert_eq!(app.command_args("/quote history AAPL"), vec!["quote", "history", "AAPL"]);
+        assert_eq!(
+            app.command_args("/collect plan AAPL"),
+            vec!["collect", "plan", "AAPL"]
+        );
+        assert_eq!(
+            app.command_args("/data download AAPL"),
+            vec!["data", "download", "AAPL"]
+        );
+        assert_eq!(
+            app.command_args("/quote history AAPL"),
+            vec!["quote", "history", "AAPL"]
+        );
         assert_eq!(app.command_args("collect plan AAPL"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn only_slash_exit_closes_the_tui() {
+        let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
+
+        app.set_input("exit".to_string());
+        assert!(!app.submit());
+        assert!(app.transcript.iter().any(|line| line.contains("Use /exit")));
+
+        app.set_input("/exit".to_string());
+        assert!(app.submit());
     }
 
     #[test]
@@ -767,14 +875,42 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/collect".to_string()));
         assert!(completion_matches("", "quant").contains(&"/data".to_string()));
         assert!(completion_matches("", "quant").contains(&"/stats".to_string()));
-        assert_eq!(completion_matches("/co", "quant"), vec!["/collect".to_string(), "/codex".to_string()]);
-        assert_eq!(completion_matches("/collect p", "quant"), vec!["plan".to_string()]);
-        assert_eq!(completion_matches("/collect plan ", "quant"), vec!["--watchlist".to_string()]);
-        assert_eq!(completion_matches("/collect plan --watchlist ", "quant"), Vec::<String>::new());
-        assert_eq!(completion_matches("/collect quote AAPL ", "quant"), Vec::<String>::new());
-        assert_eq!(completion_matches("/data ", "quant"), vec!["download".to_string(), "watchlist".to_string(), "list".to_string()]);
-        assert_eq!(completion_matches("/data list ", "quant"), Vec::<String>::new());
-        assert_eq!(completion_matches("/stats AAPL ", "quant"), Vec::<String>::new());
+        assert_eq!(
+            completion_matches("/co", "quant"),
+            vec!["/collect".to_string(), "/codex".to_string()]
+        );
+        assert_eq!(
+            completion_matches("/collect p", "quant"),
+            vec!["plan".to_string()]
+        );
+        assert_eq!(
+            completion_matches("/collect plan ", "quant"),
+            vec!["--watchlist".to_string()]
+        );
+        assert_eq!(
+            completion_matches("/collect plan --watchlist ", "quant"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            completion_matches("/collect quote AAPL ", "quant"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            completion_matches("/data ", "quant"),
+            vec![
+                "download".to_string(),
+                "watchlist".to_string(),
+                "list".to_string()
+            ]
+        );
+        assert_eq!(
+            completion_matches("/data list ", "quant"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            completion_matches("/stats AAPL ", "quant"),
+            Vec::<String>::new()
+        );
 
         let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
         app.set_input("/collect p".to_string());
@@ -799,6 +935,7 @@ mod tests {
         assert!(rendered.contains(&"/co"));
         assert!(rendered.contains(&("llect")));
         assert!(rendered.contains(&("dex")));
+        assert_eq!(line.spans[2].style.bg, None);
     }
 
     #[test]
@@ -818,6 +955,36 @@ mod tests {
     }
 
     #[test]
+    fn visible_transcript_window_respects_mouse_scroll_offset() {
+        let lines = vec![
+            "1".to_string(),
+            "2".to_string(),
+            "3".to_string(),
+            "4".to_string(),
+            "5".to_string(),
+            "6".to_string(),
+        ];
+
+        assert_eq!(visible_transcript_window(&lines, 3, 0), &lines[3..6]);
+        assert_eq!(visible_transcript_window(&lines, 3, 2), &lines[1..4]);
+        assert_eq!(visible_transcript_window(&lines, 3, 99), &lines[0..1]);
+    }
+
+    #[test]
+    fn mouse_scroll_offset_moves_history_and_new_output_returns_to_bottom() {
+        let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
+
+        app.scroll_up(6);
+        assert_eq!(app.scroll_offset, 6);
+
+        app.scroll_down(3);
+        assert_eq!(app.scroll_offset, 3);
+
+        app.append_exchange("/status", "ok");
+        assert_eq!(app.scroll_offset, 0);
+    }
+
+    #[test]
     fn empty_input_placeholder_is_display_only() {
         let app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
 
@@ -834,7 +1001,9 @@ mod tests {
         app.append_exchange("/data list", "{\"ok\":true}");
 
         assert!(app.transcript.len() > original_len);
-        assert!(app.transcript.contains(&"TossQuant quant ❯ /data list".to_string()));
+        assert!(app
+            .transcript
+            .contains(&"TossQuant quant ❯ /data list".to_string()));
         assert!(app.transcript.contains(&"{\"ok\":true}".to_string()));
     }
 

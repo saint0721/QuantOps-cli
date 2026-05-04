@@ -20,8 +20,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['doctor', 'collect', 'data', 'stats', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup', 'exit', 'quit'];
-export const SLASH_COMPLETIONS = ['/help', '/status', '/collect', '/data', '/stats', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit', '/quit'];
+export const ROOT_COMPLETIONS = ['doctor', 'collect', 'data', 'stats', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/help', '/status', '/collect', '/data', '/stats', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
 
 export function completionCandidates(line: string, mode = 'quant'): string[] {
   const trimmed = line.trimStart();
@@ -313,10 +313,15 @@ async function runInteractive(dataDir: string): Promise<number> {
     output.write(RESET);
     const line = answer.value.trim();
     if (!line) continue;
-    if (['/exit', 'exit', '/quit', 'quit', '/:q', ':q'].includes(line)) {
+    if (line === '/exit') {
       rl.close();
       shutdownManagedTmuxRuntime();
       return 0;
+    }
+    if (['exit', '/quit', 'quit', '/:q', ':q'].includes(line)) {
+      warn('Use /exit to close TossQuant and its managed tmux session.');
+      lastAction = 'exit-help';
+      continue;
     }
     const parts = line.split(/\s+/);
     if (line === '/codex') { mode = 'codex'; lastAction = '/codex'; console.log(inputHintBox(mode)); continue; }
