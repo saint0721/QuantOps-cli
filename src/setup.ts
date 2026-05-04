@@ -42,8 +42,8 @@ export function installLocalBins(options: InstallBinOptions = {}): InstallBinRes
   mkdirSync(dir, { recursive: true });
   const force = Boolean(options.force);
   const links = [
-    installOne('quant', repoPath('bin/quant'), dir, force),
-    installOne('tossquant', repoPath('bin/tossquant'), dir, force),
+    installOne('quant', repoPath('src/cli.ts'), dir, force),
+    installOne('tossquant', repoPath('src/cli.ts'), dir, force),
   ];
   return { ok: true, links };
 }

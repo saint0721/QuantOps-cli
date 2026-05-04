@@ -16,11 +16,25 @@ const GREEN = '\u001b[92m';
 const CYAN = '\u001b[96m';
 const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
-const CHAT_GRAY = '\u001b[38;2;238;238;238m';
+const CHAT_FRAME = '\u001b[30m\u001b[48;2;238;238;238m';
+let INTERACTIVE_CHAT_UI = false;
 
-function ok(text: string) { console.log(`  ${GREEN}ok${RESET}    ${text}`); }
-function warn(text: string) { console.log(`  ${YELLOW}warn${RESET}  ${text}`); }
-function printJson(value: unknown) { console.log(JSON.stringify(value, null, 2)); }
+function emitChat(title: string, text: string) {
+  console.log(chatBox(title, text.split(/\r?\n/)));
+}
+function ok(text: string) {
+  if (INTERACTIVE_CHAT_UI) { emitChat('TossQuant · ok', text); return; }
+  console.log(`  ${GREEN}ok${RESET}    ${text}`);
+}
+function warn(text: string) {
+  if (INTERACTIVE_CHAT_UI) { emitChat('TossQuant · warning', text); return; }
+  console.log(`  ${YELLOW}warn${RESET}  ${text}`);
+}
+function printJson(value: unknown) {
+  const text = JSON.stringify(value, null, 2);
+  if (INTERACTIVE_CHAT_UI) { emitChat('TossQuant · result', text); return; }
+  console.log(text);
+}
 function dataDirFrom(argv: string[]): { dataDir: string; rest: string[]; noTmux: boolean } {
   const rest: string[] = [];
   let dataDir = 'data';
@@ -140,7 +154,12 @@ function commandPortfolioSnapshot(dataDir: string): number {
 
 function commandOrderPreview(args: string[]): number {
   const result = orderPreview(args);
-  if (result.ok) { console.log(result.stdout.trim()); return 0; }
+  if (result.ok) {
+    const text = result.stdout.trim();
+    if (INTERACTIVE_CHAT_UI) emitChat('TossQuant · order preview', text);
+    else console.log(text);
+    return 0;
+  }
   printJson({ ok: false, command: result.command, error: result.stderr || result.stdout });
   return result.returncode || 1;
 }
@@ -152,7 +171,10 @@ function runCodexPrompt(prompt: string): number {
   const codex = hasCodex.stdout.trim();
   const result = spawnSync(codex, ['exec', '--sandbox', 'read-only', '--cd', process.cwd(), prompt], { encoding: 'utf8' });
   const visible = filteredCodexOutput(result.stdout ?? '', result.stderr ?? '');
-  if (visible) console.log(visible);
+  if (visible) {
+    if (INTERACTIVE_CHAT_UI) emitChat('Codex', visible);
+    else console.log(visible);
+  }
   return result.status ?? 1;
 }
 
@@ -176,12 +198,47 @@ function runtimeLine(dataDir: string, mode = 'quant', lastAction = 'line'): stri
   return renderRuntimeLine(recordRuntime({ base: dataDir, mode, lastAction }));
 }
 
+export function chatColor(text: string): string {
+  return `${CHAT_FRAME}${text}${RESET}`;
+}
+
 export function chatDivider(width = 64): string {
-  return `${CHAT_GRAY}${'─'.repeat(width)}${RESET}`;
+  return chatColor('─'.repeat(width));
+}
+
+function wrapChatLine(line: string, width: number): string[] {
+  if (line.length <= width) return [line];
+  const chunks: string[] = [];
+  for (let index = 0; index < line.length; index += width) chunks.push(line.slice(index, index + width));
+  return chunks;
+}
+
+export function chatBox(title: string, lines: string[], width = 76): string {
+  const contentWidth = Math.max(width, title.length + 8);
+  const topFill = '─'.repeat(Math.max(1, contentWidth - title.length - 4));
+  const bodyWidth = Math.max(1, contentWidth - 2);
+  const wrapped = (lines.length ? lines : ['']).flatMap((line) => wrapChatLine(line, bodyWidth - 2));
+  const body = wrapped.map((line) => `│ ${line.padEnd(bodyWidth - 2)} │`);
+  return chatColor([
+    `╭─ ${title} ${topFill}╮`,
+    ...body,
+    `╰${'─'.repeat(contentWidth)}╯`,
+  ].join('\n'));
 }
 
 export function interactivePrompt(mode: string): string {
-  return `${CHAT_GRAY}TossQuant ${mode} ❯${RESET} `;
+  return `${chatColor(`TossQuant ${mode} ❯`)} `;
+}
+
+export function inputHintBox(mode: string): string {
+  return chatBox(`TossQuant · ${mode}`, [
+    'Type a command, /ask, /codex, /watchlist, or press Tab.',
+    'HUD status lives in the bottom tmux pane.',
+  ]);
+}
+
+export function commandEchoBox(command: string): string {
+  return chatBox('You · command', [command]);
 }
 
 export function welcomeCard(): string {
@@ -201,27 +258,32 @@ export function welcomeCard(): string {
 }
 
 async function runInteractive(dataDir: string): Promise<number> {
-  console.log(welcomeCard());
-  console.log(chatDivider());
-  const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode) });
   let mode = 'quant';
   let lastAction = 'ready';
+  INTERACTIVE_CHAT_UI = true;
+  console.log(welcomeCard());
+  console.log(inputHintBox(mode));
+  const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode) });
+  const lines = rl[Symbol.asyncIterator]();
   for (;;) {
     recordRuntime({ base: dataDir, mode, lastAction });
-    const line = (await rl.question(interactivePrompt(mode))).trim();
+    output.write(interactivePrompt(mode));
+    const answer = await lines.next();
+    if (answer.done) { rl.close(); return 0; }
+    const line = answer.value.trim();
     if (!line) continue;
     if (['exit', 'quit', ':q'].includes(line)) { rl.close(); return 0; }
+    console.log(commandEchoBox(line));
     const parts = line.split(/\s+/);
-    if (line === '/codex') { mode = 'codex'; lastAction = '/codex'; continue; }
-    if (line === '/quant') { mode = 'quant'; lastAction = '/quant'; continue; }
+    if (line === '/codex') { mode = 'codex'; lastAction = '/codex'; console.log(inputHintBox(mode)); continue; }
+    if (line === '/quant') { mode = 'quant'; lastAction = '/quant'; console.log(inputHintBox(mode)); continue; }
     if (line === '/status') { printStatus(dataDir); lastAction = '/status'; continue; }
     if (line.startsWith('/watchlist')) { handleWatchlist(parts, dataDir); lastAction = '/watchlist'; continue; }
-    if (line === '/hud') { printHudOnce(dataDir, mode, lastAction); lastAction = '/hud'; continue; }
+    if (line === '/hud') { emitChat('TossQuant · HUD', runtimeLine(dataDir, mode, lastAction)); lastAction = '/hud'; continue; }
     if (line === '/hud tmux') { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); lastAction = '/hud'; continue; }
-    if (line.startsWith('/runtime')) { console.log(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; continue; }
+    if (line.startsWith('/runtime')) { emitChat('TossQuant · runtime', runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; continue; }
     if (line.startsWith('/ask ')) { runCodexPrompt(line.slice(5)); lastAction = '/ask'; continue; }
     if (mode === 'codex') { runCodexPrompt(line); lastAction = 'codex'; continue; }
-    console.log(chatDivider());
     const code = runOnce(['--data-dir', dataDir, ...parts]);
     lastAction = parts.slice(0, 2).join(' ');
     if (code === 2) warn('try /status, /watchlist add AAPL, quote fetch AAPL, runtime line, or exit');
@@ -259,7 +321,8 @@ export function runOnce(argv: string[]): number {
       const dir = dirFlag >= 0 ? tail[dirFlag + 1] : undefined;
       const result = installLocalBins({ dir, force: tail.includes('--force') });
       printJson(result);
-      console.log(pathHint(dir));
+      if (INTERACTIVE_CHAT_UI) emitChat('TossQuant · path', pathHint(dir));
+      else console.log(pathHint(dir));
       return 0;
     } catch (error) {
       warn(error instanceof Error ? error.message : String(error));

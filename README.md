@@ -10,7 +10,7 @@ TypeScript execution, so there are no npm runtime dependencies yet.
 ```bash
 node --version   # requires >= 24
 npm test
-./bin/tossquant setup bin   # installs ~/.local/bin/quant and ~/.local/bin/tossquant
+node ./src/cli.ts setup bin   # installs ~/.local/bin/quant and ~/.local/bin/tossquant
 quant                       # starts the tmux-backed runtime when tmux is available
 ```
 
@@ -26,7 +26,7 @@ python3 -m tossquant_cli --no-tmux
 Run this once from the repo:
 
 ```bash
-./bin/tossquant setup bin
+node ./src/cli.ts setup bin
 ```
 
 It creates symlinks in `~/.local/bin`:
@@ -43,9 +43,9 @@ live HUD pane. Use `quant --no-tmux` or `TOSSQUANT_NO_TMUX=1 quant` for plain mo
 ## Interactive mode
 
 ```bash
-./bin/tossquant
+quant
 # or
-./bin/quant
+quant
 ```
 
 When `tmux` is installed and TossQuant is started from an interactive terminal,
@@ -58,7 +58,7 @@ chat, and the bottom pane is a live HUD like:
 [TossQuant] main | mode:quant | watchlist:5 | quotes:5/10 samples | classify-ready:0 | codex:ready | last:ready | updated:2026-05-04T02:12:19Z
 ```
 
-Use `TOSSQUANT_NO_TMUX=1 ./bin/tossquant` or `./bin/tossquant --no-tmux`
+Use `TOSSQUANT_NO_TMUX=1 quant` or `quant --no-tmux`
 to start the plain non-tmux interactive shell.
 
 Then type. Press `Tab` to autocomplete commands, nested subcommands, slash modes,
@@ -109,18 +109,18 @@ Recommended beginner loop:
 ## Subcommand mode
 
 ```bash
-./bin/tossquant doctor
-./bin/tossquant quote fetch AAPL
-./bin/tossquant quote history AAPL
-./bin/tossquant classify AAPL
-./bin/tossquant portfolio snapshot
-./bin/tossquant brief
-./bin/tossquant runtime line
-./bin/tossquant runtime snapshot
-./bin/tossquant hud
-./bin/tossquant hud --tmux
-./bin/tossquant tmux start
-./bin/tossquant order preview --symbol AAPL --side buy --qty 1 --price 100
+quant doctor
+quant quote fetch AAPL
+quant quote history AAPL
+quant classify AAPL
+quant portfolio snapshot
+quant brief
+quant runtime line
+quant runtime snapshot
+quant hud
+quant hud --tmux
+quant tmux start
+quant order preview --symbol AAPL --side buy --qty 1 --price 100
 ```
 
 Safety defaults:
@@ -166,13 +166,13 @@ sudo pacman -S tmux          # Arch
 `doctor` reports whether `tmux` is available. Useful commands:
 
 ```bash
-./bin/tossquant runtime line       # one-line status
-./bin/tossquant runtime snapshot   # JSON runtime state
-./bin/tossquant hud                # colored HUD once
-./bin/tossquant hud --watch        # repainting HUD loop
-./bin/tossquant hud --tmux         # split a bottom tmux pane inside tmux
-./bin/tossquant tmux start         # create/attach full TossQuant tmux runtime
-./bin/tossquant tmux start --session tq-research
+quant runtime line       # one-line status
+quant runtime snapshot   # JSON runtime state
+quant hud                # colored HUD once
+quant hud --watch        # repainting HUD loop
+quant hud --tmux         # split a bottom tmux pane inside tmux
+quant tmux start         # create/attach full TossQuant tmux runtime
+quant tmux start --session tq-research
 ```
 
 Inside interactive mode, `/hud` prints the same line and `/hud tmux` opens the

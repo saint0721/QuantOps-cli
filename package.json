@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node ./src/cli.ts",
-    "test": "node --test tests-ts/*.test.ts",
+    "test": "node --test src/__tests__/*.test.ts",
     "smoke": "node ./src/cli.ts --no-tmux --data-dir /tmp/tossquant-ts-smoke runtime line"
   },
   "engines": {
