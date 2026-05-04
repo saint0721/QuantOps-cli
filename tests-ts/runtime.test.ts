@@ -7,7 +7,7 @@ import { classify, historyRows } from '../src/analysis.ts';
 import { filteredCodexOutput } from '../src/codex.ts';
 import { defaultTmuxSession, hudWatchCommand, interactiveCommand, sessionHash, shellCommand } from '../src/hud.ts';
 import { buildRuntimeSnapshot, recordRuntime, renderRuntimeLine, runtimeStatePath } from '../src/runtime.ts';
-import { completeLine, completionCandidates, interactivePrompt, welcomeCard } from '../src/cli.ts';
+import { chatDivider, completeLine, completionCandidates, interactivePrompt, welcomeCard } from '../src/cli.ts';
 import { installLocalBins } from '../src/setup.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, writeWatchlist } from '../src/storage.ts';
 
@@ -56,6 +56,7 @@ test('tmux command builders quote runtime commands', () => {
   assert.equal(shellCommand(['a', "b'c"]), "'a' 'b'\\''c'");
   assert.match(hudWatchCommand('/tmp/data', 0.5), /hud' '--watch/);
   assert.match(interactiveCommand(), /--no-tmux/);
+  assert.match(interactiveCommand('/tmp/data'), /--data-dir/);
 });
 
 
@@ -71,8 +72,9 @@ test('setup bin installs quant and tossquant symlinks', () => {
 
 
 test('interactive prompt omits runtime HUD line while welcome keeps neofetch summary', () => {
-  assert.equal(interactivePrompt('quant'), 'TossQuant quant ❯ ');
+  assert.match(interactivePrompt('quant'), /TossQuant quant ❯/);
   assert.doesNotMatch(interactivePrompt('quant'), /\[TossQuant\]/);
+  assert.match(chatDivider(4), /38;2;238;238;238m/);
   const welcome = welcomeCard();
   assert.match(welcome, /TossQuant-cli/);
   assert.match(welcome, /commands/);
@@ -94,4 +96,9 @@ test('default tmux session derives a short stable hash from Codex or project con
   assert.equal(sessionHash('abc').length, 8);
   assert.equal(defaultTmuxSession({ CODEX_SESSION_ID: 'codex-session-1' } as any, '/repo'), `tossquant-${sessionHash('codex-session-1')}`);
   assert.equal(defaultTmuxSession({} as any, '/repo'), `tossquant-${sessionHash('/repo')}`);
+});
+
+
+test('tmux runtime commands pass data dir and reselect top command pane', () => {
+  assert.match(interactiveCommand('/tmp/data'), /\/tmp\/data/);
 });

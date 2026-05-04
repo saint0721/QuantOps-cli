@@ -16,6 +16,7 @@ const GREEN = '\u001b[92m';
 const CYAN = '\u001b[96m';
 const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
+const CHAT_GRAY = '\u001b[38;2;238;238;238m';
 
 function ok(text: string) { console.log(`  ${GREEN}ok${RESET}    ${text}`); }
 function warn(text: string) { console.log(`  ${YELLOW}warn${RESET}  ${text}`); }
@@ -175,8 +176,12 @@ function runtimeLine(dataDir: string, mode = 'quant', lastAction = 'line'): stri
   return renderRuntimeLine(recordRuntime({ base: dataDir, mode, lastAction }));
 }
 
+export function chatDivider(width = 64): string {
+  return `${CHAT_GRAY}${'─'.repeat(width)}${RESET}`;
+}
+
 export function interactivePrompt(mode: string): string {
-  return `TossQuant ${mode} ❯ `;
+  return `${CHAT_GRAY}TossQuant ${mode} ❯${RESET} `;
 }
 
 export function welcomeCard(): string {
@@ -197,6 +202,7 @@ export function welcomeCard(): string {
 
 async function runInteractive(dataDir: string): Promise<number> {
   console.log(welcomeCard());
+  console.log(chatDivider());
   const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode) });
   let mode = 'quant';
   let lastAction = 'ready';
@@ -215,6 +221,7 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (line.startsWith('/runtime')) { console.log(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; continue; }
     if (line.startsWith('/ask ')) { runCodexPrompt(line.slice(5)); lastAction = '/ask'; continue; }
     if (mode === 'codex') { runCodexPrompt(line); lastAction = 'codex'; continue; }
+    console.log(chatDivider());
     const code = runOnce(['--data-dir', dataDir, ...parts]);
     lastAction = parts.slice(0, 2).join(' ');
     if (code === 2) warn('try /status, /watchlist add AAPL, quote fetch AAPL, runtime line, or exit');

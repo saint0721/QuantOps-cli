@@ -26,7 +26,9 @@ export function shellCommand(parts: string[]): string { return parts.map((part) 
 export function hudWatchCommand(base = 'data', interval = 1): string {
   return shellCommand([process.execPath, new URL('./cli.ts', import.meta.url).pathname, '--data-dir', base, 'hud', '--watch', '--interval', String(interval)]);
 }
-export function interactiveCommand(): string { return shellCommand([process.execPath, new URL('./cli.ts', import.meta.url).pathname, '--no-tmux']); }
+export function interactiveCommand(base = 'data'): string {
+  return shellCommand([process.execPath, new URL('./cli.ts', import.meta.url).pathname, '--no-tmux', '--data-dir', base]);
+}
 
 export function printHudOnce(base = 'data', mode = 'quant', lastAction = 'ready'): string {
   const line = renderRuntimeLine(recordRuntime({ base, mode, lastAction }));
@@ -38,7 +40,7 @@ export async function watchHud(base = 'data', interval = 1): Promise<never> {
   for (;;) {
     let snapshot = readRuntimeSnapshot(base);
     if (!snapshot) { snapshot = buildRuntimeSnapshot({ base }); writeRuntimeSnapshot(snapshot, base); }
-    console.log(`\u001b[2J\u001b[H${color(renderRuntimeLine(snapshot))}`);
+    process.stdout.write(`\u001b[?25l\u001b[2J\u001b[H${color(renderRuntimeLine(snapshot))}\u001b[0K`);
     await new Promise((resolve) => setTimeout(resolve, Math.max(interval, 0.2) * 1000));
   }
 }
@@ -55,7 +57,7 @@ export function launchTmuxRuntime(base = 'data', session = DEFAULT_SESSION, heig
   const tmux = tmuxPath();
   if (!tmux) return { code: 127, message: `tmux not found in PATH; ${tmuxInstallHint()}` };
   if (inTmux()) return { code: 2, message: 'already inside tmux; use /hud tmux to add the TossQuant HUD pane' };
-  const create = spawnSync(tmux, ['new-session', '-d', '-s', session, '-n', 'main', '-c', cwd, interactiveCommand()], { encoding: 'utf8' });
+  const create = spawnSync(tmux, ['new-session', '-d', '-s', session, '-n', 'main', '-c', cwd, interactiveCommand(base)], { encoding: 'utf8' });
   if (create.status !== 0) {
     const exists = spawnSync(tmux, ['has-session', '-t', session], { encoding: 'utf8' });
     if (exists.status === 0) {
@@ -67,7 +69,9 @@ export function launchTmuxRuntime(base = 'data', session = DEFAULT_SESSION, heig
   const target = `${session}:main`;
   const split = spawnSync(tmux, ['split-window', '-t', target, '-v', '-l', String(Math.max(1, height)), '-c', cwd, hudWatchCommand(base, interval)], { encoding: 'utf8' });
   if (split.status !== 0) return { code: split.status ?? 1, message: (split.stderr || split.stdout || 'failed to create HUD pane').trim() };
+  spawnSync(tmux, ['select-pane', '-t', target, '-U'], { encoding: 'utf8' });
   spawnSync(tmux, ['select-pane', '-t', `${target}.0`], { encoding: 'utf8' });
+  spawnSync(tmux, ['select-window', '-t', target], { encoding: 'utf8' });
   const attach = spawnSync(tmux, ['attach-session', '-t', session], { encoding: 'utf8', stdio: 'inherit' });
   return { code: attach.status ?? 0, message: 'TossQuant tmux runtime closed' };
 }
