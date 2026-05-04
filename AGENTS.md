@@ -4,9 +4,8 @@ This file is the repository-local operating contract for agents working in TossQ
 
 ## Project shape
 
-- `src/` is the active TypeScript runtime. Keep `src/cli.ts` as the entrypoint/dispatcher, not a dumping ground for reusable logic.
+- `src/` is the active TypeScript runtime. Keep `src/cli.ts` as the single CLI entrypoint/dispatcher and do not recreate a nested `src/cli/` folder.
 - `src/ui/` owns terminal rendering concerns such as chat boxes, prompt styling, and other reusable UI primitives.
-- `src/cli/` owns CLI-specific helpers that are not the top-level executable, such as completion tables and argument-oriented utilities.
 - `src/__tests__/` contains TypeScript tests, split by module/file. Prefer adding `src/__tests__/<module>.test.ts` instead of re-creating root `tests-ts/`.
 - `tossquant_cli/` is the retained Python analysis/reference implementation. Do not delete it just because the active runtime is TypeScript.
 - `tossquant_cli/__tests__/` contains Python tests. Do not re-create a root `tests/` directory.
@@ -16,7 +15,7 @@ This file is the repository-local operating contract for agents working in TossQ
 ## Module rules
 
 - Put reusable rendering in `src/ui/*`.
-- Put CLI helper logic in `src/cli/*`.
+- Keep CLI command dispatch, completion tables, and small argument helpers in `src/cli.ts`; do not add files under `src/cli/`.
 - Keep broker/tossctl integration in `src/toss.ts`.
 - Keep runtime state/HUD model logic in `src/runtime.ts` and tmux orchestration in `src/hud.ts` unless a follow-up refactor creates narrower modules.
 - Keep data redaction and persistence in `src/storage.ts`.
