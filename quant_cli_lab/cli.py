@@ -4,7 +4,6 @@ import argparse
 import json
 import shlex
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -16,8 +15,10 @@ except ImportError:  # pragma: no cover - platform dependent
 from . import __version__
 from .analysis import classify as classify_records, history_rows
 from .audit import audit_all
-from .codex_tools import SUPPORTED_STRATEGY_TOPICS, build_local_context, run_codex_task
+from .codex_tools import SUPPORTED_STRATEGY_TOPICS, build_local_context, print_user_window, run_codex_command, run_codex_task
 from .storage import append_jsonl, quote_history_path, read_jsonl, redact, read_watchlist, snapshot_path, utc_now, write_watchlist
+from .runtime import current_runtime_line, record_runtime, status_summary as runtime_status_summary
+from .hud import launch_tmux_hud, launch_tmux_runtime, print_hud_once, tmux_path, tmux_install_hint, watch_hud
 from . import toss
 
 APP_NAME = "TossQuant"
@@ -45,6 +46,9 @@ ROOT_COMMANDS = [
     "brief",
     "audit",
     "strategy",
+    "hud",
+    "runtime",
+    "tmux",
     "help",
     "exit",
     "quit",
@@ -64,11 +68,16 @@ SLASH_COMMANDS = [
     "/today",
     "/audit",
     "/strategy",
+    "/hud",
+    "/runtime",
 ]
 COMMAND_COMPLETIONS = {
     "quote": ["fetch", "history"],
     "order": ["preview"],
     "portfolio": ["snapshot"],
+    "runtime": ["line", "snapshot"],
+    "hud": ["--tmux", "--watch"],
+    "tmux": ["start"],
     "history": [],
     "classify": [],
 }
@@ -105,6 +114,17 @@ Codex bridge slash commands:
   /brief | /today             Codex session coach over local redacted data
   /audit [TICKER] [explain]   deterministic data audit; explain uses Codex
   /strategy <TICKER> <TOPIC>  Codex research plan: momentum, mean-reversion, event-study, risk
+  /hud                        show compact runtime/status line
+  /hud tmux                   open a bottom tmux HUD pane
+  /runtime [line|snapshot]    inspect persisted runtime state
+
+Runtime commands:
+  hud                          print runtime HUD once
+  hud --watch                  watch runtime state in the current terminal
+  hud --tmux                   open a bottom tmux HUD pane
+  runtime snapshot             write and print ./data/runtime/state.json
+  runtime line                 print the one-line runtime status
+  tmux start                   start TossQuant in tmux with bottom HUD pane
 
 Guided learning slash commands:
   /start                      show the beginner quant workflow
@@ -115,15 +135,22 @@ Guided learning slash commands:
   /watchlist list             list watchlist
   /watchlist fetch            fetch quotes for every watchlist ticker
   /learn <TOPIC>              explain: momentum, mean-reversion, backtest, risk
+
+Data download commands:
+  quote <TICKER>              download one quote sample through tossctl
+  /watchlist fetch            download quotes for every watchlist ticker
+  portfolio                   save read-only account/portfolio snapshot
 """
 
 START_HERE_TEXT = """Start here:
   1) doctor                   check tossctl/auth/data setup
-  2) quote AAPL               fetch one quote sample into ./data
-  3) history AAPL             inspect saved samples
-  4) classify AAPL            get a simple strategy-candidate label
-  5) /status                   see what data is ready
-  6) /next                     get one recommended next action
+  2) /watchlist add AAPL      choose a ticker
+  3) quote AAPL               download one quote sample into ./data
+  4) /watchlist fetch         download quotes for every watchlist ticker
+  5) /status                  see what local data is ready
+  6) /audit                   check local data quality
+  7) /brief                   ask Codex for a session brief
+  8) /strategy AAPL momentum  ask Codex for a research plan
 
 Type /help for every command. Press Tab to autocomplete commands.
 TossQuant stays quiet until you run a command.
@@ -171,7 +198,7 @@ def color(text: str, ansi: str, *, readline_safe: bool = False) -> str:
     return f"{ansi}{text}{RESET}"
 
 
-def prompt_for_mode(mode: str, *, readline_safe: bool = False) -> str:
+def prompt_for_mode(mode: str, *, readline_safe: bool = False, status_line: str | None = None) -> str:
     if mode == "codex":
         name = color("TossQuant", MAGENTA, readline_safe=readline_safe)
         badge = color("codex", CYAN, readline_safe=readline_safe)
@@ -179,7 +206,10 @@ def prompt_for_mode(mode: str, *, readline_safe: bool = False) -> str:
         name = color("TossQuant", GREEN, readline_safe=readline_safe)
         badge = color("quant", CYAN, readline_safe=readline_safe)
     arrow = color("❯", BOLD, readline_safe=readline_safe)
-    return f"{name} {badge} {arrow} "
+    prompt = f"{name} {badge} {arrow} "
+    if status_line:
+        return color(status_line, DIM + BLUE, readline_safe=readline_safe) + "\n" + prompt
+    return prompt
 
 
 def completion_candidates(line: str, mode: str = "quant") -> list[str]:
@@ -204,6 +234,10 @@ def completion_candidates(line: str, mode: str = "quant") -> list[str]:
         return ["explain"]
     if parts[0] == "/strategy":
         return sorted(SUPPORTED_STRATEGY_TOPICS)
+    if parts[0] == "/runtime":
+        return ["line", "snapshot"]
+    if parts[0] == "/hud":
+        return ["tmux"]
     return COMMAND_COMPLETIONS.get(parts[0], [])
 
 
@@ -249,23 +283,16 @@ def print_command(command: str, note: str = "") -> None:
     print(f"  {label('$', MAGENTA)} {color(command, BOLD)}{suffix}")
 
 
-def quote_sample_counts(base: str | Path | None = None) -> dict[str, int]:
-    root = Path(base) if base else Path.cwd() / "data"
-    quote_dir = root / "quotes"
-    if not quote_dir.exists():
-        return {}
-    counts: dict[str, int] = {}
-    for path in sorted(quote_dir.glob("*.jsonl")):
-        counts[path.stem.upper()] = len(read_jsonl(path))
-    return counts
+def runtime_status_line(mode: str, last_action: str = "ready", base: str | Path | None = "data") -> str:
+    return current_runtime_line(mode=mode, last_action=last_action, base=base, cwd=Path.cwd())
+
+
+def print_hud(mode: str, last_action: str = "ready", base: str | Path | None = "data") -> None:
+    print_hud_once(base=base, mode=mode, last_action=last_action)
 
 
 def status_summary(base: str | Path | None = None) -> dict[str, Any]:
-    counts = quote_sample_counts(base)
-    watchlist = read_watchlist(base)
-    ready = sorted([ticker for ticker, count in counts.items() if count >= 3])
-    needs_more = sorted([ticker for ticker in set(watchlist) | set(counts) if counts.get(ticker, 0) < 3])
-    return {"watchlist": watchlist, "counts": counts, "ready": ready, "needs_more": needs_more}
+    return runtime_status_summary(base)
 
 
 def print_start_workflow() -> None:
@@ -392,6 +419,9 @@ def command_doctor(args: argparse.Namespace) -> int:
         "tossctl_path": toss.tossctl_path(),
         "data_dir": str(data),
         "trading_mutations": "disabled",
+        "tmux_path": tmux_path(),
+        "tmux_available": bool(tmux_path()),
+        "tmux_install_hint": tmux_install_hint() if not tmux_path() else "ok",
     }
     version = toss.version()
     checks["tossctl_version_ok"] = version.ok
@@ -562,6 +592,52 @@ def handle_strategy(parts: list[str], base: str | Path | None = "data") -> int:
     return command_strategy(args)
 
 
+def command_runtime_snapshot(args: argparse.Namespace) -> int:
+    snapshot = record_runtime(mode=args.mode, last_action=args.last_action, base=args.data_dir, cwd=Path.cwd())
+    print_json(snapshot)
+    return 0
+
+
+def command_runtime_line(args: argparse.Namespace) -> int:
+    print(runtime_status_line(args.mode, args.last_action, args.data_dir))
+    return 0
+
+
+def command_tmux_start(args: argparse.Namespace) -> int:
+    code, message = launch_tmux_runtime(base=args.data_dir, session=args.session, height=args.height, interval=args.interval, cwd=Path.cwd())
+    if code == 0:
+        print_success(message)
+    else:
+        print_warning(message)
+    return code
+
+
+def command_hud(args: argparse.Namespace) -> int:
+    if args.tmux:
+        code, message = launch_tmux_hud(base=args.data_dir, height=args.height, interval=args.interval)
+        if code == 0:
+            print_success(message or "tmux HUD launched")
+        else:
+            print_warning(message)
+        return code
+    if args.watch:
+        return watch_hud(base=args.data_dir, interval=args.interval)
+    print_hud_once(base=args.data_dir, mode=args.mode, last_action=args.last_action)
+    return 0
+
+
+def handle_hud(parts: list[str], mode: str, last_action: str, base: str | Path | None = "data") -> int:
+    if len(parts) > 1 and parts[1] == "tmux":
+        code, message = launch_tmux_hud(base=base, height=3, interval=1.0)
+        if code == 0:
+            print_success(message or "tmux HUD launched")
+        else:
+            print_warning(message)
+        return code
+    print_hud(mode, last_action, base)
+    return 0
+
+
 class TossQuantArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         raise ValueError(message)
@@ -617,6 +693,34 @@ def build_parser(*, interactive: bool = False) -> argparse.ArgumentParser:
     strategy.add_argument("ticker")
     strategy.add_argument("topic", choices=SUPPORTED_STRATEGY_TOPICS)
     strategy.set_defaults(func=command_strategy)
+
+    runtime = sub.add_parser("runtime")
+    rsub = runtime.add_subparsers(dest="runtime_cmd", required=True)
+    rsnap = rsub.add_parser("snapshot")
+    rsnap.add_argument("--mode", default="quant")
+    rsnap.add_argument("--last-action", default="snapshot")
+    rsnap.set_defaults(func=command_runtime_snapshot)
+    rline = rsub.add_parser("line")
+    rline.add_argument("--mode", default="quant")
+    rline.add_argument("--last-action", default="line")
+    rline.set_defaults(func=command_runtime_line)
+
+    hud = sub.add_parser("hud")
+    hud.add_argument("--watch", action="store_true")
+    hud.add_argument("--tmux", action="store_true")
+    hud.add_argument("--interval", type=float, default=1.0)
+    hud.add_argument("--height", type=int, default=3)
+    hud.add_argument("--mode", default="quant")
+    hud.add_argument("--last-action", default="hud")
+    hud.set_defaults(func=command_hud)
+
+    tmux = sub.add_parser("tmux")
+    tsub = tmux.add_subparsers(dest="tmux_cmd", required=True)
+    start = tsub.add_parser("start")
+    start.add_argument("--session", default="tossquant")
+    start.add_argument("--height", type=int, default=3)
+    start.add_argument("--interval", type=float, default=1.0)
+    start.set_defaults(func=command_tmux_start)
     return parser
 
 
@@ -632,11 +736,8 @@ def run_codex_prompt(prompt: str) -> int:
         print("error: codex CLI not found in PATH")
         return 127
     command = [codex, "exec", "--sandbox", "read-only", "--cd", str(Path.cwd()), prompt]
-    print("codex: running read-only. Use /quant to return after /codex mode.")
-    completed = subprocess.run(command)
-    if completed.returncode != 0:
-        print(f"codex: exited with status {completed.returncode}")
-    return int(completed.returncode)
+    print_user_window(prompt)
+    return run_codex_command(command, title="Codex")
 
 
 def print_start_here() -> None:
@@ -682,12 +783,13 @@ def run_interactive() -> int:
     print_start_here()
     parser = build_parser(interactive=True)
     mode = "quant"
+    last_action = "ready"
     import sys
     readline_safe_prompt = sys.stdin.isatty()
     setup_readline(lambda: mode)
     while True:
         try:
-            line = input(prompt_for_mode(mode, readline_safe=readline_safe_prompt)).strip()
+            line = input(prompt_for_mode(mode, readline_safe=readline_safe_prompt, status_line=runtime_status_line(mode, last_action))).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
@@ -697,21 +799,52 @@ def run_interactive() -> int:
             return 0
         if line in {"help", "?", "/help"}:
             print(HELP_TEXT)
+            last_action = "/help"
             continue
         if line == "/modes":
             print_modes(mode)
+            last_action = "/modes"
+            continue
+        if line.startswith("/hud"):
+            try:
+                hud_parts = shlex.split(line)
+            except ValueError as exc:
+                print(f"error: {exc}")
+                continue
+            handle_hud(hud_parts, mode, last_action, "data")
+            last_action = "/hud"
+            continue
+        if line.startswith("/runtime"):
+            try:
+                runtime_parts = shlex.split(line)
+            except ValueError as exc:
+                print(f"error: {exc}")
+                continue
+            action = runtime_parts[1] if len(runtime_parts) > 1 else "line"
+            if action == "snapshot":
+                command_runtime_snapshot(argparse.Namespace(data_dir="data", mode=mode, last_action="/runtime"))
+            elif action == "line":
+                command_runtime_line(argparse.Namespace(data_dir="data", mode=mode, last_action="/runtime"))
+            else:
+                print_warning("usage: /runtime [line|snapshot]")
+            last_action = "/runtime"
             continue
         if line == "/start":
             print_start_workflow()
+            last_action = "/start"
             continue
         if line == "/status":
             print_status("data")
+            last_action = "/status"
             continue
         if line == "/next":
             print_next_action("data")
+            last_action = "/next"
             continue
         if line in {"/brief", "/today"}:
             command_brief(argparse.Namespace(data_dir="data"))
+            last_action = line
+            print_hud(mode, last_action)
             continue
         try:
             slash_parts = shlex.split(line) if line.startswith("/") else []
@@ -721,38 +854,53 @@ def run_interactive() -> int:
         slash_name = slash_parts[0] if slash_parts else None
         if slash_name == "/audit":
             handle_audit(slash_parts, "data")
+            last_action = "/audit"
+            print_hud(mode, last_action)
             continue
         if slash_name == "/strategy":
             handle_strategy(slash_parts, "data")
+            last_action = "/strategy"
+            print_hud(mode, last_action)
             continue
         if line.startswith("/learn"):
             parts = shlex.split(line)
             print_learn(parts[1] if len(parts) > 1 else None)
+            last_action = "/learn"
             continue
         if line.startswith("/watchlist"):
             handle_watchlist(shlex.split(line), "data")
+            last_action = "/watchlist"
+            print_hud(mode, last_action)
             continue
         if line == "/codex":
             mode = "codex"
             print("Codex mode enabled. Normal text now goes to Codex read-only. Type /quant to return.")
+            print_hud(mode, "/codex")
             continue
         if line == "/quant":
             mode = "quant"
             print("Quant mode enabled. Normal text is parsed as TossQuant commands again.")
+            print_hud(mode, "/quant")
             continue
         if line.startswith("/ask "):
             run_codex_prompt(line.removeprefix("/ask "))
+            last_action = "/ask"
+            print_hud(mode, last_action)
             continue
         if line.startswith("/"):
             print(f"unknown slash command: {line.split()[0]}  (try /help)")
             continue
         if mode == "codex":
             run_codex_prompt(line)
+            last_action = "codex"
+            print_hud(mode, last_action)
             continue
         try:
             parts = normalize_interactive_command(shlex.split(line))
             args = parser.parse_args(parts)
             args.func(args)
+            last_action = " ".join(parts[:2])
+            print_hud(mode, last_action)
         except SystemExit:
             continue
         except Exception as exc:
@@ -760,11 +908,32 @@ def run_interactive() -> int:
     return 0
 
 
+def should_auto_start_tmux() -> bool:
+    import os
+    import sys
+
+    if os.environ.get("TOSSQUANT_NO_TMUX") in {"1", "true", "yes", "on"}:
+        return False
+    if os.environ.get("TMUX"):
+        return False
+    return sys.stdin.isatty() and sys.stdout.isatty() and bool(tmux_path())
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         import sys
         argv = sys.argv[1:]
+    no_tmux = False
+    if "--no-tmux" in argv:
+        argv = [item for item in argv if item != "--no-tmux"]
+        no_tmux = True
     if not argv:
+        if not no_tmux and should_auto_start_tmux():
+            code, message = launch_tmux_runtime(cwd=Path.cwd())
+            if code == 127:
+                print_warning(message)
+            else:
+                return code
         return run_interactive()
     return run_once(argv)
 

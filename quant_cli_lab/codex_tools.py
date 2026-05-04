@@ -47,6 +47,30 @@ SUPPORTED_COMMANDS = (
     "/strategy <TICKER> risk",
 )
 
+RESET = "\033[0m"
+CODEX_BORDER = "\033[38;5;111m"
+CODEX_TEXT = "\033[38;5;252m"
+USER_BORDER = "\033[38;5;213m"
+USER_TEXT = "\033[38;5;255m"
+CODEX_DIM = "\033[2m"
+
+NOISE_PREFIXES = (
+    "hook:",
+    "warning: Codex could not find bubblewrap",
+    "OpenAI Codex ",
+    "workdir:",
+    "model:",
+    "provider:",
+    "approval:",
+    "sandbox:",
+    "reasoning effort:",
+    "reasoning summaries:",
+    "session id:",
+    "Reading additional input from stdin",
+)
+
+NOISE_EXACT = {"--------", "tokens used"}
+
 
 def _safe_read_jsonl(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
     if not path.exists():
@@ -122,6 +146,72 @@ def build_task_prompt(task_name: str, instructions: str, context: dict[str, Any]
     )
 
 
+def filtered_codex_output(stdout: str, stderr: str = "") -> str:
+    """Return user-facing Codex output without CLI transcript/hooks/noisy warnings."""
+    lines = (stdout.splitlines() + stderr.splitlines())
+    visible: list[str] = []
+    skip_user_prompt = False
+    skip_token_count = False
+
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            if visible and visible[-1] != "":
+                visible.append("")
+            continue
+        if skip_token_count:
+            skip_token_count = False
+            if stripped.replace(",", "").isdigit():
+                continue
+        if stripped == "user":
+            skip_user_prompt = True
+            continue
+        if stripped == "codex":
+            skip_user_prompt = False
+            continue
+        if skip_user_prompt:
+            continue
+        if stripped in NOISE_EXACT:
+            skip_token_count = stripped == "tokens used"
+            continue
+        if any(stripped.startswith(prefix) for prefix in NOISE_PREFIXES):
+            continue
+        visible.append(line)
+
+    while visible and visible[0] == "":
+        visible.pop(0)
+    while visible and visible[-1] == "":
+        visible.pop()
+    return "\n".join(visible)
+
+
+def print_chat_window(text: str, *, title: str, border: str, text_color: str) -> None:
+    if not text.strip():
+        return
+    print(f"{border}╭─ {title} ─╮{RESET}")
+    for line in text.splitlines():
+        print(f"{border}│{RESET} {text_color}{line}{RESET}")
+    print(f"{border}╰{'─' * (len(title) + 4)}╯{RESET}")
+
+
+def print_codex_window(text: str, *, title: str = "Codex") -> None:
+    print_chat_window(text, title=title, border=CODEX_BORDER, text_color=CODEX_TEXT)
+
+
+def print_user_window(text: str, *, title: str = "You") -> None:
+    print_chat_window(text, title=title, border=USER_BORDER, text_color=USER_TEXT)
+
+
+def run_codex_command(command: list[str], *, title: str = "Codex") -> int:
+    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    output = filtered_codex_output(completed.stdout or "", completed.stderr or "")
+    print_codex_window(output, title=title)
+    if completed.returncode != 0:
+        print(f"{CODEX_DIM}codex: exited with status {completed.returncode}{RESET}")
+    return int(completed.returncode)
+
+
 def run_codex_task(task_name: str, instructions: str, context: dict[str, Any], *, cwd: str | Path | None = None) -> int:
     codex = shutil.which("codex")
     if not codex:
@@ -129,8 +219,4 @@ def run_codex_task(task_name: str, instructions: str, context: dict[str, Any], *
         return 127
     prompt = build_task_prompt(task_name, instructions, context)
     command = [codex, "exec", "--sandbox", "read-only", "--cd", str(Path(cwd or Path.cwd())), prompt]
-    print(f"codex: running {task_name} read-only.")
-    completed = subprocess.run(command)
-    if completed.returncode != 0:
-        print(f"codex: exited with status {completed.returncode}")
-    return int(completed.returncode)
+    return run_codex_command(command, title=f"Codex · {task_name}")
