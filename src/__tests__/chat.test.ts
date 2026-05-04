@@ -6,7 +6,9 @@ test('chat UI uses light background with black text', () => {
   const divider = chatDivider(4);
   assert.match(divider, /30m/);
   assert.match(divider, /48;2;238;238;238m/);
-  assert.match(interactivePrompt('quant'), /TossQuant quant ❯/);
+  const prompt = interactivePrompt('quant');
+  assert.match(prompt, /TossQuant quant ❯/);
+  assert.doesNotMatch(prompt, /48;2;238;238;238m/);
 });
 
 test('chat boxes label input and omit runtime HUD unless explicitly provided', () => {

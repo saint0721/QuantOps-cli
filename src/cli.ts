@@ -5,7 +5,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import { classify, historyRows } from './analysis.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
 import { filteredCodexOutput } from './codex.ts';
-import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
+import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
 import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
@@ -222,7 +222,11 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (answer.done) { rl.close(); return 0; }
     const line = answer.value.trim();
     if (!line) continue;
-    if (['exit', 'quit', ':q'].includes(line)) { rl.close(); return 0; }
+    if (['exit', 'quit', ':q'].includes(line)) {
+      rl.close();
+      shutdownManagedTmuxRuntime();
+      return 0;
+    }
     console.log(commandEchoBox(line));
     const parts = line.split(/\s+/);
     if (line === '/codex') { mode = 'codex'; lastAction = '/codex'; console.log(inputHintBox(mode)); continue; }

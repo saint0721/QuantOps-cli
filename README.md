@@ -59,7 +59,8 @@ chat, and the bottom pane is a live HUD like:
 ```
 
 Use `TOSSQUANT_NO_TMUX=1 quant` or `quant --no-tmux`
-to start the plain non-tmux interactive shell.
+to start the plain non-tmux interactive shell. Inside the managed tmux runtime,
+`exit`, `quit`, or `:q` closes the whole TossQuant session, including the HUD pane.
 
 Then type. Press `Tab` to autocomplete commands, nested subcommands, slash modes,
 and tmux options such as `tmux start --session`:
