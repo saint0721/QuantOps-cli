@@ -7,12 +7,16 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('doctor'));
   assert.ok(completionCandidates('', 'quant').includes('collect'));
   assert.ok(completionCandidates('', 'quant').includes('/collect'));
+  assert.ok(completionCandidates('', 'quant').includes('data'));
+  assert.ok(completionCandidates('', 'quant').includes('/data'));
   assert.deepEqual(completionCandidates('quote ', 'quant'), ['fetch', 'history']);
   assert.deepEqual(completionCandidates('/quote ', 'quant'), ['fetch', 'history']);
   assert.deepEqual(completionCandidates('collect ', 'quant'), ['plan', 'quote', 'watchlist']);
   assert.deepEqual(completionCandidates('/collect ', 'quant'), ['plan', 'quote', 'watchlist']);
   assert.deepEqual(completionCandidates('collect plan ', 'quant'), ['--watchlist']);
   assert.deepEqual(completionCandidates('/collect plan ', 'quant'), ['--watchlist']);
+  assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list']);
+  assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list']);
   assert.deepEqual(completionCandidates('/watchlist ', 'quant'), ['add', 'fetch', 'list', 'remove']);
   assert.ok(completeLine('/co', 'quant')[0].includes('/collect'));
   assert.ok(completeLine('runt', 'quant')[0].includes('runtime'));
