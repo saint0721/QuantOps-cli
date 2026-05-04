@@ -7,6 +7,7 @@ import { classify, historyRows } from '../src/analysis.ts';
 import { filteredCodexOutput } from '../src/codex.ts';
 import { hudWatchCommand, interactiveCommand, shellCommand } from '../src/hud.ts';
 import { buildRuntimeSnapshot, recordRuntime, renderRuntimeLine, runtimeStatePath } from '../src/runtime.ts';
+import { interactivePrompt, welcomeCard } from '../src/cli.ts';
 import { installLocalBins } from '../src/setup.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, writeWatchlist } from '../src/storage.ts';
 
@@ -66,4 +67,15 @@ test('setup bin installs quant and tossquant symlinks', () => {
   assert.ok(existsSync(join(dir, 'quant')));
   assert.ok(readlinkSync(join(dir, 'quant')).endsWith('/bin/quant'));
   assert.ok(existsSync(join(dir, 'tossquant')));
+});
+
+
+test('interactive prompt omits runtime HUD line while welcome keeps neofetch summary', () => {
+  assert.equal(interactivePrompt('quant'), 'TossQuant quant ❯ ');
+  assert.doesNotMatch(interactivePrompt('quant'), /\[TossQuant\]/);
+  const welcome = welcomeCard();
+  assert.match(welcome, /TossQuant-cli/);
+  assert.match(welcome, /commands/);
+  assert.match(welcome, /trading mutations disabled/);
+  assert.doesNotMatch(welcome, /watchlist:\d/);
 });

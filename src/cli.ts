@@ -135,14 +135,34 @@ function runtimeLine(dataDir: string, mode = 'quant', lastAction = 'line'): stri
   return renderRuntimeLine(recordRuntime({ base: dataDir, mode, lastAction }));
 }
 
+export function interactivePrompt(mode: string): string {
+  return `TossQuant ${mode} ❯ `;
+}
+
+export function welcomeCard(): string {
+  return [
+    `${CYAN}${APP}${RESET} ${VERSION} · TypeScript runtime · trading mutations disabled`,
+    '',
+    'project     TossQuant-cli — terminal-first quant runtime around tossctl',
+    'runtime     TypeScript / Node 24+ / tmux HUD when available',
+    'safety      read-only data by default · no real order mutation',
+    '',
+    'start       /watchlist add AAPL  →  quote AAPL  →  history AAPL  →  classify AAPL',
+    'commands    /status · /watchlist list|fetch · runtime line · hud · doctor · exit',
+    'codex       /ask <question> · /codex · /quant',
+    'plain mode  quant --no-tmux',
+    '',
+  ].join('\n');
+}
+
 async function runInteractive(dataDir: string): Promise<number> {
-  console.log(`${CYAN}${APP}${RESET} ${VERSION} · TypeScript runtime · trading mutations disabled`);
+  console.log(welcomeCard());
   const rl = createInterface({ input, output });
   let mode = 'quant';
   let lastAction = 'ready';
   for (;;) {
-    const prompt = `${runtimeLine(dataDir, mode, lastAction)}\nTossQuant ${mode} ❯ `;
-    const line = (await rl.question(prompt)).trim();
+    recordRuntime({ base: dataDir, mode, lastAction });
+    const line = (await rl.question(interactivePrompt(mode))).trim();
     if (!line) continue;
     if (['exit', 'quit', ':q'].includes(line)) { rl.close(); return 0; }
     const parts = line.split(/\s+/);
