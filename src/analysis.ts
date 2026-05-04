@@ -2,7 +2,7 @@ import type { JsonObject } from './storage.ts';
 
 export type HistoryRow = { fetched_at?: string; price: number | null; change: number | null };
 
-function extractPrice(record: JsonObject): number | null {
+export function extractPrice(record: JsonObject): number | null {
   const payload = record.payload as JsonObject | undefined;
   const raw = payload?.price ?? payload?.last ?? payload?.close ?? record.price;
   const value = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : Number.NaN;
