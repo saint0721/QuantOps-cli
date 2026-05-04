@@ -1,5 +1,5 @@
 {
-  "name": "tossquant",
+  "name": "tossquant-cli",
   "version": "0.1.0",
   "description": "TypeScript-first terminal quant runtime around tossctl read-only data",
   "type": "module",

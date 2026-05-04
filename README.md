@@ -1,6 +1,6 @@
 # TossQuant
 
-TypeScript-first terminal quant runtime around `tossctl` read-only data. The previous Python CLI remains in `quant_cli_lab/` as a reference implementation while the active `bin/tossquant` and `bin/quant` launch `src/cli.ts`.
+TypeScript-first terminal quant runtime around `tossctl` read-only data. The previous Python CLI remains in `tossquant_cli/` as a reference implementation while the active `bin/tossquant` and `bin/quant` launch `src/cli.ts`.
 
 ## TypeScript runtime
 
@@ -17,7 +17,7 @@ quant                       # starts the tmux-backed runtime when tmux is availa
 The legacy Python prototype is still available for comparison:
 
 ```bash
-python3 -m quant_cli_lab --no-tmux
+python3 -m tossquant_cli --no-tmux
 ```
 
 

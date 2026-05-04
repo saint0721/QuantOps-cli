@@ -7,14 +7,14 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
-from quant_cli_lab.analysis import classify, history_rows
-from quant_cli_lab.audit import audit_all
-from quant_cli_lab.codex_tools import build_local_context, build_task_prompt, filtered_codex_output, run_codex_task
-from quant_cli_lab.storage import append_jsonl, quote_history_path, read_jsonl, read_watchlist, redact, write_watchlist
-from quant_cli_lab.cli import command_audit, completion_candidates, handle_audit, handle_watchlist, main, prompt_for_mode, run_codex_prompt, slash_command_name, status_summary
-from quant_cli_lab.hud import launch_tmux_hud, launch_tmux_runtime
-from quant_cli_lab.runtime import build_runtime_snapshot, read_runtime_snapshot, record_runtime, render_runtime_line, runtime_state_path
-from quant_cli_lab.toss import run_toss, tossctl_path
+from tossquant_cli.analysis import classify, history_rows
+from tossquant_cli.audit import audit_all
+from tossquant_cli.codex_tools import build_local_context, build_task_prompt, filtered_codex_output, run_codex_task
+from tossquant_cli.storage import append_jsonl, quote_history_path, read_jsonl, read_watchlist, redact, write_watchlist
+from tossquant_cli.cli import command_audit, completion_candidates, handle_audit, handle_watchlist, main, prompt_for_mode, run_codex_prompt, slash_command_name, status_summary
+from tossquant_cli.hud import launch_tmux_hud, launch_tmux_runtime
+from tossquant_cli.runtime import build_runtime_snapshot, read_runtime_snapshot, record_runtime, render_runtime_line, runtime_state_path
+from tossquant_cli.toss import run_toss, tossctl_path
 
 
 class QuantCliLabTests(unittest.TestCase):
@@ -122,7 +122,7 @@ class QuantCliLabTests(unittest.TestCase):
             append_jsonl(quote_history_path("AAPL", tmp), {"ticker": "AAPL", "fetched_at": "t1", "payload": {"price": 1}})
             append_jsonl(quote_history_path("AAPL", tmp), {"ticker": "AAPL", "fetched_at": "t2", "payload": {"price": 2}})
             append_jsonl(quote_history_path("AAPL", tmp), {"ticker": "AAPL", "fetched_at": "t3", "payload": {"price": 3}})
-            with mock.patch("quant_cli_lab.runtime.shutil.which", return_value="/usr/local/bin/codex"), mock.patch("quant_cli_lab.runtime._git_branch", return_value="main"):
+            with mock.patch("tossquant_cli.runtime.shutil.which", return_value="/usr/local/bin/codex"), mock.patch("tossquant_cli.runtime._git_branch", return_value="main"):
                 snapshot = build_runtime_snapshot(mode="quant", last_action="test", base=tmp)
                 saved = record_runtime(mode="quant", last_action="test", base=tmp)
             self.assertEqual(snapshot["watchlist_count"], 2)
@@ -153,24 +153,24 @@ class QuantCliLabTests(unittest.TestCase):
         self.assertIn("last:/brief", line)
 
     def test_launch_tmux_hud_requires_binary_and_session(self):
-        with mock.patch("quant_cli_lab.hud.shutil.which", return_value=None):
+        with mock.patch("tossquant_cli.hud.shutil.which", return_value=None):
             code, message = launch_tmux_hud(base="data")
         self.assertEqual(code, 127)
         self.assertIn("tmux not found", message)
-        with mock.patch("quant_cli_lab.hud.shutil.which", return_value="/usr/bin/tmux"), mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch("tossquant_cli.hud.shutil.which", return_value="/usr/bin/tmux"), mock.patch.dict("os.environ", {}, clear=True):
             code, message = launch_tmux_hud(base="data")
         self.assertEqual(code, 2)
         self.assertIn("not inside a tmux", message)
 
     def test_launch_tmux_hud_splits_bottom_pane_inside_tmux(self):
-        with mock.patch("quant_cli_lab.hud.shutil.which", return_value="/usr/bin/tmux"), mock.patch.dict("os.environ", {"TMUX": "session"}), mock.patch("quant_cli_lab.hud.subprocess.run") as run:
+        with mock.patch("tossquant_cli.hud.shutil.which", return_value="/usr/bin/tmux"), mock.patch.dict("os.environ", {"TMUX": "session"}), mock.patch("tossquant_cli.hud.subprocess.run") as run:
             run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
             code, message = launch_tmux_hud(base="/tmp/data", height=4, interval=0.5)
         self.assertEqual(code, 0)
         self.assertIn("launched", message)
         command = run.call_args.args[0]
         self.assertEqual(command[:5], ["/usr/bin/tmux", "split-window", "-v", "-l", "4"])
-        self.assertIn("quant_cli_lab.cli", command[-1])
+        self.assertIn("tossquant_cli.cli", command[-1])
         self.assertIn("--watch", command[-1])
 
     def test_launch_tmux_runtime_creates_main_and_bottom_hud_then_attaches(self):
@@ -180,7 +180,7 @@ class QuantCliLabTests(unittest.TestCase):
             calls.append(command)
             return mock.Mock(returncode=0, stdout="", stderr="")
 
-        with mock.patch("quant_cli_lab.hud.shutil.which", return_value="/usr/bin/tmux"), mock.patch.dict("os.environ", {}, clear=True), mock.patch("quant_cli_lab.hud.subprocess.run", side_effect=fake_run):
+        with mock.patch("tossquant_cli.hud.shutil.which", return_value="/usr/bin/tmux"), mock.patch.dict("os.environ", {}, clear=True), mock.patch("tossquant_cli.hud.subprocess.run", side_effect=fake_run):
             code, message = launch_tmux_runtime(base="data", session="tossquant-test", height=3, interval=1.0, cwd="/repo")
         self.assertEqual(code, 0)
         self.assertIn("closed", message)
@@ -191,12 +191,12 @@ class QuantCliLabTests(unittest.TestCase):
         self.assertEqual(calls[-1], ["/usr/bin/tmux", "attach-session", "-t", "tossquant-test"])
 
     def test_main_auto_starts_tmux_when_interactive_and_available(self):
-        with mock.patch("quant_cli_lab.cli.should_auto_start_tmux", return_value=True), mock.patch("quant_cli_lab.cli.launch_tmux_runtime", return_value=(0, "closed")) as launch:
+        with mock.patch("tossquant_cli.cli.should_auto_start_tmux", return_value=True), mock.patch("tossquant_cli.cli.launch_tmux_runtime", return_value=(0, "closed")) as launch:
             self.assertEqual(main([]), 0)
         launch.assert_called_once()
 
     def test_main_no_tmux_flag_runs_interactive_directly(self):
-        with mock.patch("quant_cli_lab.cli.run_interactive", return_value=0) as interactive, mock.patch("quant_cli_lab.cli.launch_tmux_runtime") as launch:
+        with mock.patch("tossquant_cli.cli.run_interactive", return_value=0) as interactive, mock.patch("tossquant_cli.cli.launch_tmux_runtime") as launch:
             self.assertEqual(main(["--no-tmux"]), 0)
         interactive.assert_called_once()
         launch.assert_not_called()
@@ -306,7 +306,7 @@ class QuantCliLabTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('not-json\n{"ticker": "AAPL", "fetched_at": "2026-05-04T00:00:00Z", "payload": {"price": 1}}\n', encoding="utf-8")
             args = mock.Mock(data_dir=tmp, ticker="AAPL", explain=True)
-            with mock.patch("quant_cli_lab.cli.run_codex_task", return_value=0) as run_task:
+            with mock.patch("tossquant_cli.cli.run_codex_task", return_value=0) as run_task:
                 with redirect_stdout(StringIO()):
                     self.assertEqual(command_audit(args), 0)
             context = run_task.call_args.args[2]
@@ -314,7 +314,7 @@ class QuantCliLabTests(unittest.TestCase):
             self.assertIn("warnings", context["quotes"][0])
 
     def test_handle_audit_accepts_dash_dash_explain(self):
-        with mock.patch("quant_cli_lab.cli.command_audit", return_value=0) as audit:
+        with mock.patch("tossquant_cli.cli.command_audit", return_value=0) as audit:
             self.assertEqual(handle_audit(["/audit", "AAPL", "--explain"], "data"), 0)
         args = audit.call_args.args[0]
         self.assertEqual(args.ticker, "AAPL")

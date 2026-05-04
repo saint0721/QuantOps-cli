@@ -58,7 +58,7 @@ def hud_watch_command(*, base: str | Path | None = "data", interval: float = 1.0
         [
             sys.executable,
             "-m",
-            "quant_cli_lab.cli",
+            "tossquant_cli.cli",
             "--data-dir",
             str(base or "data"),
             "hud",
@@ -70,7 +70,7 @@ def hud_watch_command(*, base: str | Path | None = "data", interval: float = 1.0
 
 
 def interactive_command() -> str:
-    return shell_command([sys.executable, "-m", "quant_cli_lab.cli", "--no-tmux"])
+    return shell_command([sys.executable, "-m", "tossquant_cli.cli", "--no-tmux"])
 
 
 def launch_tmux_hud(*, base: str | Path | None = "data", height: int = 3, interval: float = 1.0, cwd: str | Path | None = None) -> tuple[int, str]:
