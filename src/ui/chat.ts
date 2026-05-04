@@ -1,6 +1,12 @@
 const RESET = '\u001b[0m';
-const PROMPT_FRAME = '\u001b[30m\u001b[48;2;238;238;238m';
-const CHAT_FRAME = '\u001b[30m\u001b[48;2;238;238;238m';
+const TOSS_BLUE = '\u001b[38;2;0;100;255m';
+const BLACK = '\u001b[30m';
+const CHAT_INPUT_BG = '\u001b[48;2;245;247;250m';
+const PROMPT_LABEL = `${CHAT_INPUT_BG}\u001b[1m${TOSS_BLUE}`;
+const CHAT_INPUT_TEXT = `${CHAT_INPUT_BG}${BLACK}`;
+const CHAT_FRAME = BLACK;
+const NEOFETCH_ACCENT = `\u001b[1m${TOSS_BLUE}`;
+const CLEAR_TO_END = '\u001b[K';
 
 export function chatColor(text: string): string {
   return `${CHAT_FRAME}${text}${RESET}`;
@@ -17,30 +23,33 @@ function wrapChatLine(line: string, width: number): string[] {
   return chunks;
 }
 
-export function chatBox(title: string, lines: string[], width = 76): string {
-  const contentWidth = Math.max(width, title.length + 8);
-  const topFill = '─'.repeat(Math.max(1, contentWidth - title.length - 4));
-  const bodyWidth = Math.max(1, contentWidth - 2);
-  const wrapped = (lines.length ? lines : ['']).flatMap((line) => wrapChatLine(line, bodyWidth - 2));
-  const body = wrapped.map((line) => `│ ${line.padEnd(bodyWidth - 2)} │`);
-  return chatColor([
-    `╭─ ${title} ${topFill}╮`,
-    ...body,
-    `╰${'─'.repeat(contentWidth)}╯`,
-  ].join('\n'));
+export function chatBox(lines: string[], width = 76): string {
+  const wrapped = (lines.length ? lines : ['']).flatMap((line) => wrapChatLine(line, width));
+  return chatColor(wrapped.join('\n'));
 }
 
-export function interactivePrompt(mode: string): string {
-  return `${PROMPT_FRAME}TossQuant ${mode} ❯${RESET} `;
+export function interactivePrompt(_mode: string): string {
+  return `${PROMPT_LABEL} ❯ ${CHAT_INPUT_TEXT}${CLEAR_TO_END}`;
 }
 
 export function inputHintBox(mode: string): string {
-  return chatBox(`TossQuant · ${mode}`, [
-    'Type a command, /ask, /codex, /watchlist, or press Tab.',
-    'HUD status lives in the bottom tmux pane.',
-  ]);
-}
-
-export function commandEchoBox(command: string): string {
-  return chatBox('You · command', [command]);
+  return [
+    `${NEOFETCH_ACCENT} _____              ____                  _   ${RESET}`,
+    `${NEOFETCH_ACCENT}|_   _|__  ___ ___ / ___| _   _  __ _ _ __ | |_ ${RESET}`,
+    `${NEOFETCH_ACCENT}  | |/ _ \\/ __/ __| |  _| | | |/ _\` | '_ \\| __|${RESET}`,
+    `${NEOFETCH_ACCENT}  | | (_) \\__ \\__ \\ |_| | |_| | (_| | | | | |_ ${RESET}`,
+    `${NEOFETCH_ACCENT}  |_|\\___/|___/___/\\____|\\__,_|\\__,_|_| |_|\\__|${RESET}`,
+    '',
+    `${NEOFETCH_ACCENT}TossQuant@${mode}${RESET}`,
+    `${NEOFETCH_ACCENT}project${RESET}  TossQuant-cli — terminal-first quant runtime around tossctl`,
+    `${NEOFETCH_ACCENT}runtime${RESET}  TypeScript CLI + Rust TUI + tmux HUD when available`,
+    `${NEOFETCH_ACCENT}safety${RESET}   read-only data by default · trading mutations disabled`,
+    '',
+    `${NEOFETCH_ACCENT}flow${RESET}     /watchlist add AAPL → /collect quote AAPL → /history AAPL → /classify AAPL`,
+    `${NEOFETCH_ACCENT}commands${RESET} /status · /collect plan|quote|watchlist · /quote fetch|history · /watchlist list|fetch`,
+    `${NEOFETCH_ACCENT}tools${RESET}    /runtime line · /hud · /ask <question> · /codex · /quant · /exit`,
+    `${NEOFETCH_ACCENT}keys${RESET}     Tab completes · ↑/↓ history · ←/→ cursor`,
+    '',
+    `${NEOFETCH_ACCENT}try${RESET}      /collect plan AAPL`,
+  ].join('\n');
 }

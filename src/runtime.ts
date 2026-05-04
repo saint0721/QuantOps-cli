@@ -91,5 +91,5 @@ export function recordRuntime(opts: { mode?: string; lastAction?: string; base?:
 }
 
 export function renderRuntimeLine(snapshot: RuntimeSnapshot): string {
-  return `[TossQuant] ${snapshot.branch} | mode:${snapshot.mode} | watchlist:${snapshot.watchlist_count} | quotes:${snapshot.quote_files}/${snapshot.quote_samples} samples | classify-ready:${snapshot.classify_ready.length} | codex:${snapshot.codex} | last:${snapshot.last_action} | updated:${snapshot.updated_at}`;
+  return `[TossQuant ${snapshot.version}] ${snapshot.branch} | mode:${snapshot.mode} | watchlist:${snapshot.watchlist_count} | quotes:${snapshot.quote_files}/${snapshot.quote_samples} samples | classify-ready:${snapshot.classify_ready.length} | codex:${snapshot.codex}`;
 }

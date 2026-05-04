@@ -20,7 +20,8 @@ test('runtime snapshot writes and renders HUD line', () => {
   assert.ok(readJsonl(quoteHistoryPath('AAPL', dir)).length === 3);
   assert.ok(runtimeStatePath(dir).endsWith('runtime/state.json'));
   const line = renderRuntimeLine(snapshot);
-  assert.match(line, /\[TossQuant\]/);
+  assert.match(line, /\[TossQuant 0\.1\.0\]/);
   assert.match(line, /quotes:1\/3 samples/);
-  assert.match(line, /last:test/);
+  assert.doesNotMatch(line, /last:/);
+  assert.doesNotMatch(line, /updated:/);
 });

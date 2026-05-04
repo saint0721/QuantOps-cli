@@ -1,32 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chatBox, chatDivider, commandEchoBox, inputHintBox, interactivePrompt } from '../ui/chat.ts';
+import { chatBox, chatDivider, inputHintBox, interactivePrompt } from '../ui/chat.ts';
 
-test('chat UI uses light background with black text', () => {
+test('chat UI uses black text without background', () => {
   const divider = chatDivider(4);
   assert.match(divider, /30m/);
-  assert.match(divider, /48;2;238;238;238m/);
+  assert.doesNotMatch(divider, /48;2;/);
 });
 
-test('interactive prompt backgrounds only the prompt label', () => {
+test('interactive prompt uses blue marker and black input text on chat background', () => {
   const prompt = interactivePrompt('quant');
-  assert.match(prompt, /TossQuant quant ❯/);
-  assert.match(prompt, /^\u001b\[30m\u001b\[48;2;238;238;238mTossQuant quant ❯\u001b\[0m $/);
+  assert.match(prompt, /^\u001b\[48;2;245;247;250m\u001b\[1m\u001b\[38;2;0;100;255m ❯ \u001b\[48;2;245;247;250m\u001b\[30m\u001b\[K$/);
+  assert.doesNotMatch(prompt, /TossQuant quant/);
 });
 
-test('chat boxes label input and omit runtime HUD unless explicitly provided', () => {
+test('input hint uses neofetch style without background or runtime HUD', () => {
   const hint = inputHintBox('quant');
-  assert.match(hint, /╭─ TossQuant · quant/);
-  assert.match(hint, /press Tab/);
+  assert.match(hint, /TossQuant@quant/);
+  assert.match(hint, /project\u001b\[0m  TossQuant-cli/);
+  assert.match(hint, /commands\u001b\[0m \/status/);
+  assert.match(hint, /keys\u001b\[0m     Tab completes/);
+  assert.match(hint, /try\u001b\[0m      \/collect plan AAPL/);
+  assert.doesNotMatch(hint, /48;2;/);
   assert.doesNotMatch(hint, /\[TossQuant\]/);
-  const echo = commandEchoBox('quote AAPL');
-  assert.match(echo, /You · command/);
-  assert.match(echo, /quote AAPL/);
-  assert.doesNotMatch(echo, /\[TossQuant\]/);
 });
 
-test('chat boxes wrap long lines inside fixed-width bodies', () => {
-  const box = chatBox('TossQuant · runtime', ['x'.repeat(90)], 40);
-  const bodyLines = box.split('\n').filter((line) => line.includes('│'));
-  assert.equal(bodyLines.length, 3);
+test('chat output wraps long lines without box drawing frame', () => {
+  const box = chatBox(['x'.repeat(90)], 40);
+  assert.doesNotMatch(box, /[╭╮╰╯│]/);
+  assert.equal(box.replace(/^\u001b\[30m|\u001b\[0m$/g, '').split('\n').length, 3);
 });

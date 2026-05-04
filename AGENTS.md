@@ -29,6 +29,11 @@ This file is the repository-local operating contract for agents working in TossQ
 - In subcommand mode, preserve machine-friendly JSON/stdout behavior.
 - The tmux HUD belongs in the bottom pane; do not print persistent HUD spam into the top command pane.
 
+## Command execution rules
+
+- Run local TossQuant commands through `rtk` by default. Prefer `rtk <command ...>` over calling `node ./src/cli.ts`, `quant`, or `tossquant` directly unless a test explicitly needs the raw entrypoint.
+- Keep direct `node ./src/cli.ts ...` usage limited to entrypoint-specific tests, launcher installation checks, or fallback diagnostics where `rtk` itself is the suspected problem.
+
 ## Testing rules
 
 - TypeScript: run `npm test` for all TS tests or `node --test src/__tests__/<file>.test.ts` for a single module.

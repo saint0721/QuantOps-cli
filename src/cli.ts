@@ -10,7 +10,7 @@ import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
-import { chatBox, commandEchoBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
+import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 
 const APP = 'TossQuant';
 const VERSION = '0.1.0';
@@ -21,7 +21,7 @@ const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
 export const ROOT_COMPLETIONS = ['doctor', 'collect', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup', 'exit', 'quit'];
-export const SLASH_COMPLETIONS = ['/help', '/status', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant'];
+export const SLASH_COMPLETIONS = ['/help', '/status', '/collect', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit', '/quit'];
 
 export function completionCandidates(line: string, mode = 'quant'): string[] {
   const trimmed = line.trimStart();
@@ -30,17 +30,16 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
   const parts = trimmed.endsWith(' ') ? [...trimmed.split(/\s+/), ''] : trimmed.split(/\s+/);
   if (parts.length <= 1) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
   const first = parts[0];
-  if (first === '/watchlist') return ['add', 'fetch', 'list', 'remove'];
-  if (first === '/hud') return ['tmux'];
-  if (first === '/runtime') return ['line', 'snapshot'];
-  if (first === 'collect') return parts[1] === 'plan' ? ['--watchlist'] : ['plan', 'quote', 'watchlist'];
-  if (first === 'quote') return ['fetch', 'history'];
-  if (first === 'portfolio') return ['snapshot'];
-  if (first === 'order') return ['preview'];
-  if (first === 'runtime') return ['line', 'snapshot'];
-  if (first === 'hud') return ['--tmux', '--watch'];
-  if (first === 'tmux') return parts[1] === 'start' ? ['--session', '--height', '--interval'] : ['start'];
-  if (first === 'setup') return ['bin'];
+  const command = first?.startsWith('/') ? first.slice(1) : first;
+  if (command === 'watchlist') return ['add', 'fetch', 'list', 'remove'];
+  if (command === 'hud') return first?.startsWith('/') ? ['tmux'] : ['--tmux', '--watch'];
+  if (command === 'runtime') return ['line', 'snapshot'];
+  if (command === 'collect') return parts[1] === 'plan' ? ['--watchlist'] : ['plan', 'quote', 'watchlist'];
+  if (command === 'quote') return ['fetch', 'history'];
+  if (command === 'portfolio') return ['snapshot'];
+  if (command === 'order') return ['preview'];
+  if (command === 'tmux') return parts[1] === 'start' ? ['--session', '--height', '--interval'] : ['start'];
+  if (command === 'setup') return ['bin'];
   return [];
 }
 
@@ -51,20 +50,20 @@ export function completeLine(line: string, mode = 'quant'): [string[], string] {
   return [matches.length ? matches : candidates, token];
 }
 
-function emitChat(title: string, text: string) {
-  console.log(chatBox(title, text.split(/\r?\n/)));
+function emitChat(text: string) {
+  console.log(chatBox(text.split(/\r?\n/)));
 }
 function ok(text: string) {
-  if (INTERACTIVE_CHAT_UI) { emitChat('TossQuant · ok', text); return; }
+  if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
   console.log(`  ${GREEN}ok${RESET}    ${text}`);
 }
 function warn(text: string) {
-  if (INTERACTIVE_CHAT_UI) { emitChat('TossQuant · warning', text); return; }
+  if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
   console.log(`  ${YELLOW}warn${RESET}  ${text}`);
 }
 function printJson(value: unknown) {
   const text = JSON.stringify(value, null, 2);
-  if (INTERACTIVE_CHAT_UI) { emitChat('TossQuant · result', text); return; }
+  if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
   console.log(text);
 }
 function dataDirFrom(argv: string[]): { dataDir: string; rest: string[]; noTmux: boolean } {
@@ -179,7 +178,7 @@ function commandOrderPreview(args: string[]): number {
   const result = orderPreview(args);
   if (result.ok) {
     const text = result.stdout.trim();
-    if (INTERACTIVE_CHAT_UI) emitChat('TossQuant · order preview', text);
+    if (INTERACTIVE_CHAT_UI) emitChat(text);
     else console.log(text);
     return 0;
   }
@@ -195,9 +194,30 @@ function runCodexPrompt(prompt: string): number {
   const result = spawnSync(codex, ['exec', '--sandbox', 'read-only', '--cd', process.cwd(), prompt], { encoding: 'utf8' });
   const visible = filteredCodexOutput(result.stdout ?? '', result.stderr ?? '');
   if (visible) {
-    if (INTERACTIVE_CHAT_UI) emitChat('Codex', visible);
+    if (INTERACTIVE_CHAT_UI) emitChat(visible);
     else console.log(visible);
   }
+  return result.status ?? 1;
+}
+
+function launchRustTui(dataDir: string): number | null {
+  const cargo = spawnSync('sh', ['-lc', 'command -v cargo'], { encoding: 'utf8' });
+  if (cargo.status !== 0 || !cargo.stdout.trim()) return null;
+  const manifest = new URL('../tui/Cargo.toml', import.meta.url).pathname;
+  const entry = new URL('./cli.ts', import.meta.url).pathname;
+  const result = spawnSync(cargo.stdout.trim(), [
+    'run',
+    '--quiet',
+    '--manifest-path',
+    manifest,
+    '--',
+    '--entry',
+    entry,
+    '--data-dir',
+    dataDir,
+    '--node',
+    process.execPath,
+  ], { encoding: 'utf8', stdio: 'inherit' });
   return result.status ?? 1;
 }
 
@@ -229,8 +249,8 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'start       /watchlist add AAPL  →  collect quote AAPL  →  history AAPL  →  classify AAPL',
-    'commands    /status · collect plan|quote|watchlist · /watchlist list|fetch · runtime line · hud · doctor · exit',
+    'start       /watchlist add AAPL  →  /collect quote AAPL  →  /history AAPL  →  /classify AAPL',
+    'commands    /status · /collect plan|quote|watchlist · /watchlist list|fetch · /runtime line · /hud · /doctor · /exit',
     'codex       /ask <question> · /codex · /quant',
     'plain mode  quant --no-tmux',
     '',
@@ -238,46 +258,57 @@ export function welcomeCard(): string {
 }
 
 async function runInteractive(dataDir: string): Promise<number> {
+  if (input.isTTY && output.isTTY) {
+    const code = launchRustTui(dataDir);
+    if (code !== null) return code;
+  }
   let mode = 'quant';
   let lastAction = 'ready';
   INTERACTIVE_CHAT_UI = true;
-  console.log(welcomeCard());
   console.log(inputHintBox(mode));
   const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode) });
   const lines = rl[Symbol.asyncIterator]();
   for (;;) {
     recordRuntime({ base: dataDir, mode, lastAction });
-    output.write(interactivePrompt(mode));
+    rl.setPrompt(interactivePrompt(mode));
+    rl.prompt();
     const answer = await lines.next();
-    if (answer.done) { rl.close(); return 0; }
+    if (answer.done) { output.write(RESET); rl.close(); return 0; }
+    output.write(RESET);
     const line = answer.value.trim();
     if (!line) continue;
-    if (['exit', 'quit', ':q'].includes(line)) {
+    if (['/exit', 'exit', '/quit', 'quit', '/:q', ':q'].includes(line)) {
       rl.close();
       shutdownManagedTmuxRuntime();
       return 0;
     }
-    console.log(commandEchoBox(line));
     const parts = line.split(/\s+/);
     if (line === '/codex') { mode = 'codex'; lastAction = '/codex'; console.log(inputHintBox(mode)); continue; }
     if (line === '/quant') { mode = 'quant'; lastAction = '/quant'; console.log(inputHintBox(mode)); continue; }
     if (line === '/status') { printStatus(dataDir); lastAction = '/status'; continue; }
     if (line.startsWith('/watchlist')) { handleWatchlist(parts, dataDir); lastAction = '/watchlist'; continue; }
-    if (line === '/hud') { emitChat('TossQuant · HUD', runtimeLine(dataDir, mode, lastAction)); lastAction = '/hud'; continue; }
+    if (line === '/hud') { emitChat(runtimeLine(dataDir, mode, lastAction)); lastAction = '/hud'; continue; }
     if (line === '/hud tmux') { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); lastAction = '/hud'; continue; }
-    if (line.startsWith('/runtime')) { emitChat('TossQuant · runtime', runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; continue; }
+    if (line.startsWith('/runtime')) { emitChat(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; continue; }
     if (line.startsWith('/ask ')) { runCodexPrompt(line.slice(5)); lastAction = '/ask'; continue; }
     if (mode === 'codex') { runCodexPrompt(line); lastAction = 'codex'; continue; }
-    const code = runOnce(['--data-dir', dataDir, ...parts]);
-    lastAction = parts.slice(0, 2).join(' ');
-    if (code === 2) warn('try /status, /watchlist add AAPL, quote fetch AAPL, runtime line, or exit');
+    if (!line.startsWith('/')) {
+      warn('slash commands only: try /status, /watchlist add AAPL, /collect plan AAPL, /quote history AAPL, or /exit');
+      lastAction = 'slash-required';
+      continue;
+    }
+    const commandParts = line.slice(1).split(/\s+/);
+    const code = runOnce(['--data-dir', dataDir, ...commandParts], { quietUnknown: true });
+    lastAction = commandParts.slice(0, 2).join(' ');
+    if (code === 2) warn('unknown slash command: try /status, /watchlist add AAPL, /collect plan AAPL, /quote history AAPL, or /exit');
   }
 }
 
-export function runOnce(argv: string[]): number {
+export function runOnce(argv: string[], opts: { quietUnknown?: boolean } = {}): number {
   const { dataDir, rest } = dataDirFrom(argv);
   const [cmd, sub, ...tail] = rest;
   if (!cmd) return 2;
+  if (cmd === 'status') { printStatus(dataDir); return 0; }
   if (cmd === 'doctor') return commandDoctor(dataDir);
   if (cmd === 'collect') return commandCollect(dataDir, sub, tail);
   if (cmd === 'quote' && sub === 'fetch') return commandQuoteFetch(dataDir, tail[0]);
@@ -287,6 +318,8 @@ export function runOnce(argv: string[]): number {
   if (cmd === 'classify') return commandClassify(dataDir, sub);
   if (cmd === 'portfolio' && (sub === 'snapshot' || !sub)) return commandPortfolioSnapshot(dataDir);
   if (cmd === 'order' && sub === 'preview') return commandOrderPreview(tail);
+  if (cmd === 'watchlist') return handleWatchlist(['watchlist', sub ?? 'list', ...tail], dataDir);
+  if (cmd === 'ask') return runCodexPrompt([sub, ...tail].filter(Boolean).join(' '));
   if (cmd === 'runtime' && sub === 'snapshot') { printJson(recordRuntime({ base: dataDir, lastAction: 'snapshot' })); return 0; }
   if (cmd === 'runtime' && sub === 'line') { console.log(runtimeLine(dataDir)); return 0; }
   if (cmd === 'hud' && rest.includes('--watch')) { void watchHud(dataDir, Number(rest[rest.indexOf('--interval') + 1] ?? 1)); return 0; }
@@ -306,7 +339,7 @@ export function runOnce(argv: string[]): number {
       const dir = dirFlag >= 0 ? tail[dirFlag + 1] : undefined;
       const result = installLocalBins({ dir, force: tail.includes('--force') });
       printJson(result);
-      if (INTERACTIVE_CHAT_UI) emitChat('TossQuant · path', pathHint(dir));
+      if (INTERACTIVE_CHAT_UI) emitChat(pathHint(dir));
       else console.log(pathHint(dir));
       return 0;
     } catch (error) {
@@ -315,7 +348,7 @@ export function runOnce(argv: string[]): number {
     }
   }
   if (cmd === 'brief') return runCodexPrompt('Create a concise TossQuant session brief from local redacted data. Do not give buy/sell/hold advice.');
-  warn(`unknown command: ${cmd}`);
+  if (!opts.quietUnknown) warn(`unknown command: ${cmd}`);
   return 2;
 }
 
