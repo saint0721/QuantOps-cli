@@ -2,8 +2,6 @@
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
 import { classify, historyRows } from './analysis.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
 import { filteredCodexOutput } from './codex.ts';
@@ -13,8 +11,13 @@ import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
+import { table } from './ui/table.ts';
 import { SOURCES, discoverMarket, searchSymbolsLive, sourceById, symbolInfo, type DiscoverResult, type SourceInfo, type SymbolInfo, type SymbolSearchResult } from './discovery.ts';
 import { formatNaturalPlan, planNatural } from './natural.ts';
+import { nextRecommendation } from './next.ts';
+import { periodToDateRange } from './period.ts';
+
+export { periodToDateRange } from './period.ts';
 
 const APP = 'TossQuant';
 const VERSION = '0.1.0';
@@ -119,35 +122,6 @@ function printJson(value: unknown) {
 function printText(text: string) {
   if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
   console.log(text);
-}
-
-function table(headers: string[], rows: string[][]): string {
-  const widths = headers.map((header, index) => Math.max(header.length, ...rows.map((row) => (row[index] ?? '').length)));
-  const line = (cols: string[]) => cols.map((col, index) => col.padEnd(widths[index] ?? col.length)).join('  ').trimEnd();
-  return [line(headers), line(headers.map((header, index) => '-'.repeat(Math.max(3, widths[index] ?? header.length)))), ...rows.map(line)].join('\n');
-}
-
-function dateString(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-export function periodToDateRange(period: string, now = new Date()): { start: string; end: string } {
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const start = new Date(end);
-  const normalized = period.trim().toLowerCase();
-  if (normalized === 'ytd') {
-    start.setUTCMonth(0, 1);
-  } else {
-    const match = normalized.match(/^(\d+)(d|w|mo|m|y)$/);
-    if (!match) throw new Error(`unsupported period: ${period}`);
-    const amount = Number(match[1]);
-    const unit = match[2];
-    if (unit === 'd') start.setUTCDate(start.getUTCDate() - amount);
-    if (unit === 'w') start.setUTCDate(start.getUTCDate() - amount * 7);
-    if (unit === 'mo' || unit === 'm') start.setUTCMonth(start.getUTCMonth() - amount);
-    if (unit === 'y') start.setUTCFullYear(start.getUTCFullYear() - amount);
-  }
-  return { start: dateString(start), end: dateString(end) };
 }
 
 function expandDataArgs(args: string[]): string[] {
@@ -435,98 +409,8 @@ function commandStart(): number {
   return 0;
 }
 
-function latestDiscoverySymbol(dataDir: string): string | undefined {
-  const root = join(dataDir, 'discovery');
-  if (!existsSync(root)) return undefined;
-  const candidates: string[] = [];
-  for (const source of readdirSync(root).sort()) {
-    const dir = join(root, source);
-    if (!existsSync(dir)) continue;
-    for (const file of readdirSync(dir).filter((item) => item.endsWith('.json')).sort()) {
-      candidates.push(join(dir, file));
-    }
-  }
-  const latest = candidates
-    .map((path) => ({ path, mtime: statSync(path).mtimeMs }))
-    .sort((a, b) => b.mtime - a.mtime)
-    .at(0);
-  if (!latest) return undefined;
-  try {
-    const payload = JSON.parse(readFileSync(latest.path, 'utf8'));
-    const symbol = payload?.items?.[0]?.symbol;
-    return typeof symbol === 'string' ? symbol.toUpperCase() : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function savedMarketSymbols(dataDir: string): string[] {
-  const root = join(dataDir, 'market');
-  if (!existsSync(root)) return [];
-  const symbols = new Set<string>();
-  for (const source of readdirSync(root).sort()) {
-    const dir = join(root, source);
-    if (!existsSync(dir)) continue;
-    for (const file of readdirSync(dir).filter((item) => item.endsWith('.jsonl')).sort()) {
-      const path = join(dir, file);
-      const firstLine = readFileSync(path, 'utf8').split(/\r?\n/).find(Boolean);
-      if (!firstLine) continue;
-      try {
-        const row = JSON.parse(firstLine);
-        if (typeof row.ticker === 'string') symbols.add(row.ticker.toUpperCase());
-      } catch {
-        // Ignore corrupt local rows; /data list remains the diagnostic command.
-      }
-    }
-  }
-  return [...symbols].sort();
-}
-
 function commandNext(dataDir: string): number {
-  const marketSymbols = savedMarketSymbols(dataDir);
-  if (marketSymbols.length > 0) {
-    const symbol = marketSymbols[0]!;
-    printText([
-      '추천 다음 행동',
-      '',
-      `데이터가 준비된 종목이 있습니다: ${marketSymbols.join(', ')}`,
-      `next  /analyze ${symbol}`,
-      '',
-      '그 다음에는 /find 로 새 후보를 찾거나 /download <SYMBOL> 로 비교 대상을 추가하세요.',
-    ].join('\n'));
-    return 0;
-  }
-  const discovered = latestDiscoverySymbol(dataDir);
-  if (discovered) {
-    printText([
-      '추천 다음 행동',
-      '',
-      `최근 discover 후보가 있습니다: ${discovered}`,
-      `next  /download ${discovered}`,
-      '',
-      '다운로드 후 /analyze 로 확인하세요.',
-    ].join('\n'));
-    return 0;
-  }
-  const summary = statusSummary(dataDir);
-  if (summary.watchlist.length > 0) {
-    const symbol = summary.watchlist[0]!;
-    printText([
-      '추천 다음 행동',
-      '',
-      `watchlist에 ${symbol}가 있습니다.`,
-      `next  /download ${symbol}`,
-    ].join('\n'));
-    return 0;
-  }
-  printText([
-    '추천 다음 행동',
-    '',
-    '아직 market 데이터가 없습니다.',
-    'next  /find',
-    '',
-    '/find 는 /discover most-active --source yahoo --limit 10 의 쉬운 별칭입니다.',
-  ].join('\n'));
+  printText(nextRecommendation(dataDir));
   return 0;
 }
 

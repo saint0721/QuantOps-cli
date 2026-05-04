@@ -4,7 +4,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { discover, discoverMarket, searchSymbols, searchSymbolsLive, sourceById, symbolInfo } from '../discovery.ts';
-import { periodToDateRange } from '../cli.ts';
+import { periodToDateRange } from '../period.ts';
 
 test('source catalog explains available data providers', () => {
   assert.equal(sourceById('stooq')?.auth, 'no API key');
