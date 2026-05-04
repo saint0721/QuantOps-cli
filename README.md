@@ -75,8 +75,9 @@ TossQuant quant ❯ classify AAPL
 TossQuant quant ❯ portfolio
 TossQuant quant ❯ /ask what should I study next?
 TossQuant quant ❯ /brief
+TossQuant quant ❯ /research AAPL
 TossQuant quant ❯ /audit
-TossQuant quant ❯ /strategy AAPL momentum
+TossQuant quant ❯ /research AAPL --topic momentum
 TossQuant quant ❯ /hud
 TossQuant quant ❯ /hud tmux
 TossQuant quant ❯ /runtime line
@@ -117,11 +118,13 @@ quant collect quote AAPL
 quant collect watchlist
 quant data download AAPL
 quant stats AAPL
+quant research AAPL
 quant quote fetch AAPL
 quant quote history AAPL
 quant classify AAPL
 quant portfolio snapshot
 quant brief
+quant research AAPL --topic momentum
 quant runtime line
 quant runtime snapshot
 quant hud
@@ -130,7 +133,7 @@ quant tmux start
 quant order preview --symbol AAPL --side buy --qty 1 --price 100
 ```
 
-Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, and `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics.
+Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics, and `research <SYMBOL>` builds an educational external-factor report under `data/research/`.
 
 The active TypeScript runtime now runs normal market download, list, stats, and audit commands directly. The retained Python package remains a reference implementation instead of the default data-analysis execution path.
 
@@ -198,8 +201,9 @@ TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls 
 - `/codex` changes the prompt to `tossquant/codex>`; normal text is sent to Codex.
 - `/quant` returns to normal TossQuant commands.
 - `/brief` or `/today` asks Codex for a local-data session brief and next TossQuant commands.
+- `/research <TICKER>` combines local OHLCV/stat/audit context with a Codex/web event-summary prompt, saves a redacted report under `data/research/`, and avoids buy/sell/hold advice or single-score conclusions.
 - `/audit [TICKER]` runs deterministic local data-quality checks; add `explain` or `--explain` to ask Codex to explain the findings.
-- `/strategy <TICKER> <TOPIC>` asks Codex for an educational research plan. Topics: `momentum`, `mean-reversion`, `event-study`, `risk`.
+- `/research <SYMBOL> [--topic <TEXT>] [--no-codex]` builds a redacted local market/stats/audit context, asks Codex for external-factor research when available, and saves the report under `data/research/`. It is research-only: no buy/sell/hold advice and no single score.
 - `/hud` shows a compact status line with current mode, watchlist count, quote samples, Codex availability, and last action.
 
 Market data defaults:
@@ -214,4 +218,5 @@ Codex safety boundaries:
 - Codex receives summarized/redacted local context, not raw credentials.
 - Codex should recommend research steps and supported TossQuant commands only.
 - Codex must not give direct buy/sell/hold instructions.
+- Research reports use uncertainty wording, avoid single buy/sell scores, and separate local facts from external context.
 - Trading remains preview-only; TossQuant has no real order mutation command.

@@ -210,14 +210,16 @@ export async function downloadHistory(request: DownloadRequest, options: { base?
   }));
   const datasetPath = marketDatasetPath(base, source, providerSymbol, interval);
   const newRows = mergeByKey(datasetPath, records, ['source', 'provider_symbol', 'interval', 'date']);
+  const start = normalizeDate(normalized.start);
+  const end = normalizeDate(normalized.end);
   const manifest: JsonObject = {
     fetched_at: fetchedAt,
     source,
     ticker: normalized.symbol,
     provider_symbol: providerSymbol,
     interval,
-    start: normalizeDate(normalized.start),
-    end: normalizeDate(normalized.end),
+    ...(start === undefined ? {} : { start }),
+    ...(end === undefined ? {} : { end }),
     url,
     raw_path: rawPath,
     dataset_path: datasetPath,

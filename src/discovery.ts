@@ -422,8 +422,8 @@ async function fetchYahooSymbolSearch(query: string, limit: number, fetcher: typ
     signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`Yahoo symbol search HTTP ${response.status}`);
-  const payload = await response.json();
-  const quotes = Array.isArray(payload?.quotes) ? payload.quotes : [];
+  const payload = await response.json() as { quotes?: unknown };
+  const quotes: unknown[] = Array.isArray(payload?.quotes) ? payload.quotes : [];
   return quotes
     .map((item) => dynamicSymbolInfo(item, 'symbol-search', 'yahoo'))
     .filter((item): item is SymbolInfo => Boolean(item))

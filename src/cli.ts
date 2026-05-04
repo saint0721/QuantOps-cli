@@ -19,6 +19,7 @@ import { formatNaturalPlan, planNatural } from './natural.ts';
 import { nextRecommendation } from './next.ts';
 import { periodToDateRange } from './period.ts';
 import { marketStats } from './marketAnalysis.ts';
+import { formatResearchReport, runResearch, type ResearchCodexResult } from './research.ts';
 
 export { periodToDateRange } from './period.ts';
 
@@ -30,8 +31,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
 
@@ -76,6 +77,10 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
   }
   if (command === 'download') return parts.length >= 3 && trimmed.endsWith(' ') ? ['--period', '--start', '--end'] : [];
   if (command === 'analyze') return [];
+  if (command === 'research') {
+    if (parts.length <= 2) return ['AAPL', 'NVDA', 'TSM', 'SPY'];
+    return trimmed.endsWith(' ') ? ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--no-codex'] : [];
+  }
   if (command === 'list') return [];
   if (command === 'audit') return [];
   if (command === 'discover') {
@@ -341,6 +346,36 @@ function dataOptionsFromTail(tail: string[]): { json: boolean; request: Omit<Dow
   const end = takeOption(expanded, '--end');
   const providerSymbol = takeOption(expanded, '--provider-symbol');
   return { json, request: { source: source || 'yahoo', interval, start, end, providerSymbol }, rest: expanded };
+}
+
+function commandResearch(dataDir: string, symbol?: string, tail: string[] = []): number {
+  if (!symbol) { warn('usage: research <SYMBOL> [--topic <TEXT>] [--source yahoo|stooq] [--provider-symbol <ID>]'); return 2; }
+  try {
+    const rest = [...tail];
+    const noSave = rest.includes('--no-save');
+    const noCodex = rest.includes('--no-codex') || process.env.TOSSQUANT_RESEARCH_NO_CODEX === '1';
+    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-save') rest.splice(i, 1);
+    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-codex') rest.splice(i, 1);
+    const explicitSource = rest.includes('--source');
+    const explicitInterval = rest.includes('--interval');
+    const explicitProvider = rest.includes('--provider-symbol');
+    const explicitTopic = takeOption(rest, '--topic');
+    const { request } = dataOptionsFromTail(rest);
+    const topic = [explicitTopic, ...rest.filter((item) => !item.startsWith('--'))].filter(Boolean).join(' ') || undefined;
+    const result = runResearch(symbol, {
+      base: dataDir,
+      topic,
+      source: explicitSource ? request.source : undefined,
+      interval: explicitInterval ? request.interval : undefined,
+      providerSymbol: explicitProvider ? request.providerSymbol : undefined,
+      save: !noSave,
+    }, noCodex ? undefined : runCodexPromptText);
+    printText(formatResearchReport(result));
+    return result.missing_data ? 1 : 0;
+  } catch (error) {
+    printJson({ ok: false, symbol: symbol.toUpperCase(), error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
 }
 
 function commandStats(dataDir: string, symbol?: string, tail: string[] = []): number {
@@ -649,18 +684,26 @@ function commandOrderPreview(args: string[]): number {
   return result.returncode || 1;
 }
 
-function runCodexPrompt(prompt: string): number {
-  if (!prompt.trim()) { warn('usage: /ask <QUESTION>'); return 2; }
+function runCodexPromptText(prompt: string): ResearchCodexResult {
+  if (!prompt.trim()) return { ok: false, error: 'empty prompt', returncode: 2 };
   const hasCodex = spawnSync('sh', ['-lc', 'command -v codex'], { encoding: 'utf8' });
-  if (hasCodex.status !== 0) { warn('codex CLI not found in PATH'); return 127; }
+  if (hasCodex.status !== 0) return { ok: false, error: 'codex CLI not found in PATH', returncode: 127 };
   const codex = hasCodex.stdout.trim();
   const result = spawnSync(codex, ['exec', '--sandbox', 'read-only', '--cd', process.cwd(), prompt], { encoding: 'utf8' });
-  const visible = filteredCodexOutput(result.stdout ?? '', result.stderr ?? '');
-  if (visible) {
-    if (INTERACTIVE_CHAT_UI) emitChat(visible);
-    else console.log(visible);
+  const text = filteredCodexOutput(result.stdout ?? '', result.stderr ?? '');
+  const code = result.status ?? 1;
+  return code === 0 ? { ok: true, text, returncode: code } : { ok: false, text, error: text || result.stderr || result.stdout || `codex exited ${code}`, returncode: code };
+}
+
+function runCodexPrompt(prompt: string): number {
+  if (!prompt.trim()) { warn('usage: /ask <QUESTION>'); return 2; }
+  const result = runCodexPromptText(prompt);
+  if (result.error === 'codex CLI not found in PATH') { warn(result.error); return 127; }
+  if (result.text) {
+    if (INTERACTIVE_CHAT_UI) emitChat(result.text);
+    else console.log(result.text);
   }
-  return result.status ?? 1;
+  return result.returncode ?? (result.ok ? 0 : 1);
 }
 
 function launchRustTui(dataDir: string): number | null {
@@ -712,8 +755,8 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'beginner    /start · /next · /find · /download <SYMBOL> · /analyze <SYMBOL> · /list',
-    'flow        /find  →  /download NVDA  →  /analyze NVDA  →  /next',
+    'beginner    /start · /next · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
+    'flow        /find  →  /download NVDA  →  /analyze NVDA  →  /research NVDA  →  /next',
     'advanced    /discover · /data download --period 1y · /stats <SYMBOL> · /sources · /runtime',
     'codex       /ask <question> · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
@@ -754,6 +797,7 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (line === '/hud tmux') { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); lastAction = '/hud'; return false; }
     if (line.startsWith('/runtime')) { emitChat(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; return false; }
     if (line.startsWith('/ask ')) { runCodexPrompt(line.slice(5)); lastAction = '/ask'; return false; }
+    if (line.startsWith('/research ')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/research'; return false; }
     if (mode === 'codex') { runCodexPrompt(line); lastAction = 'codex'; return false; }
     if (!line.startsWith('/')) {
       emitChat(formatNaturalPlan(planNatural(line)));
@@ -802,6 +846,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'find') return commandDiscover(dataDir, findAliasArgs(sub, tail));
   if (cmd === 'download') return commandData(dataDir, 'download', downloadAliasArgs(sub, tail));
   if (cmd === 'analyze') return commandStats(dataDir, sub, tail);
+  if (cmd === 'research') return commandResearch(dataDir, sub, tail);
   if (cmd === 'list') return commandData(dataDir, 'list', tail);
   if (cmd === 'status') { printStatus(dataDir); return 0; }
   if (cmd === 'doctor') return commandDoctor(dataDir);
