@@ -1,5 +1,5 @@
 const RESET = '\u001b[0m';
-const PROMPT = '\u001b[96m';
+const PROMPT_FRAME = '\u001b[30m\u001b[48;2;238;238;238m';
 const CHAT_FRAME = '\u001b[30m\u001b[48;2;238;238;238m';
 
 export function chatColor(text: string): string {
@@ -31,7 +31,7 @@ export function chatBox(title: string, lines: string[], width = 76): string {
 }
 
 export function interactivePrompt(mode: string): string {
-  return `${PROMPT}TossQuant ${mode} ❯${RESET} `;
+  return `${PROMPT_FRAME}TossQuant ${mode} ❯${RESET} `;
 }
 
 export function inputHintBox(mode: string): string {
