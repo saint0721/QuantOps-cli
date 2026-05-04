@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultTmuxSession, hudWatchCommand, interactiveCommand, managedTmuxSession, sessionHash, shellCommand } from '../hud.ts';
+import { defaultTmuxSession, hudWatchCommand, interactiveCommand, managedTmuxSession, sessionHash, shellCommand, tmuxRuntimeOptions } from '../hud.ts';
 import { hudColor } from '../ui/hud.ts';
 
 test('tmux command builders quote runtime commands', () => {
@@ -20,6 +20,16 @@ test('default tmux session derives a short stable hash from Codex or project con
 
 test('tmux runtime commands pass data dir and reselect top command pane', () => {
   assert.match(interactiveCommand('/tmp/data'), /\/tmp\/data/);
+});
+
+test('tmux runtime enables mouse scroll friendly session options', () => {
+  assert.deepEqual(tmuxRuntimeOptions('tossquant-test'), [
+    ['set-option', '-t', 'tossquant-test', 'mouse', 'on'],
+    ['set-option', '-t', 'tossquant-test', 'history-limit', '50000'],
+    ['set-option', '-t', 'tossquant-test', 'status-keys', 'vi'],
+    ['set-option', '-t', 'tossquant-test', 'renumber-windows', 'on'],
+    ['set-window-option', '-t', 'tossquant-test:main', 'mode-keys', 'vi'],
+  ]);
 });
 
 test('managed tmux session marker is explicit', () => {

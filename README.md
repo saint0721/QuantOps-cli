@@ -132,6 +132,8 @@ quant order preview --symbol AAPL --side buy --qty 1 --price 100
 
 Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, and `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics.
 
+The active TypeScript runtime now runs normal market download, list, stats, and audit commands directly. The retained Python package remains a reference implementation instead of the default data-analysis execution path.
+
 Safety defaults:
 - no web UI
 - no sensitive credential/session/account identifier storage in project data
@@ -150,6 +152,7 @@ export ALPHA_VANTAGE_API_KEY=...
 export FRED_API_KEY=...
 export OPENDART_API_KEY=...
 export POLYGON_API_KEY=...
+export STOOQ_API_KEY=...     # optional; default downloads use Yahoo Finance
 ```
 
 Local `.env*` files and runtime `data/` are ignored by git. Keep API keys,
@@ -198,6 +201,11 @@ TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls 
 - `/audit [TICKER]` runs deterministic local data-quality checks; add `explain` or `--explain` to ask Codex to explain the findings.
 - `/strategy <TICKER> <TOPIC>` asks Codex for an educational research plan. Topics: `momentum`, `mean-reversion`, `event-study`, `risk`.
 - `/hud` shows a compact status line with current mode, watchlist count, quote samples, Codex availability, and last action.
+
+Market data defaults:
+- `quant data download AAPL --period 1y` uses Yahoo Finance's chart endpoint by default.
+- `quant data download AAPL --source stooq --period 1y` uses Stooq when `STOOQ_API_KEY` is available or Stooq allows CSV access.
+- `quant stats AAPL` reads the default Yahoo dataset unless you pass another `--source`.
 
 Codex is launched as `codex exec --sandbox read-only --cd <project> ...` so the first integration is intentionally read-only.
 TossQuant filters Codex CLI transcript noise such as hook lines and sandbox warnings, then renders the model response in a colored Codex window.

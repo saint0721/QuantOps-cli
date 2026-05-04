@@ -222,6 +222,7 @@ def list_datasets(base: str | Path | None = None) -> list[dict[str, Any]]:
     datasets = []
     for path in sorted(root.glob("*/*.jsonl")):
         rows = read_jsonl(path)
+        first = rows[0] if rows else {}
         latest = rows[-1] if rows else {}
         datasets.append(
             {
@@ -229,8 +230,10 @@ def list_datasets(base: str | Path | None = None) -> list[dict[str, Any]]:
                 "name": path.stem,
                 "path": str(path),
                 "rows": len(rows),
+                "first_date": first.get("date"),
                 "latest_date": latest.get("date"),
                 "provider_symbol": latest.get("provider_symbol"),
+                "interval": latest.get("interval"),
             }
         )
     return datasets

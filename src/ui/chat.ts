@@ -45,11 +45,12 @@ export function inputHintBox(mode: string): string {
     `${NEOFETCH_ACCENT}runtime${RESET}  TypeScript CLI + Rust TUI + tmux HUD when available`,
     `${NEOFETCH_ACCENT}safety${RESET}   read-only data by default · trading mutations disabled`,
     '',
-    `${NEOFETCH_ACCENT}flow${RESET}     /watchlist add AAPL → /collect quote AAPL → /history AAPL → /classify AAPL`,
-    `${NEOFETCH_ACCENT}commands${RESET} /status · /collect plan|quote|watchlist · /quote fetch|history · /watchlist list|fetch`,
-    `${NEOFETCH_ACCENT}tools${RESET}    /runtime line · /hud · /ask <question> · /codex · /quant · /exit`,
+    `${NEOFETCH_ACCENT}beginner${RESET} /start · /next · /find · /download <SYMBOL> · /analyze <SYMBOL> · /list`,
+    `${NEOFETCH_ACCENT}flow${RESET}     /find → /download NVDA → /analyze NVDA → /next`,
+    `${NEOFETCH_ACCENT}advanced${RESET} /discover · /data download --period 1y · /stats <SYMBOL> · /sources · /runtime`,
+    `${NEOFETCH_ACCENT}tools${RESET}    /hud · /ask <question> · /codex · /quant · /exit`,
     `${NEOFETCH_ACCENT}keys${RESET}     Tab completes · ↑/↓ history · ←/→ cursor`,
     '',
-    `${NEOFETCH_ACCENT}try${RESET}      /collect plan AAPL`,
+    `${NEOFETCH_ACCENT}try${RESET}      /start`,
   ].join('\n');
 }
