@@ -19,9 +19,12 @@ use ratatui::Terminal;
 const TOSS_BLUE: Color = Color::Rgb(0, 100, 255);
 const CHAT_BG: Color = Color::Rgb(245, 247, 250);
 const PROMPT_LABEL: &str = " ❯ ";
+const INPUT_PLACEHOLDER: &str = "명령어를 입력하세요. 예: /data list";
 const ROOT_COMMANDS: &[&str] = &[
     "/status",
     "/collect",
+    "/data",
+    "/stats",
     "/quote",
     "/history",
     "/classify",
@@ -190,25 +193,37 @@ impl App {
         self.history_index = None;
         self.draft_input.clear();
         if matches!(line.as_str(), "/exit" | "exit" | "/quit" | "quit" | "/:q" | ":q") {
+            shutdown_managed_tmux_runtime();
             return true;
         }
         if line == "/codex" {
             self.mode = "codex".to_string();
-            self.transcript.push("mode   codex".to_string());
+            self.append_exchange(&line, "mode   codex");
             return false;
         }
         if line == "/quant" {
             self.mode = "quant".to_string();
-            self.transcript = welcome_lines("quant");
+            self.append_exchange(&line, "mode   quant");
             return false;
         }
         let output = self.run_line(&line);
-        if output.trim().is_empty() {
-            return false;
+        self.append_exchange(&line, &output);
+        false
+    }
+
+    fn append_exchange(&mut self, command: &str, output: &str) {
+        if self.transcript.last().is_some_and(|line| !line.is_empty()) {
+            self.transcript.push(String::new());
         }
         self.transcript
-            .extend(output.lines().map(|line| line.to_string()));
-        false
+            .push(format!("TossQuant {} ❯ {command}", self.mode));
+        let cleaned = output.trim();
+        if cleaned.is_empty() {
+            self.transcript.push("done".to_string());
+        } else {
+            self.transcript
+                .extend(cleaned.lines().map(|line| line.to_string()));
+        }
     }
 
     fn run_line(&self, line: &str) -> String {
@@ -280,8 +295,8 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "flow     /watchlist add AAPL → /collect quote AAPL → /history AAPL → /classify AAPL".to_string(),
-        "commands /status · /collect plan|quote|watchlist · /quote fetch|history · /watchlist list|fetch".to_string(),
+        "flow     /watchlist add AAPL → /data download AAPL → /stats AAPL → /classify AAPL".to_string(),
+        "commands /status · /collect plan|quote|watchlist · /data download|watchlist|list · /stats <SYMBOL>".to_string(),
         "tools    /runtime line · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
@@ -293,21 +308,38 @@ fn split_args(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
 }
 
-fn command_candidates(command: &str, previous: Option<&str>) -> &'static [&'static str] {
+fn command_candidates(command: &str, parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
     match command {
-        "/collect" => {
-            if previous == Some("plan") {
-                &["--watchlist"]
-            } else {
-                &["plan", "quote", "watchlist"]
-            }
-        }
-        "/quote" => &["fetch", "history"],
-        "/watchlist" => &["add", "fetch", "list", "remove"],
-        "/runtime" => &["line", "snapshot"],
-        "/hud" => &["tmux"],
-        "/portfolio" => &["snapshot"],
-        "/order" => &["preview"],
+        "/collect" => collect_candidates(parts, trailing_space),
+        "/data" => one_level_candidates(parts, trailing_space, &["download", "watchlist", "list"]),
+        "/stats" => &[],
+        "/quote" => one_level_candidates(parts, trailing_space, &["fetch", "history"]),
+        "/watchlist" => one_level_candidates(parts, trailing_space, &["add", "fetch", "list", "remove"]),
+        "/runtime" => one_level_candidates(parts, trailing_space, &["line", "snapshot"]),
+        "/hud" => one_level_candidates(parts, trailing_space, &["tmux"]),
+        "/portfolio" => one_level_candidates(parts, trailing_space, &["snapshot"]),
+        "/order" => one_level_candidates(parts, trailing_space, &["preview"]),
+        _ => &[],
+    }
+}
+
+fn one_level_candidates(parts: &[&str], trailing_space: bool, candidates: &'static [&'static str]) -> &'static [&'static str] {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        candidates
+    } else {
+        &[]
+    }
+}
+
+fn collect_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() <= 1 {
+        return &["plan", "quote", "watchlist"];
+    }
+    match parts.get(1).copied() {
+        Some("plan") if parts.len() == 2 && trailing_space => &["--watchlist"],
+        Some("plan") if parts.len() <= 2 => &["--watchlist"],
+        None => &["plan", "quote", "watchlist"],
+        _ if parts.len() <= 2 => &["plan", "quote", "watchlist"],
         _ => &[],
     }
 }
@@ -342,14 +374,7 @@ fn completion_matches(input: &str, mode: &str) -> Vec<String> {
         ROOT_COMMANDS
     } else {
         let command = parts.first().copied().unwrap_or("");
-        let previous = if trimmed.ends_with(' ') {
-            parts.last().copied()
-        } else if parts.len() >= 2 {
-            parts.get(parts.len() - 2).copied()
-        } else {
-            None
-        };
-        command_candidates(command, previous)
+        command_candidates(command, &parts, trimmed.ends_with(' '))
     };
     candidates
         .iter()
@@ -448,7 +473,10 @@ fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) 
 
 fn handle_key(app: &mut App, key: KeyEvent) -> bool {
     match key.code {
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => true,
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            shutdown_managed_tmux_runtime();
+            true
+        }
         KeyCode::Char(ch) => {
             app.insert(ch);
             false
@@ -492,16 +520,30 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
         .constraints([Constraint::Min(1), Constraint::Length(3), Constraint::Length(2)])
         .split(frame.area());
 
-    let history = app
-        .transcript
+    let visible_height = chunks[0].height.saturating_sub(1) as usize;
+    let visual_lines = visual_transcript_lines(&app.transcript, chunks[0].width.saturating_sub(1));
+    let start = visual_lines.len().saturating_sub(visible_height.max(1));
+    let history = visual_lines
         .iter()
-        .map(|line| Line::from(line.clone()))
+        .skip(start)
+        .map(|line| transcript_line(line))
         .collect::<Vec<_>>();
     let history = Paragraph::new(history)
         .style(Style::default().fg(Color::Black))
         .wrap(Wrap { trim: false });
     frame.render_widget(history, chunks[0]);
 
+    let input_text = if app.input.is_empty() {
+        Span::styled(
+            INPUT_PLACEHOLDER,
+            Style::default().fg(Color::DarkGray).bg(CHAT_BG),
+        )
+    } else {
+        Span::styled(
+            app.input.as_str(),
+            Style::default().fg(Color::Black).bg(CHAT_BG),
+        )
+    };
     let input = Line::from(vec![
         Span::styled(
             PROMPT_LABEL,
@@ -510,10 +552,7 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
                 .bg(CHAT_BG)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            app.input.as_str(),
-            Style::default().fg(Color::Black).bg(CHAT_BG),
-        ),
+        input_text,
     ]);
     let input = Paragraph::new(input)
         .block(
@@ -524,24 +563,7 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
         .style(Style::default().bg(CHAT_BG));
     frame.render_widget(input, chunks[1]);
 
-    let matches = app.completion_matches();
-    let suggestion_text = if matches.is_empty() {
-        "Tab complete".to_string()
-    } else {
-        format!(
-            "Tab complete  {}",
-            matches
-                .iter()
-                .take(6)
-                .map(String::as_str)
-                .collect::<Vec<_>>()
-                .join("  ")
-        )
-    };
-    let suggestions = Paragraph::new(Line::from(vec![
-        Span::styled("search ", Style::default().fg(TOSS_BLUE).add_modifier(Modifier::BOLD)),
-        Span::styled(suggestion_text, Style::default().fg(Color::Black)),
-    ]))
+    let suggestions = Paragraph::new(suggestion_line(app))
     .style(Style::default().bg(CHAT_BG));
     frame.render_widget(suggestions, chunks[2]);
 
@@ -550,9 +572,145 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
     frame.set_cursor_position(Position::new(cursor_x, cursor_y));
 }
 
+fn shutdown_managed_tmux_runtime() {
+    if env::var("TOSSQUANT_TMUX_MANAGED").ok().as_deref() != Some("1") {
+        return;
+    }
+    let Ok(session) = env::var("TOSSQUANT_TMUX_SESSION") else {
+        return;
+    };
+    if session.trim().is_empty() {
+        return;
+    }
+    let _ = Command::new("tmux")
+        .args(["kill-session", "-t", session.trim()])
+        .output();
+}
+
+fn suggestion_line(app: &App) -> Line<'static> {
+    let matches = app.completion_matches();
+    let token = active_completion_token(&app.input);
+    let mut spans = vec![Span::styled(
+        "search ",
+        Style::default().fg(TOSS_BLUE).add_modifier(Modifier::BOLD),
+    )];
+    if matches.is_empty() {
+        spans.push(Span::styled("Tab complete", Style::default().fg(Color::DarkGray)));
+        return Line::from(spans);
+    }
+    spans.push(Span::styled("Tab complete  ", Style::default().fg(Color::DarkGray)));
+    for (index, candidate) in matches.iter().take(6).enumerate() {
+        if index > 0 {
+            spans.push(Span::raw("  "));
+        }
+        spans.extend(highlight_candidate(candidate, &token));
+    }
+    Line::from(spans)
+}
+
+fn active_completion_token(input: &str) -> String {
+    let cursor = input.len();
+    let (_, _, token) = token_bounds(input, cursor);
+    token
+}
+
+fn highlight_candidate(candidate: &str, token: &str) -> Vec<Span<'static>> {
+    if token.is_empty() || !candidate.starts_with(token) {
+        return vec![Span::styled(candidate.to_string(), Style::default().fg(Color::Black))];
+    }
+    let rest = candidate[token.len()..].to_string();
+    vec![
+        Span::styled(
+            token.to_string(),
+            Style::default()
+                .fg(Color::White)
+                .bg(TOSS_BLUE)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(rest, Style::default().fg(Color::Black)),
+    ]
+}
+
+fn transcript_line(line: &str) -> Line<'static> {
+    if let Some((prefix, command)) = line.split_once('❯') {
+        return Line::from(vec![
+            Span::styled(
+                format!(" {prefix}❯ "),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(CHAT_BG)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                command.trim_start().to_string(),
+                Style::default()
+                    .fg(TOSS_BLUE)
+                    .bg(CHAT_BG)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default().bg(CHAT_BG)),
+        ]);
+    }
+    if line.trim().is_empty() {
+        return Line::from("");
+    }
+    let trimmed = line.trim_start();
+    if trimmed.starts_with('"') && trimmed.contains(':') {
+        let indent = line.len().saturating_sub(trimmed.len());
+        let (key, rest) = trimmed.split_once(':').unwrap_or((trimmed, ""));
+        return Line::from(vec![
+            Span::raw(" ".repeat(indent)),
+            Span::styled(key.to_string(), Style::default().fg(TOSS_BLUE)),
+            Span::styled(":".to_string(), Style::default().fg(Color::DarkGray)),
+            Span::styled(rest.to_string(), Style::default().fg(Color::Black)),
+        ]);
+    }
+    if line.starts_with('{') || line.starts_with('}') || line.starts_with('[') || line.starts_with(']') {
+        return Line::from(Span::styled(line.to_string(), Style::default().fg(Color::DarkGray)));
+    }
+    if line.contains("ok") || line.contains("ready") {
+        return Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Green)));
+    }
+    if line.contains("error") || line.contains("failed") || line.contains("unknown") {
+        return Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Red)));
+    }
+    Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Black)))
+}
+
+fn visual_transcript_lines(lines: &[String], width: u16) -> Vec<String> {
+    let width = usize::from(width.max(1));
+    let mut out = Vec::new();
+    for line in lines {
+        let wrapped = wrap_visual_line(line, width);
+        out.extend(wrapped);
+    }
+    out
+}
+
+fn wrap_visual_line(line: &str, width: usize) -> Vec<String> {
+    if line.is_empty() {
+        return vec![String::new()];
+    }
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut current_width = 0usize;
+    for ch in line.chars() {
+        let ch_width = char_display_width(ch);
+        if current_width > 0 && current_width + ch_width > width {
+            out.push(current);
+            current = String::new();
+            current_width = 0;
+        }
+        current.push(ch);
+        current_width += ch_width;
+    }
+    out.push(current);
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{completion_matches, display_width, input_cursor_column, welcome_lines, App};
+    use super::{active_completion_token, completion_matches, display_width, input_cursor_column, suggestion_line, transcript_line, visual_transcript_lines, welcome_lines, App, INPUT_PLACEHOLDER};
 
     #[test]
     fn cursor_column_uses_terminal_display_width_for_korean() {
@@ -578,6 +736,7 @@ mod tests {
     fn slash_commands_are_forwarded_to_the_node_entrypoint() {
         let app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
         assert_eq!(app.command_args("/collect plan AAPL"), vec!["collect", "plan", "AAPL"]);
+        assert_eq!(app.command_args("/data download AAPL"), vec!["data", "download", "AAPL"]);
         assert_eq!(app.command_args("/quote history AAPL"), vec!["quote", "history", "AAPL"]);
         assert_eq!(app.command_args("collect plan AAPL"), Vec::<String>::new());
     }
@@ -606,15 +765,77 @@ mod tests {
     #[test]
     fn completion_search_filters_candidates_and_tab_fills_the_first_match() {
         assert!(completion_matches("", "quant").contains(&"/collect".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/data".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/stats".to_string()));
         assert_eq!(completion_matches("/co", "quant"), vec!["/collect".to_string(), "/codex".to_string()]);
         assert_eq!(completion_matches("/collect p", "quant"), vec!["plan".to_string()]);
         assert_eq!(completion_matches("/collect plan ", "quant"), vec!["--watchlist".to_string()]);
+        assert_eq!(completion_matches("/collect plan --watchlist ", "quant"), Vec::<String>::new());
+        assert_eq!(completion_matches("/collect quote AAPL ", "quant"), Vec::<String>::new());
+        assert_eq!(completion_matches("/data ", "quant"), vec!["download".to_string(), "watchlist".to_string(), "list".to_string()]);
+        assert_eq!(completion_matches("/data list ", "quant"), Vec::<String>::new());
+        assert_eq!(completion_matches("/stats AAPL ", "quant"), Vec::<String>::new());
 
         let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
         app.set_input("/collect p".to_string());
         app.complete_current_token();
         assert_eq!(app.input, "/collect plan ");
         assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn suggestion_line_highlights_the_current_matching_token() {
+        let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
+        app.set_input("/co".to_string());
+
+        let line = suggestion_line(&app);
+        let rendered = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>();
+
+        assert_eq!(active_completion_token(&app.input), "/co");
+        assert!(rendered.contains(&"/co"));
+        assert!(rendered.contains(&("llect")));
+        assert!(rendered.contains(&("dex")));
+    }
+
+    #[test]
+    fn command_transcript_line_uses_colored_command_span() {
+        let line = transcript_line("TossQuant quant ❯ /status");
+
+        assert!(line.spans.len() >= 2);
+        assert_eq!(line.spans[1].content.as_ref(), "/status");
+    }
+
+    #[test]
+    fn visual_transcript_lines_wraps_by_terminal_width_for_auto_scroll() {
+        let lines = vec!["abcdef".to_string(), "한글abcd".to_string()];
+        let visual = visual_transcript_lines(&lines, 4);
+
+        assert_eq!(visual, vec!["abcd", "ef", "한글", "abcd"]);
+    }
+
+    #[test]
+    fn empty_input_placeholder_is_display_only() {
+        let app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
+
+        assert!(app.input.is_empty());
+        assert_eq!(INPUT_PLACEHOLDER, "명령어를 입력하세요. 예: /data list");
+        assert_eq!(input_cursor_column(&app.input, app.cursor), 0);
+    }
+
+    #[test]
+    fn exchanges_keep_command_and_result_together_without_resetting_transcript() {
+        let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
+        let original_len = app.transcript.len();
+
+        app.append_exchange("/data list", "{\"ok\":true}");
+
+        assert!(app.transcript.len() > original_len);
+        assert!(app.transcript.contains(&"TossQuant quant ❯ /data list".to_string()));
+        assert!(app.transcript.contains(&"{\"ok\":true}".to_string()));
     }
 
     #[test]

@@ -16,6 +16,8 @@ from . import __version__
 from .analysis import classify as classify_records, history_rows
 from .audit import audit_all
 from .codex_tools import SUPPORTED_STRATEGY_TOPICS, build_local_context, print_user_window, run_codex_command, run_codex_task
+from .data import DownloadRequest, download_history, download_watchlist, list_datasets
+from .market_analysis import market_stats
 from .storage import append_jsonl, quote_history_path, read_jsonl, redact, read_watchlist, snapshot_path, utc_now, write_watchlist
 from .runtime import current_runtime_line, record_runtime, status_summary as runtime_status_summary
 from .hud import launch_tmux_hud, launch_tmux_runtime, print_hud_once, tmux_path, tmux_install_hint, watch_hud
@@ -41,6 +43,8 @@ ROOT_COMMANDS = [
     "quote",
     "history",
     "classify",
+    "stats",
+    "data",
     "portfolio",
     "order",
     "brief",
@@ -67,6 +71,8 @@ SLASH_COMMANDS = [
     "/brief",
     "/today",
     "/audit",
+    "/stats",
+    "/data",
     "/strategy",
     "/hud",
     "/runtime",
@@ -80,6 +86,8 @@ COMMAND_COMPLETIONS = {
     "tmux": ["start"],
     "history": [],
     "classify": [],
+    "data": ["download", "watchlist", "list"],
+    "stats": [],
 }
 
 BANNER = r"""
@@ -95,6 +103,10 @@ HELP_TEXT = """TossQuant commands:
   doctor
   quote fetch <TICKER>        fetch quote through tossctl and save history
   quote history <TICKER>      show saved quote history and changes
+  data download <SYMBOL>      download historical OHLCV data into ./data
+  data watchlist              download historical data for every watchlist ticker
+  data list                   list saved market datasets
+  stats <SYMBOL>              summarize downloaded OHLCV market data
   classify <TICKER>           classify ticker from quote history
   portfolio snapshot          save read-only account/portfolio snapshot
   order preview --symbol ...  preview only; no real order mutation
@@ -113,6 +125,10 @@ Codex bridge slash commands:
   /modes                      show current modes and safety defaults
   /brief | /today             Codex session coach over local redacted data
   /audit [TICKER] [explain]   deterministic data audit; explain uses Codex
+  /data download <SYMBOL>     download historical OHLCV data into ./data
+  /data watchlist             download historical OHLCV for watchlist tickers
+  /data list                  list saved market datasets
+  /stats <SYMBOL>             summarize downloaded OHLCV market data
   /strategy <TICKER> <TOPIC>  Codex research plan: momentum, mean-reversion, event-study, risk
   /hud                        show compact runtime/status line
   /hud tmux                   open a bottom tmux HUD pane
@@ -138,6 +154,11 @@ Guided learning slash commands:
 
 Data download commands:
   quote <TICKER>              download one quote sample through tossctl
+  data download AAPL          download daily historical OHLCV from Stooq into ./data
+  data download AAPL --start 2026-01-01 --end 2026-01-31
+  /data watchlist             download historical OHLCV for every watchlist ticker
+  /data list                  list saved market datasets
+  /stats AAPL                 analyze downloaded OHLCV readiness and risk
   /watchlist fetch            download quotes for every watchlist ticker
   portfolio                   save read-only account/portfolio snapshot
 """
@@ -146,11 +167,13 @@ START_HERE_TEXT = """Start here:
   1) doctor                   check tossctl/auth/data setup
   2) /watchlist add AAPL      choose a ticker
   3) quote AAPL               download one quote sample into ./data
-  4) /watchlist fetch         download quotes for every watchlist ticker
-  5) /status                  see what local data is ready
-  6) /audit                   check local data quality
-  7) /brief                   ask Codex for a session brief
-  8) /strategy AAPL momentum  ask Codex for a research plan
+  4) data download AAPL       download historical OHLCV into ./data/market
+  5) /stats AAPL              inspect return, volatility, drawdown, trend
+  6) /watchlist fetch         download quotes for every watchlist ticker
+  7) /status                  see what local data is ready
+  8) /audit                   check local data quality
+  9) /brief                   ask Codex for a session brief
+  10) /strategy AAPL momentum ask Codex for a research plan
 
 Type /help for every command. Press Tab to autocomplete commands.
 TossQuant stays quiet until you run a command.
@@ -232,6 +255,10 @@ def completion_candidates(line: str, mode: str = "quant") -> list[str]:
         return sorted(LEARN_TOPICS)
     if parts[0] == "/audit":
         return ["explain"]
+    if parts[0] == "/data":
+        return ["download", "watchlist", "list"]
+    if parts[0] == "/stats":
+        return []
     if parts[0] == "/strategy":
         return sorted(SUPPORTED_STRATEGY_TOPICS)
     if parts[0] == "/runtime":
@@ -464,6 +491,49 @@ def command_classify(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_stats(args: argparse.Namespace) -> int:
+    result = market_stats(args.symbol, base=args.data_dir, source=args.source, interval=args.interval, provider_symbol=args.provider_symbol)
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_data_download(args: argparse.Namespace) -> int:
+    try:
+        result = download_history(
+            DownloadRequest(
+                symbol=args.symbol,
+                source=args.source,
+                interval=args.interval,
+                start=args.start,
+                end=args.end,
+                provider_symbol=args.provider_symbol,
+            ),
+            base=args.data_dir,
+        )
+    except Exception as exc:
+        print_json({"ok": False, "symbol": args.symbol.upper(), "source": args.source, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0
+
+
+def command_data_watchlist(args: argparse.Namespace) -> int:
+    result = download_watchlist(
+        base=args.data_dir,
+        source=args.source,
+        interval=args.interval,
+        start=args.start,
+        end=args.end,
+    )
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_data_list(args: argparse.Namespace) -> int:
+    print_json({"ok": True, "datasets": list_datasets(args.data_dir)})
+    return 0
+
+
 def command_portfolio_snapshot(args: argparse.Namespace) -> int:
     summary = toss.account_summary()
     positions = toss.portfolio_positions()
@@ -583,6 +653,14 @@ def handle_audit(parts: list[str], base: str | Path | None = "data") -> int:
     return command_audit(args)
 
 
+def handle_stats(parts: list[str], base: str | Path | None = "data") -> int:
+    if len(parts) < 2:
+        print_warning("usage: /stats <SYMBOL>")
+        return 2
+    args = argparse.Namespace(data_dir=str(base or "data"), symbol=parts[1], source="stooq", interval="d", provider_symbol=None)
+    return command_stats(args)
+
+
 def handle_strategy(parts: list[str], base: str | Path | None = "data") -> int:
     if len(parts) < 3:
         print_warning("usage: /strategy <TICKER> <TOPIC>")
@@ -590,6 +668,19 @@ def handle_strategy(parts: list[str], base: str | Path | None = "data") -> int:
         return 2
     args = argparse.Namespace(data_dir=str(base or "data"), ticker=parts[1], topic=parts[2])
     return command_strategy(args)
+
+
+def handle_data(parts: list[str], base: str | Path | None = "data") -> int:
+    if len(parts) < 2:
+        print_warning("usage: /data [download <SYMBOL>|watchlist|list]")
+        return 2
+    try:
+        parser = build_parser(interactive=True)
+        args = parser.parse_args(["--data-dir", str(base or "data"), "data", *parts[1:]])
+    except (SystemExit, ValueError) as exc:
+        print_warning(f"usage: /data [download <SYMBOL>|watchlist|list] ({exc})")
+        return 2
+    return int(args.func(args))
 
 
 def command_runtime_snapshot(args: argparse.Namespace) -> int:
@@ -662,6 +753,32 @@ def build_parser(*, interactive: bool = False) -> argparse.ArgumentParser:
     classify_p = sub.add_parser("classify")
     classify_p.add_argument("ticker")
     classify_p.set_defaults(func=command_classify)
+
+    stats = sub.add_parser("stats")
+    stats.add_argument("symbol")
+    stats.add_argument("--source", default="stooq", choices=["stooq"])
+    stats.add_argument("--interval", default="d", choices=["d", "w", "m"])
+    stats.add_argument("--provider-symbol", "--stooq-symbol", dest="provider_symbol")
+    stats.set_defaults(func=command_stats)
+
+    data = sub.add_parser("data")
+    dsub = data.add_subparsers(dest="data_cmd", required=True)
+    dload = dsub.add_parser("download")
+    dload.add_argument("symbol")
+    dload.add_argument("--source", default="stooq", choices=["stooq"])
+    dload.add_argument("--interval", default="d", choices=["d", "w", "m"])
+    dload.add_argument("--start")
+    dload.add_argument("--end")
+    dload.add_argument("--provider-symbol", "--stooq-symbol", dest="provider_symbol")
+    dload.set_defaults(func=command_data_download)
+    dwatch = dsub.add_parser("watchlist")
+    dwatch.add_argument("--source", default="stooq", choices=["stooq"])
+    dwatch.add_argument("--interval", default="d", choices=["d", "w", "m"])
+    dwatch.add_argument("--start")
+    dwatch.add_argument("--end")
+    dwatch.set_defaults(func=command_data_watchlist)
+    dlist = dsub.add_parser("list")
+    dlist.set_defaults(func=command_data_list)
 
     portfolio = sub.add_parser("portfolio")
     psub = portfolio.add_subparsers(dest="portfolio_cmd", required=True)
@@ -855,6 +972,16 @@ def run_interactive() -> int:
         if slash_name == "/audit":
             handle_audit(slash_parts, "data")
             last_action = "/audit"
+            print_hud(mode, last_action)
+            continue
+        if slash_name == "/data":
+            handle_data(slash_parts, "data")
+            last_action = "/data"
+            print_hud(mode, last_action)
+            continue
+        if slash_name == "/stats":
+            handle_stats(slash_parts, "data")
+            last_action = "/stats"
             print_hud(mode, last_action)
             continue
         if slash_name == "/strategy":
