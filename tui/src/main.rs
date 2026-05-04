@@ -192,6 +192,7 @@ impl App {
         self.history_index = None;
         self.draft_input.clear();
         if matches!(line.as_str(), "/exit" | "exit" | "/quit" | "quit" | "/:q" | ":q") {
+            shutdown_managed_tmux_runtime();
             return true;
         }
         if line == "/codex" {
@@ -306,22 +307,37 @@ fn split_args(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
 }
 
-fn command_candidates(command: &str, previous: Option<&str>) -> &'static [&'static str] {
+fn command_candidates(command: &str, parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
     match command {
-        "/collect" => {
-            if previous == Some("plan") {
-                &["--watchlist"]
-            } else {
-                &["plan", "quote", "watchlist"]
-            }
-        }
-        "/data" => &["download", "watchlist", "list"],
-        "/quote" => &["fetch", "history"],
-        "/watchlist" => &["add", "fetch", "list", "remove"],
-        "/runtime" => &["line", "snapshot"],
-        "/hud" => &["tmux"],
-        "/portfolio" => &["snapshot"],
-        "/order" => &["preview"],
+        "/collect" => collect_candidates(parts, trailing_space),
+        "/data" => one_level_candidates(parts, trailing_space, &["download", "watchlist", "list"]),
+        "/quote" => one_level_candidates(parts, trailing_space, &["fetch", "history"]),
+        "/watchlist" => one_level_candidates(parts, trailing_space, &["add", "fetch", "list", "remove"]),
+        "/runtime" => one_level_candidates(parts, trailing_space, &["line", "snapshot"]),
+        "/hud" => one_level_candidates(parts, trailing_space, &["tmux"]),
+        "/portfolio" => one_level_candidates(parts, trailing_space, &["snapshot"]),
+        "/order" => one_level_candidates(parts, trailing_space, &["preview"]),
+        _ => &[],
+    }
+}
+
+fn one_level_candidates(parts: &[&str], trailing_space: bool, candidates: &'static [&'static str]) -> &'static [&'static str] {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        candidates
+    } else {
+        &[]
+    }
+}
+
+fn collect_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() <= 1 {
+        return &["plan", "quote", "watchlist"];
+    }
+    match parts.get(1).copied() {
+        Some("plan") if parts.len() == 2 && trailing_space => &["--watchlist"],
+        Some("plan") if parts.len() <= 2 => &["--watchlist"],
+        None => &["plan", "quote", "watchlist"],
+        _ if parts.len() <= 2 => &["plan", "quote", "watchlist"],
         _ => &[],
     }
 }
@@ -356,14 +372,7 @@ fn completion_matches(input: &str, mode: &str) -> Vec<String> {
         ROOT_COMMANDS
     } else {
         let command = parts.first().copied().unwrap_or("");
-        let previous = if trimmed.ends_with(' ') {
-            parts.last().copied()
-        } else if parts.len() >= 2 {
-            parts.get(parts.len() - 2).copied()
-        } else {
-            None
-        };
-        command_candidates(command, previous)
+        command_candidates(command, &parts, trimmed.ends_with(' '))
     };
     candidates
         .iter()
@@ -462,7 +471,10 @@ fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) 
 
 fn handle_key(app: &mut App, key: KeyEvent) -> bool {
     match key.code {
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => true,
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            shutdown_managed_tmux_runtime();
+            true
+        }
         KeyCode::Char(ch) => {
             app.insert(ch);
             false
@@ -549,30 +561,72 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
         .style(Style::default().bg(CHAT_BG));
     frame.render_widget(input, chunks[1]);
 
-    let matches = app.completion_matches();
-    let suggestion_text = if matches.is_empty() {
-        "Tab complete".to_string()
-    } else {
-        format!(
-            "Tab complete  {}",
-            matches
-                .iter()
-                .take(6)
-                .map(String::as_str)
-                .collect::<Vec<_>>()
-                .join("  ")
-        )
-    };
-    let suggestions = Paragraph::new(Line::from(vec![
-        Span::styled("search ", Style::default().fg(TOSS_BLUE).add_modifier(Modifier::BOLD)),
-        Span::styled(suggestion_text, Style::default().fg(Color::Black)),
-    ]))
+    let suggestions = Paragraph::new(suggestion_line(app))
     .style(Style::default().bg(CHAT_BG));
     frame.render_widget(suggestions, chunks[2]);
 
     let cursor_x = chunks[1].x + display_width(PROMPT_LABEL) + input_cursor_column(&app.input, app.cursor);
     let cursor_y = chunks[1].y + 1;
     frame.set_cursor_position(Position::new(cursor_x, cursor_y));
+}
+
+fn shutdown_managed_tmux_runtime() {
+    if env::var("TOSSQUANT_TMUX_MANAGED").ok().as_deref() != Some("1") {
+        return;
+    }
+    let Ok(session) = env::var("TOSSQUANT_TMUX_SESSION") else {
+        return;
+    };
+    if session.trim().is_empty() {
+        return;
+    }
+    let _ = Command::new("tmux")
+        .args(["kill-session", "-t", session.trim()])
+        .output();
+}
+
+fn suggestion_line(app: &App) -> Line<'static> {
+    let matches = app.completion_matches();
+    let token = active_completion_token(&app.input);
+    let mut spans = vec![Span::styled(
+        "search ",
+        Style::default().fg(TOSS_BLUE).add_modifier(Modifier::BOLD),
+    )];
+    if matches.is_empty() {
+        spans.push(Span::styled("Tab complete", Style::default().fg(Color::DarkGray)));
+        return Line::from(spans);
+    }
+    spans.push(Span::styled("Tab complete  ", Style::default().fg(Color::DarkGray)));
+    for (index, candidate) in matches.iter().take(6).enumerate() {
+        if index > 0 {
+            spans.push(Span::raw("  "));
+        }
+        spans.extend(highlight_candidate(candidate, &token));
+    }
+    Line::from(spans)
+}
+
+fn active_completion_token(input: &str) -> String {
+    let cursor = input.len();
+    let (_, _, token) = token_bounds(input, cursor);
+    token
+}
+
+fn highlight_candidate(candidate: &str, token: &str) -> Vec<Span<'static>> {
+    if token.is_empty() || !candidate.starts_with(token) {
+        return vec![Span::styled(candidate.to_string(), Style::default().fg(Color::Black))];
+    }
+    let rest = candidate[token.len()..].to_string();
+    vec![
+        Span::styled(
+            token.to_string(),
+            Style::default()
+                .fg(Color::White)
+                .bg(TOSS_BLUE)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(rest, Style::default().fg(Color::Black)),
+    ]
 }
 
 fn transcript_line(line: &str) -> Line<'static> {
@@ -654,7 +708,7 @@ fn wrap_visual_line(line: &str, width: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{completion_matches, display_width, input_cursor_column, transcript_line, visual_transcript_lines, welcome_lines, App, INPUT_PLACEHOLDER};
+    use super::{active_completion_token, completion_matches, display_width, input_cursor_column, suggestion_line, transcript_line, visual_transcript_lines, welcome_lines, App, INPUT_PLACEHOLDER};
 
     #[test]
     fn cursor_column_uses_terminal_display_width_for_korean() {
@@ -713,13 +767,34 @@ mod tests {
         assert_eq!(completion_matches("/co", "quant"), vec!["/collect".to_string(), "/codex".to_string()]);
         assert_eq!(completion_matches("/collect p", "quant"), vec!["plan".to_string()]);
         assert_eq!(completion_matches("/collect plan ", "quant"), vec!["--watchlist".to_string()]);
+        assert_eq!(completion_matches("/collect plan --watchlist ", "quant"), Vec::<String>::new());
+        assert_eq!(completion_matches("/collect quote AAPL ", "quant"), Vec::<String>::new());
         assert_eq!(completion_matches("/data ", "quant"), vec!["download".to_string(), "watchlist".to_string(), "list".to_string()]);
+        assert_eq!(completion_matches("/data list ", "quant"), Vec::<String>::new());
 
         let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
         app.set_input("/collect p".to_string());
         app.complete_current_token();
         assert_eq!(app.input, "/collect plan ");
         assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn suggestion_line_highlights_the_current_matching_token() {
+        let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
+        app.set_input("/co".to_string());
+
+        let line = suggestion_line(&app);
+        let rendered = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>();
+
+        assert_eq!(active_completion_token(&app.input), "/co");
+        assert!(rendered.contains(&"/co"));
+        assert!(rendered.contains(&("llect")));
+        assert!(rendered.contains(&("dex")));
     }
 
     #[test]

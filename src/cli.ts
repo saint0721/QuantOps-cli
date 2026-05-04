@@ -27,19 +27,23 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
   const trimmed = line.trimStart();
   if (mode === 'codex') return SLASH_COMPLETIONS;
   if (!trimmed) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
-  const parts = trimmed.endsWith(' ') ? [...trimmed.split(/\s+/), ''] : trimmed.split(/\s+/);
+  const baseParts = trimmed.trimEnd().split(/\s+/).filter(Boolean);
+  const parts = trimmed.endsWith(' ') ? [...baseParts, ''] : baseParts;
   if (parts.length <= 1) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
   const first = parts[0];
   const command = first?.startsWith('/') ? first.slice(1) : first;
   if (command === 'watchlist') return ['add', 'fetch', 'list', 'remove'];
   if (command === 'hud') return first?.startsWith('/') ? ['tmux'] : ['--tmux', '--watch'];
   if (command === 'runtime') return ['line', 'snapshot'];
-  if (command === 'collect') return parts[1] === 'plan' ? ['--watchlist'] : ['plan', 'quote', 'watchlist'];
-  if (command === 'data') return ['download', 'watchlist', 'list'];
-  if (command === 'quote') return ['fetch', 'history'];
-  if (command === 'portfolio') return ['snapshot'];
-  if (command === 'order') return ['preview'];
-  if (command === 'tmux') return parts[1] === 'start' ? ['--session', '--height', '--interval'] : ['start'];
+  if (command === 'collect') {
+    if (parts[1] === 'plan') return parts.length <= 3 ? ['--watchlist'] : [];
+    return parts.length <= 2 ? ['plan', 'quote', 'watchlist'] : [];
+  }
+  if (command === 'data') return parts.length <= 2 ? ['download', 'watchlist', 'list'] : [];
+  if (command === 'quote') return parts.length <= 2 ? ['fetch', 'history'] : [];
+  if (command === 'portfolio') return parts.length <= 2 ? ['snapshot'] : [];
+  if (command === 'order') return parts.length <= 2 ? ['preview'] : [];
+  if (command === 'tmux') return parts[1] === 'start' ? (parts.length <= 3 ? ['--session', '--height', '--interval'] : []) : ['start'];
   if (command === 'setup') return ['bin'];
   return [];
 }
