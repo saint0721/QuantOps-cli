@@ -15,6 +15,8 @@ except ImportError:  # pragma: no cover - platform dependent
 
 from . import __version__
 from .analysis import classify as classify_records, history_rows
+from .audit import audit_all
+from .codex_tools import SUPPORTED_STRATEGY_TOPICS, build_local_context, run_codex_task
 from .storage import append_jsonl, quote_history_path, read_jsonl, redact, read_watchlist, snapshot_path, utc_now, write_watchlist
 from . import toss
 
@@ -40,11 +42,29 @@ ROOT_COMMANDS = [
     "classify",
     "portfolio",
     "order",
+    "brief",
+    "audit",
+    "strategy",
     "help",
     "exit",
     "quit",
 ]
-SLASH_COMMANDS = ["/help", "/modes", "/ask", "/codex", "/quant", "/start", "/next", "/status", "/watchlist", "/learn"]
+SLASH_COMMANDS = [
+    "/help",
+    "/modes",
+    "/ask",
+    "/codex",
+    "/quant",
+    "/start",
+    "/next",
+    "/status",
+    "/watchlist",
+    "/learn",
+    "/brief",
+    "/today",
+    "/audit",
+    "/strategy",
+]
 COMMAND_COMPLETIONS = {
     "quote": ["fetch", "history"],
     "order": ["preview"],
@@ -82,6 +102,9 @@ Codex bridge slash commands:
   /codex                      enter Codex conversation mode
   /quant                      return to normal quant command mode
   /modes                      show current modes and safety defaults
+  /brief | /today             Codex session coach over local redacted data
+  /audit [TICKER] [explain]   deterministic data audit; explain uses Codex
+  /strategy <TICKER> <TOPIC>  Codex research plan: momentum, mean-reversion, event-study, risk
 
 Guided learning slash commands:
   /start                      show the beginner quant workflow
@@ -113,6 +136,7 @@ MODES_TEXT = """Modes:
 Safety defaults:
   - Codex bridge is opt-in, never always-on
   - Codex runs read-only by default from this project directory
+  - Codex recommends research steps and TossQuant commands, not buy/sell actions
   - Trading remains preview-only; TossQuant has no real order mutation command
 """
 
@@ -176,6 +200,10 @@ def completion_candidates(line: str, mode: str = "quant") -> list[str]:
         return ["add", "fetch", "list", "remove"]
     if parts[0] == "/learn":
         return sorted(LEARN_TOPICS)
+    if parts[0] == "/audit":
+        return ["explain"]
+    if parts[0] == "/strategy":
+        return sorted(SUPPORTED_STRATEGY_TOPICS)
     return COMMAND_COMPLETIONS.get(parts[0], [])
 
 
@@ -444,6 +472,96 @@ def command_order_preview(args: argparse.Namespace) -> int:
     return result.returncode or 1
 
 
+def brief_instructions() -> str:
+    return """Create a concise TossQuant session brief.
+
+Output:
+1. Current data readiness by ticker.
+2. The top 3 next TossQuant commands to run.
+3. Any data-quality gaps to inspect.
+4. A safety note that this is not a trade recommendation.
+
+Prefer exact commands such as quote AAPL, history AAPL, classify AAPL, /audit, or /watchlist add AAPL.
+Use only commands from the "Currently supported TossQuant commands" list in the prompt.
+Do not recommend buy/sell/hold decisions."""
+
+
+def command_brief(args: argparse.Namespace) -> int:
+    context = build_local_context(args.data_dir)
+    return run_codex_task("brief", brief_instructions(), context, cwd=Path.cwd())
+
+
+def strategy_instructions(ticker: str, topic: str) -> str:
+    return f"""Create a TossQuant research strategy plan for {ticker.upper()} using topic '{topic}'.
+
+Output sections:
+- Strategy hypothesis
+- Current data readiness
+- Data needed before trusting the idea
+- Rule draft for study/backtest only
+- Validation steps
+- Risk checks
+- Next TossQuant commands
+- Safety note: no direct trade advice and no real orders
+
+Keep the plan educational and test-oriented.
+Use only commands from the "Currently supported TossQuant commands" list in the prompt."""
+
+
+def command_strategy(args: argparse.Namespace) -> int:
+    topic = args.topic.lower()
+    if topic not in SUPPORTED_STRATEGY_TOPICS:
+        print_json({"ok": False, "error": f"unsupported topic: {args.topic}", "supported": list(SUPPORTED_STRATEGY_TOPICS)})
+        return 2
+    context = build_local_context(args.data_dir, args.ticker)
+    return run_codex_task("strategy", strategy_instructions(args.ticker, topic), context, cwd=Path.cwd())
+
+
+def audit_explanation_instructions(findings: list[dict[str, Any]]) -> str:
+    return """Explain these deterministic TossQuant audit findings.
+
+Output:
+1. Prioritized issues.
+2. Why each issue matters for data quality.
+3. Exact TossQuant commands to repair or inspect.
+4. Safety note: do not give buy/sell/hold advice.
+
+Findings:
+""" + json.dumps(findings, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def command_audit(args: argparse.Namespace) -> int:
+    findings = audit_all(args.data_dir, args.ticker)
+    result = {"ok": not any(item["severity"] == "error" for item in findings), "findings": findings}
+    print_json(result)
+    if args.explain:
+        context = build_local_context(args.data_dir, args.ticker)
+        context["audit_findings"] = findings
+        return run_codex_task("audit", audit_explanation_instructions(findings), context, cwd=Path.cwd())
+    return 1 if any(item["severity"] == "error" for item in findings) else 0
+
+
+def handle_audit(parts: list[str], base: str | Path | None = "data") -> int:
+    ticker = None
+    explain = False
+    for item in parts[1:]:
+        if item.lower() in {"explain", "--explain"}:
+            explain = True
+        else:
+            ticker = item.upper()
+    args = argparse.Namespace(data_dir=str(base or "data"), ticker=ticker, explain=explain)
+    return command_audit(args)
+
+
+def handle_strategy(parts: list[str], base: str | Path | None = "data") -> int:
+    if len(parts) < 3:
+        print_warning("usage: /strategy <TICKER> <TOPIC>")
+        print_hint("topics: " + ", ".join(SUPPORTED_STRATEGY_TOPICS))
+        return 2
+    args = argparse.Namespace(data_dir=str(base or "data"), ticker=parts[1], topic=parts[2])
+    return command_strategy(args)
+
+
 class TossQuantArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         raise ValueError(message)
@@ -486,6 +604,19 @@ def build_parser(*, interactive: bool = False) -> argparse.ArgumentParser:
     preview.add_argument("--amount", type=float)
     preview.add_argument("--fractional", action="store_true")
     preview.set_defaults(func=command_order_preview)
+
+    brief = sub.add_parser("brief")
+    brief.set_defaults(func=command_brief)
+
+    audit = sub.add_parser("audit")
+    audit.add_argument("ticker", nargs="?")
+    audit.add_argument("--explain", action="store_true")
+    audit.set_defaults(func=command_audit)
+
+    strategy = sub.add_parser("strategy")
+    strategy.add_argument("ticker")
+    strategy.add_argument("topic", choices=SUPPORTED_STRATEGY_TOPICS)
+    strategy.set_defaults(func=command_strategy)
     return parser
 
 
@@ -528,6 +659,16 @@ def normalize_interactive_command(parts: list[str]) -> list[str]:
     return parts
 
 
+def slash_command_name(line: str) -> str | None:
+    if not line.startswith("/"):
+        return None
+    try:
+        parts = shlex.split(line)
+    except ValueError:
+        return None
+    return parts[0] if parts else None
+
+
 def run_once(argv: list[str]) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -568,6 +709,21 @@ def run_interactive() -> int:
             continue
         if line == "/next":
             print_next_action("data")
+            continue
+        if line in {"/brief", "/today"}:
+            command_brief(argparse.Namespace(data_dir="data"))
+            continue
+        try:
+            slash_parts = shlex.split(line) if line.startswith("/") else []
+        except ValueError as exc:
+            print(f"error: {exc}")
+            continue
+        slash_name = slash_parts[0] if slash_parts else None
+        if slash_name == "/audit":
+            handle_audit(slash_parts, "data")
+            continue
+        if slash_name == "/strategy":
+            handle_strategy(slash_parts, "data")
             continue
         if line.startswith("/learn"):
             parts = shlex.split(line)

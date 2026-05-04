@@ -7,7 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
-DEFAULT_TOSSCTL = "/home/saint/.local/bin/tossctl"
+DEFAULT_TOSSCTL = "tossctl"
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,9 @@ class TossResult:
 
 def tossctl_path() -> str:
     configured = os.environ.get("QUANT_TOSSCTL", DEFAULT_TOSSCTL)
-    return configured if os.path.exists(configured) else (shutil.which("tossctl") or configured)
+    if os.path.sep in configured or (os.path.altsep and os.path.altsep in configured):
+        return configured
+    return shutil.which(configured) or configured
 
 
 def run_toss(args: list[str], *, output_json: bool = True, check: bool = False) -> TossResult:
