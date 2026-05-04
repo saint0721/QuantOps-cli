@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { classify, historyRows } from '../src/analysis.ts';
 import { filteredCodexOutput } from '../src/codex.ts';
 import { hudWatchCommand, interactiveCommand, shellCommand } from '../src/hud.ts';
 import { buildRuntimeSnapshot, recordRuntime, renderRuntimeLine, runtimeStatePath } from '../src/runtime.ts';
+import { installLocalBins } from '../src/setup.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, writeWatchlist } from '../src/storage.ts';
 
 test('storage redacts sensitive keys and normalizes watchlist', () => {
@@ -54,4 +55,15 @@ test('tmux command builders quote runtime commands', () => {
   assert.equal(shellCommand(['a', "b'c"]), "'a' 'b'\\''c'");
   assert.match(hudWatchCommand('/tmp/data', 0.5), /hud' '--watch/);
   assert.match(interactiveCommand(), /--no-tmux/);
+});
+
+
+test('setup bin installs quant and tossquant symlinks', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-bin-'));
+  const result = installLocalBins({ dir });
+  assert.equal(result.ok, true);
+  assert.equal(result.links.length, 2);
+  assert.ok(existsSync(join(dir, 'quant')));
+  assert.ok(readlinkSync(join(dir, 'quant')).endsWith('/bin/quant'));
+  assert.ok(existsSync(join(dir, 'tossquant')));
 });

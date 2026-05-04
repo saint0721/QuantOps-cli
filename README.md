@@ -10,9 +10,8 @@ TypeScript execution, so there are no npm runtime dependencies yet.
 ```bash
 node --version   # requires >= 24
 npm test
-./bin/tossquant
-# or
-./bin/quant
+./bin/tossquant setup bin   # installs ~/.local/bin/quant and ~/.local/bin/tossquant
+quant                       # starts the tmux-backed runtime when tmux is available
 ```
 
 The legacy Python prototype is still available for comparison:
@@ -20,6 +19,26 @@ The legacy Python prototype is still available for comparison:
 ```bash
 python3 -m quant_cli_lab --no-tmux
 ```
+
+
+### One-word launcher
+
+Run this once from the repo:
+
+```bash
+./bin/tossquant setup bin
+```
+
+It creates symlinks in `~/.local/bin`:
+
+```text
+~/.local/bin/quant -> <repo>/bin/quant
+~/.local/bin/tossquant -> <repo>/bin/tossquant
+```
+
+After that, `quant` is enough. If `tmux` is installed and you are in an
+interactive terminal, it automatically starts the TossQuant tmux runtime with the
+live HUD pane. Use `quant --no-tmux` or `TOSSQUANT_NO_TMUX=1 quant` for plain mode.
 
 ## Interactive mode
 

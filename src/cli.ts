@@ -5,6 +5,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import { classify, historyRows } from './analysis.ts';
 import { filteredCodexOutput } from './codex.ts';
 import { launchTmuxHud, launchTmuxRuntime, printHudOnce, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
+import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, quote, version } from './toss.ts';
@@ -178,6 +179,19 @@ export function runOnce(argv: string[]): number {
   if (cmd === 'hud' && rest.includes('--tmux')) { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); return r.code; }
   if (cmd === 'hud') { printHudOnce(dataDir); return 0; }
   if (cmd === 'tmux' && sub === 'start') { const r = launchTmuxRuntime(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); return r.code; }
+  if (cmd === 'setup' && sub === 'bin') {
+    try {
+      const dirFlag = tail.indexOf('--dir');
+      const dir = dirFlag >= 0 ? tail[dirFlag + 1] : undefined;
+      const result = installLocalBins({ dir, force: tail.includes('--force') });
+      printJson(result);
+      console.log(pathHint(dir));
+      return 0;
+    } catch (error) {
+      warn(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
   if (cmd === 'brief') return runCodexPrompt('Create a concise TossQuant session brief from local redacted data. Do not give buy/sell/hold advice.');
   warn(`unknown command: ${cmd}`);
   return 2;
