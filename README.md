@@ -1,6 +1,6 @@
 # TossQuant
 
-TypeScript-first terminal quant runtime around `tossctl` read-only data. The previous Python CLI remains in `tossquant_cli/` as a reference implementation while the active `bin/tossquant` and `bin/quant` launch `src/cli.ts`.
+TypeScript-first terminal quant runtime around `tossctl` read-only data. The previous Python CLI remains in `tossquant_cli/` as a reference implementation while the active `quant` and `tossquant` launchers point at `src/cli.ts`.
 
 ## TypeScript runtime
 
@@ -32,8 +32,8 @@ node ./src/cli.ts setup bin
 It creates symlinks in `~/.local/bin`:
 
 ```text
-~/.local/bin/quant -> <repo>/bin/quant
-~/.local/bin/tossquant -> <repo>/bin/tossquant
+~/.local/bin/quant -> <repo>/src/cli.ts
+~/.local/bin/tossquant -> <repo>/src/cli.ts
 ```
 
 After that, `quant` is enough. If `tmux` is installed and you are in an
