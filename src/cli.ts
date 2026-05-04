@@ -11,6 +11,7 @@ import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
+import { SOURCES, discover, searchSymbols, sourceById, symbolInfo, type SourceInfo, type SymbolInfo } from './discovery.ts';
 
 const APP = 'TossQuant';
 const VERSION = '0.1.0';
@@ -20,8 +21,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['doctor', 'collect', 'data', 'stats', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/help', '/status', '/collect', '/data', '/stats', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
 
 export function completionCandidates(line: string, mode = 'quant'): string[] {
   const trimmed = line.trimStart();
@@ -39,7 +40,15 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
     if (parts[1] === 'plan') return parts.length <= 3 ? ['--watchlist'] : [];
     return parts.length <= 2 ? ['plan', 'quote', 'watchlist'] : [];
   }
-  if (command === 'data') return parts.length <= 2 ? ['download', 'watchlist', 'list'] : [];
+  if (command === 'data') {
+    if (parts.length <= 2) return ['download', 'watchlist', 'list'];
+    if (parts[1] === 'download') return ['--period', '--start', '--end', '--interval', '--source', '--provider-symbol'];
+    if (parts[1] === 'watchlist') return ['--period', '--start', '--end', '--interval', '--source'];
+    return [];
+  }
+  if (command === 'discover') return parts.length <= 2 ? ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'] : [];
+  if (command === 'sources') return parts.length <= 2 ? ['list', 'stooq', 'tossctl', 'yahoo', 'nasdaq', 'vendor'] : [];
+  if (command === 'symbol') return parts.length <= 2 ? ['search', 'info'] : [];
   if (command === 'stats') return [];
   if (command === 'quote') return parts.length <= 2 ? ['fetch', 'history'] : [];
   if (command === 'portfolio') return parts.length <= 2 ? ['snapshot'] : [];
@@ -71,6 +80,139 @@ function printJson(value: unknown) {
   const text = JSON.stringify(value, null, 2);
   if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
   console.log(text);
+}
+
+function printText(text: string) {
+  if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
+  console.log(text);
+}
+
+function table(headers: string[], rows: string[][]): string {
+  const widths = headers.map((header, index) => Math.max(header.length, ...rows.map((row) => (row[index] ?? '').length)));
+  const line = (cols: string[]) => cols.map((col, index) => col.padEnd(widths[index] ?? col.length)).join('  ').trimEnd();
+  return [line(headers), line(headers.map((header, index) => '-'.repeat(Math.max(3, widths[index] ?? header.length)))), ...rows.map(line)].join('\n');
+}
+
+function dateString(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+export function periodToDateRange(period: string, now = new Date()): { start: string; end: string } {
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const start = new Date(end);
+  const normalized = period.trim().toLowerCase();
+  if (normalized === 'ytd') {
+    start.setUTCMonth(0, 1);
+  } else {
+    const match = normalized.match(/^(\d+)(d|w|mo|m|y)$/);
+    if (!match) throw new Error(`unsupported period: ${period}`);
+    const amount = Number(match[1]);
+    const unit = match[2];
+    if (unit === 'd') start.setUTCDate(start.getUTCDate() - amount);
+    if (unit === 'w') start.setUTCDate(start.getUTCDate() - amount * 7);
+    if (unit === 'mo' || unit === 'm') start.setUTCMonth(start.getUTCMonth() - amount);
+    if (unit === 'y') start.setUTCFullYear(start.getUTCFullYear() - amount);
+  }
+  return { start: dateString(start), end: dateString(end) };
+}
+
+function expandDataArgs(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const item = args[i]!;
+    if (item === '--json') continue;
+    if (item === '--period') {
+      const period = args[++i];
+      if (!period) throw new Error('--period requires a value such as 1y, 6mo, 30d, or ytd');
+      const range = periodToDateRange(period);
+      out.push('--start', range.start, '--end', range.end);
+      continue;
+    }
+    out.push(item);
+  }
+  return out;
+}
+
+function compactDate(value: unknown): string {
+  const text = String(value ?? '');
+  return text.length === 8 && /^\d+$/.test(text) ? `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6)}` : text || '-';
+}
+
+function formatSource(source: SourceInfo): string[] {
+  return [source.id, source.kind, source.auth, source.command];
+}
+
+function formatSymbol(symbol: SymbolInfo): string[] {
+  return [symbol.symbol, symbol.assetClass, symbol.category, symbol.source, symbol.next];
+}
+
+function formatDownloadResult(result: any): string {
+  if (!result?.ok) return JSON.stringify(result, null, 2);
+  const period = `${compactDate(result.start)} ~ ${compactDate(result.end)}`;
+  return [
+    `✅ ${result.ticker ?? result.symbol} 다운로드 완료`,
+    '',
+    table(
+      ['field', 'value'],
+      [
+        ['source', result.source ?? '-'],
+        ['provider', result.provider_symbol ?? '-'],
+        ['period', period === '- ~ -' ? 'full available history' : period],
+        ['interval', result.interval ?? '-'],
+        ['rows', String(result.rows ?? 0)],
+        ['new_rows', String(result.new_rows ?? 0)],
+        ['raw', result.raw_path ?? '-'],
+        ['dataset', result.dataset_path ?? '-'],
+        ['url', result.url ?? '-'],
+      ],
+    ),
+    '',
+    `next  /stats ${result.ticker ?? result.symbol}`,
+  ].join('\n');
+}
+
+function formatWatchlistDownloadResult(result: any): string {
+  if (!result?.results) return JSON.stringify(result, null, 2);
+  const rows = result.results.map((item: any) => [
+    item.ticker ?? '-',
+    item.ok ? 'ok' : 'failed',
+    item.source ?? '-',
+    item.provider_symbol ?? '-',
+    String(item.rows ?? 0),
+    String(item.new_rows ?? 0),
+    item.error ?? item.dataset_path ?? '-',
+  ]);
+  return [
+    result.ok ? '✅ watchlist 다운로드 완료' : '⚠️ watchlist 다운로드 일부 실패',
+    '',
+    table(['symbol', 'status', 'source', 'provider', 'rows', 'new', 'detail'], rows),
+    '',
+    `downloaded ${result.downloaded ?? 0}, failed ${result.failed ?? 0}`,
+  ].join('\n');
+}
+
+function formatDataList(result: any): string {
+  const datasets = result?.datasets ?? [];
+  if (!datasets.length) return '저장된 market dataset이 없습니다.\nnext  /data download AAPL --period 1y';
+  const rows = datasets.map((item: any) => [
+    String(item.provider_symbol ?? item.name ?? '-').toUpperCase(),
+    String(item.source ?? '-'),
+    String(item.interval ?? item.name?.split('_').at(-1) ?? '-'),
+    String(item.rows ?? 0),
+    String(item.first_date ?? '-'),
+    String(item.latest_date ?? '-'),
+    String(item.path ?? '-'),
+  ]);
+  return table(['symbol', 'source', 'int', 'rows', 'first', 'last', 'path'], rows);
+}
+
+function formatDataOutput(sub: string, stdout: string): string {
+  let parsed: any;
+  try { parsed = JSON.parse(stdout); } catch { return stdout; }
+  if (sub === 'download') return formatDownloadResult(parsed);
+  if (sub === 'watchlist') return formatWatchlistDownloadResult(parsed);
+  if (sub === 'list') return formatDataList(parsed);
+  return stdout;
 }
 function dataDirFrom(argv: string[]): { dataDir: string; rest: string[]; noTmux: boolean } {
   const rest: string[] = [];
@@ -168,17 +310,97 @@ function commandPythonStats(dataDir: string, symbol?: string, tail: string[] = [
 
 function commandPythonData(dataDir: string, sub?: string, tail: string[] = []): number {
   if (!sub) { warn('usage: data [download <SYMBOL>|watchlist|list]'); return 2; }
-  const command = ['-m', 'tossquant_cli.cli', '--data-dir', dataDir, 'data', sub, ...tail];
+  const json = tail.includes('--json');
+  let expandedTail: string[];
+  try {
+    expandedTail = expandDataArgs(tail);
+  } catch (error) {
+    warn(error instanceof Error ? error.message : String(error));
+    return 2;
+  }
+  const command = ['-m', 'tossquant_cli.cli', '--data-dir', dataDir, 'data', sub, ...expandedTail];
   const result = spawnSync('python3', command, { encoding: 'utf8', cwd: process.cwd() });
   const stdout = result.stdout?.trim();
   const stderr = result.stderr?.trim();
   if (stdout) {
-    if (INTERACTIVE_CHAT_UI) emitChat(stdout);
-    else console.log(stdout);
+    const text = json ? stdout : formatDataOutput(sub, stdout);
+    if (INTERACTIVE_CHAT_UI) emitChat(text);
+    else console.log(text);
   }
   if (stderr) warn(stderr);
   if (result.error) warn(result.error.message);
   return result.status ?? (result.error ? 127 : 1);
+}
+
+function commandSources(kind = 'list'): number {
+  const target = kind === 'list' ? undefined : sourceById(kind);
+  if (target) {
+    printText([
+      `${target.name} (${target.id})`,
+      '',
+      table(
+        ['field', 'value'],
+        [
+          ['kind', target.kind],
+          ['auth', target.auth],
+          ['coverage', target.coverage],
+          ['command', target.command],
+          ['note', target.note],
+        ],
+      ),
+    ].join('\n'));
+    return 0;
+  }
+  if (kind !== 'list') warn(`unknown source: ${kind}; showing all sources`);
+  printText(table(['id', 'kind', 'auth', 'try'], SOURCES.map(formatSource)));
+  return kind === 'list' ? 0 : 1;
+}
+
+function commandDiscover(parts: string[]): number {
+  const category = parts.join(' ') || 'trending';
+  const result = discover(category);
+  printText([
+    `Discover: ${result.category}`,
+    result.note,
+    '',
+    table(['symbol', 'type', 'category', 'source', 'next'], result.items.map(formatSymbol)),
+  ].join('\n'));
+  return 0;
+}
+
+function commandSymbol(action = 'search', query = ''): number {
+  if (action !== 'search' && action !== 'info') {
+    query = action;
+    action = 'info';
+  }
+  if (action === 'info') {
+    const item = symbolInfo(query);
+    if (!item) { warn(`unknown symbol: ${query}`); return 1; }
+    printText([
+      `${item.symbol} — ${item.name}`,
+      '',
+      table(
+        ['field', 'value'],
+        [
+          ['asset_class', item.assetClass],
+          ['category', item.category],
+          ['exchange', item.exchange ?? '-'],
+          ['source', item.source],
+          ['tags', item.tags.join(', ')],
+          ['next', item.next],
+          ['note', item.note],
+        ],
+      ),
+    ].join('\n'));
+    return 0;
+  }
+  const results = searchSymbols(query);
+  printText([
+    `Symbol search: ${query || 'all'}`,
+    '',
+    table(['symbol', 'type', 'category', 'source', 'next'], results.map(formatSymbol)),
+  ].join('\n'));
+  return 0;
 }
 
 function commandQuoteHistory(dataDir: string, ticker?: string): number {
@@ -286,7 +508,8 @@ export function welcomeCard(): string {
     'safety      read-only data by default · no real order mutation',
     '',
     'start       /watchlist add AAPL  →  /data download AAPL  →  /stats AAPL  →  /classify AAPL',
-    'commands    /status · /collect plan|quote|watchlist · /data download|watchlist|list · /stats <SYMBOL> · /runtime line · /hud · /doctor · /exit',
+    'discover    /sources · /discover trending · /symbol search SOX',
+    'commands    /status · /collect plan|quote|watchlist · /data download --period 1y · /data list · /stats <SYMBOL> · /exit',
     'codex       /ask <question> · /codex · /quant',
     'plain mode  quant --no-tmux',
     '',
@@ -353,6 +576,9 @@ export function runOnce(argv: string[], opts: { quietUnknown?: boolean } = {}): 
   if (cmd === 'doctor') return commandDoctor(dataDir);
   if (cmd === 'collect') return commandCollect(dataDir, sub, tail);
   if (cmd === 'data') return commandPythonData(dataDir, sub, tail);
+  if (cmd === 'sources') return commandSources(sub ?? 'list');
+  if (cmd === 'discover') return commandDiscover([sub, ...tail].filter(Boolean));
+  if (cmd === 'symbol') return commandSymbol(sub ?? 'search', tail.join(' '));
   if (cmd === 'stats') return commandPythonStats(dataDir, sub, tail);
   if (cmd === 'quote' && sub === 'fetch') return commandQuoteFetch(dataDir, tail[0]);
   if (cmd === 'quote' && sub === 'history') return commandQuoteHistory(dataDir, tail[0]);

@@ -8,8 +8,14 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('collect'));
   assert.ok(completionCandidates('', 'quant').includes('/collect'));
   assert.ok(completionCandidates('', 'quant').includes('data'));
+  assert.ok(completionCandidates('', 'quant').includes('discover'));
+  assert.ok(completionCandidates('', 'quant').includes('sources'));
+  assert.ok(completionCandidates('', 'quant').includes('symbol'));
   assert.ok(completionCandidates('', 'quant').includes('stats'));
   assert.ok(completionCandidates('', 'quant').includes('/data'));
+  assert.ok(completionCandidates('', 'quant').includes('/discover'));
+  assert.ok(completionCandidates('', 'quant').includes('/sources'));
+  assert.ok(completionCandidates('', 'quant').includes('/symbol'));
   assert.ok(completionCandidates('', 'quant').includes('/stats'));
   assert.deepEqual(completionCandidates('quote ', 'quant'), ['fetch', 'history']);
   assert.deepEqual(completionCandidates('/quote ', 'quant'), ['fetch', 'history']);
@@ -21,7 +27,12 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/collect quote AAPL ', 'quant'), []);
   assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list']);
   assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list']);
+  assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));
+  assert.ok(completionCandidates('/data watchlist ', 'quant').includes('--start'));
   assert.deepEqual(completionCandidates('/data list ', 'quant'), []);
+  assert.deepEqual(completionCandidates('/discover ', 'quant'), ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor']);
+  assert.deepEqual(completionCandidates('/sources ', 'quant'), ['list', 'stooq', 'tossctl', 'yahoo', 'nasdaq', 'vendor']);
+  assert.deepEqual(completionCandidates('/symbol ', 'quant'), ['search', 'info']);
   assert.deepEqual(completionCandidates('/stats AAPL ', 'quant'), []);
   assert.deepEqual(completionCandidates('/watchlist ', 'quant'), ['add', 'fetch', 'list', 'remove']);
   assert.ok(completeLine('/co', 'quant')[0].includes('/collect'));

@@ -20,13 +20,16 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Terminal;
 
 const TOSS_BLUE: Color = Color::Rgb(0, 100, 255);
-const CHAT_BG: Color = Color::Rgb(250, 238, 238);
+const CHAT_BG: Color = Color::Rgb(238, 238, 238);
 const PROMPT_LABEL: &str = " ❯ ";
 const INPUT_PLACEHOLDER: &str = "명령어를 입력하세요. 예: /data list";
 const ROOT_COMMANDS: &[&str] = &[
     "/status",
     "/collect",
     "/data",
+    "/discover",
+    "/sources",
+    "/symbol",
     "/stats",
     "/quote",
     "/history",
@@ -315,12 +318,13 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "flow     /watchlist add AAPL → /data download AAPL → /stats AAPL → /classify AAPL".to_string(),
-        "commands /status · /collect plan|quote|watchlist · /data download|watchlist|list · /stats <SYMBOL>".to_string(),
+        "flow     /discover trending → /data download SOXL --period 6mo → /stats SOXL".to_string(),
+        "discover /sources · /discover trending|most-active|etf · /symbol search SOX".to_string(),
+        "commands /status · /collect plan|quote|watchlist · /data download --period 1y · /data list · /stats <SYMBOL>".to_string(),
         "tools    /runtime line · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
-        "try      /collect plan AAPL".to_string(),
+        "try      /discover trending".to_string(),
     ]
 }
 
@@ -335,7 +339,25 @@ fn command_candidates(
 ) -> &'static [&'static str] {
     match command {
         "/collect" => collect_candidates(parts, trailing_space),
-        "/data" => one_level_candidates(parts, trailing_space, &["download", "watchlist", "list"]),
+        "/data" => data_candidates(parts, trailing_space),
+        "/discover" => one_level_candidates(
+            parts,
+            trailing_space,
+            &[
+                "trending",
+                "most-active",
+                "gainers",
+                "losers",
+                "etf",
+                "semiconductor",
+            ],
+        ),
+        "/sources" => one_level_candidates(
+            parts,
+            trailing_space,
+            &["list", "stooq", "tossctl", "yahoo", "nasdaq", "vendor"],
+        ),
+        "/symbol" => one_level_candidates(parts, trailing_space, &["search", "info"]),
         "/stats" => &[],
         "/quote" => one_level_candidates(parts, trailing_space, &["fetch", "history"]),
         "/watchlist" => {
@@ -370,6 +392,29 @@ fn collect_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'stati
         Some("plan") if parts.len() <= 2 => &["--watchlist"],
         None => &["plan", "quote", "watchlist"],
         _ if parts.len() <= 2 => &["plan", "quote", "watchlist"],
+        _ => &[],
+    }
+}
+
+fn data_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() <= 1 {
+        return &["download", "watchlist", "list"];
+    }
+    match parts.get(1).copied() {
+        Some("list") => &[],
+        Some("download") if parts.len() >= 3 && trailing_space => &[
+            "--period",
+            "--start",
+            "--end",
+            "--interval",
+            "--source",
+            "--provider-symbol",
+        ],
+        Some("download") if parts.len() <= 2 => &["download", "watchlist", "list"],
+        Some("watchlist") if parts.len() >= 2 && trailing_space => {
+            &["--period", "--start", "--end", "--interval", "--source"]
+        }
+        _ if parts.len() <= 2 => &["download", "watchlist", "list"],
         _ => &[],
     }
 }
@@ -874,6 +919,9 @@ mod tests {
     fn completion_search_filters_candidates_and_tab_fills_the_first_match() {
         assert!(completion_matches("", "quant").contains(&"/collect".to_string()));
         assert!(completion_matches("", "quant").contains(&"/data".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/discover".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/sources".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/symbol".to_string()));
         assert!(completion_matches("", "quant").contains(&"/stats".to_string()));
         assert_eq!(
             completion_matches("/co", "quant"),
@@ -902,6 +950,35 @@ mod tests {
                 "watchlist".to_string(),
                 "list".to_string()
             ]
+        );
+        assert!(
+            completion_matches("/data download AAPL ", "quant").contains(&"--period".to_string())
+        );
+        assert_eq!(
+            completion_matches("/discover ", "quant"),
+            vec![
+                "trending".to_string(),
+                "most-active".to_string(),
+                "gainers".to_string(),
+                "losers".to_string(),
+                "etf".to_string(),
+                "semiconductor".to_string()
+            ]
+        );
+        assert_eq!(
+            completion_matches("/sources ", "quant"),
+            vec![
+                "list".to_string(),
+                "stooq".to_string(),
+                "tossctl".to_string(),
+                "yahoo".to_string(),
+                "nasdaq".to_string(),
+                "vendor".to_string()
+            ]
+        );
+        assert_eq!(
+            completion_matches("/symbol ", "quant"),
+            vec!["search".to_string(), "info".to_string()]
         );
         assert_eq!(
             completion_matches("/data list ", "quant"),
@@ -1012,8 +1089,9 @@ mod tests {
         let lines = welcome_lines("quant");
         let text = lines.join("\n");
         assert!(text.contains("TossQuant-cli"));
+        assert!(text.contains("/discover trending"));
         assert!(text.contains("/collect plan|quote|watchlist"));
         assert!(text.contains("Tab completes"));
-        assert!(text.contains("/collect plan AAPL"));
+        assert!(text.contains("/data download --period 1y"));
     }
 }
