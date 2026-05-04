@@ -1,2 +1,2 @@
 #!/usr/bin/env sh
-exec python3 -m quant_cli_lab "$@"
+exec node "$(dirname "$0")/../src/cli.ts" "$@"

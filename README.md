@@ -1,6 +1,25 @@
 # TossQuant
 
-Codex/Claude-style terminal-first quant learning CLI around `tossctl` read-only data.
+TypeScript-first terminal quant runtime around `tossctl` read-only data. The previous Python CLI remains in `quant_cli_lab/` as a reference implementation while the active `bin/tossquant` and `bin/quant` launch `src/cli.ts`.
+
+## TypeScript runtime
+
+TossQuant now runs on Node.js/TypeScript. It intentionally uses Node 24+ native
+TypeScript execution, so there are no npm runtime dependencies yet.
+
+```bash
+node --version   # requires >= 24
+npm test
+./bin/tossquant
+# or
+./bin/quant
+```
+
+The legacy Python prototype is still available for comparison:
+
+```bash
+python3 -m quant_cli_lab --no-tmux
+```
 
 ## Interactive mode
 
@@ -18,7 +37,7 @@ chat, and the bottom pane is a live HUD like:
 [TossQuant] main | mode:quant | watchlist:5 | quotes:5/10 samples | classify-ready:0 | codex:ready | last:ready | updated:2026-05-04T02:12:19Z
 ```
 
-Use `TOSSQUANT_NO_TMUX=1 ./bin/tossquant` or `python3 -m quant_cli_lab --no-tmux`
+Use `TOSSQUANT_NO_TMUX=1 ./bin/tossquant` or `./bin/tossquant --no-tmux`
 to start the plain non-tmux interactive shell.
 
 Then type. Press `Tab` to autocomplete commands and slash modes:
@@ -68,20 +87,18 @@ Recommended beginner loop:
 ## Subcommand mode
 
 ```bash
-python3 -m quant_cli_lab doctor
-python3 -m quant_cli_lab quote fetch AAPL
-python3 -m quant_cli_lab quote history AAPL
-python3 -m quant_cli_lab classify AAPL
-python3 -m quant_cli_lab portfolio snapshot
-python3 -m quant_cli_lab brief
-python3 -m quant_cli_lab audit AAPL --explain
-python3 -m quant_cli_lab strategy AAPL momentum
-python3 -m quant_cli_lab runtime line
-python3 -m quant_cli_lab runtime snapshot
-python3 -m quant_cli_lab hud
-python3 -m quant_cli_lab hud --tmux
-python3 -m quant_cli_lab tmux start
-python3 -m quant_cli_lab order preview --symbol AAPL --side buy --qty 1 --price 100
+./bin/tossquant doctor
+./bin/tossquant quote fetch AAPL
+./bin/tossquant quote history AAPL
+./bin/tossquant classify AAPL
+./bin/tossquant portfolio snapshot
+./bin/tossquant brief
+./bin/tossquant runtime line
+./bin/tossquant runtime snapshot
+./bin/tossquant hud
+./bin/tossquant hud --tmux
+./bin/tossquant tmux start
+./bin/tossquant order preview --symbol AAPL --side buy --qty 1 --price 100
 ```
 
 Safety defaults:
@@ -127,12 +144,12 @@ sudo pacman -S tmux          # Arch
 `doctor` reports whether `tmux` is available. Useful commands:
 
 ```bash
-python3 -m quant_cli_lab runtime line       # one-line status
-python3 -m quant_cli_lab runtime snapshot   # JSON runtime state
-python3 -m quant_cli_lab hud                # colored HUD once
-python3 -m quant_cli_lab hud --watch        # repainting HUD loop
-python3 -m quant_cli_lab hud --tmux         # split a bottom tmux pane inside tmux
-python3 -m quant_cli_lab tmux start         # create/attach full TossQuant tmux runtime
+./bin/tossquant runtime line       # one-line status
+./bin/tossquant runtime snapshot   # JSON runtime state
+./bin/tossquant hud                # colored HUD once
+./bin/tossquant hud --watch        # repainting HUD loop
+./bin/tossquant hud --tmux         # split a bottom tmux pane inside tmux
+./bin/tossquant tmux start         # create/attach full TossQuant tmux runtime
 ```
 
 Inside interactive mode, `/hud` prints the same line and `/hud tmux` opens the

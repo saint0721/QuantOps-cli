@@ -1,0 +1,20 @@
+{
+  "name": "tossquant",
+  "version": "0.1.0",
+  "description": "TypeScript-first terminal quant runtime around tossctl read-only data",
+  "type": "module",
+  "bin": {
+    "tossquant": "./src/cli.ts",
+    "quant": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "node ./src/cli.ts",
+    "test": "node --test tests-ts/*.test.ts",
+    "smoke": "node ./src/cli.ts --no-tmux --data-dir /tmp/tossquant-ts-smoke runtime line"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
