@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultTmuxSession, hudWatchCommand, interactiveCommand, managedTmuxSession, sessionHash, shellCommand } from '../hud.ts';
+import { hudColor } from '../ui/hud.ts';
 
 test('tmux command builders quote runtime commands', () => {
   assert.equal(shellCommand(['a', "b'c"]), "'a' 'b'\\''c'");
@@ -24,4 +25,10 @@ test('tmux runtime commands pass data dir and reselect top command pane', () => 
 test('managed tmux session marker is explicit', () => {
   assert.equal(managedTmuxSession({ TOSSQUANT_TMUX_MANAGED: '1', TOSSQUANT_TMUX_SESSION: 'tq' } as any), 'tq');
   assert.equal(managedTmuxSession({ TOSSQUANT_TMUX_SESSION: 'tq' } as any), null);
+});
+
+test('HUD line uses black text on light background without dimming', () => {
+  const line = hudColor('[TossQuant] main');
+  assert.match(line, /^\u001b\[30m\u001b\[48;2;238;238;238m\[TossQuant\] main\u001b\[0m$/);
+  assert.doesNotMatch(line, /\u001b\[2m/);
 });

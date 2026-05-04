@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { buildRuntimeSnapshot, readRuntimeSnapshot, recordRuntime, renderRuntimeLine, writeRuntimeSnapshot } from './runtime.ts';
+import { hudColor } from './ui/hud.ts';
 
-const RESET = '\u001b[0m';
-const HUD = '\u001b[2m\u001b[94m';
 export const DEFAULT_SESSION = 'tossquant';
 
 export function sessionHash(source: string): string {
@@ -15,7 +14,6 @@ export function defaultTmuxSession(env: NodeJS.ProcessEnv = process.env, cwd = p
   return `${DEFAULT_SESSION}-${sessionHash(source)}`;
 }
 
-export function color(text: string, ansi = HUD): string { return `${ansi}${text}${RESET}`; }
 export function tmuxPath(): string | null {
   const result = spawnSync('sh', ['-lc', 'command -v tmux'], { encoding: 'utf8' });
   return result.status === 0 ? result.stdout.trim() : null;
@@ -45,7 +43,7 @@ export function shutdownManagedTmuxRuntime(env: NodeJS.ProcessEnv = process.env)
 
 export function printHudOnce(base = 'data', mode = 'quant', lastAction = 'ready'): string {
   const line = renderRuntimeLine(recordRuntime({ base, mode, lastAction }));
-  console.log(color(line));
+  console.log(hudColor(line));
   return line;
 }
 
@@ -53,7 +51,7 @@ export async function watchHud(base = 'data', interval = 1): Promise<never> {
   for (;;) {
     let snapshot = readRuntimeSnapshot(base);
     if (!snapshot) { snapshot = buildRuntimeSnapshot({ base }); writeRuntimeSnapshot(snapshot, base); }
-    process.stdout.write(`\u001b[?25l\u001b[2J\u001b[H${color(renderRuntimeLine(snapshot))}\u001b[0K`);
+    process.stdout.write(`\u001b[?25l\u001b[2J\u001b[H${hudColor(renderRuntimeLine(snapshot))}\u001b[0K`);
     await new Promise((resolve) => setTimeout(resolve, Math.max(interval, 0.2) * 1000));
   }
 }

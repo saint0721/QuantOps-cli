@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { completeLine, completionCandidates } from '../cli/completions.ts';
+import { completeLine, completionCandidates } from '../cli.ts';
 
 test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/status'));
