@@ -67,7 +67,8 @@ and tmux options such as `tmux start --session`:
 ```text
 TossQuant quant ❯ /help
 TossQuant quant ❯ doctor
-TossQuant quant ❯ quote AAPL
+TossQuant quant ❯ collect plan AAPL
+TossQuant quant ❯ collect quote AAPL
 TossQuant quant ❯ history AAPL
 TossQuant quant ❯ classify AAPL
 TossQuant quant ❯ portfolio
@@ -102,7 +103,7 @@ Recommended beginner loop:
 
 1. `/start` to see the workflow.
 2. `/watchlist add AAPL` to choose one symbol.
-3. `quote AAPL` several times over time.
+3. `collect quote AAPL` several times over time.
 4. `/status` to check whether enough samples exist.
 5. `classify AAPL` once at least 3 samples are saved.
 
@@ -110,6 +111,9 @@ Recommended beginner loop:
 
 ```bash
 quant doctor
+quant collect plan AAPL
+quant collect quote AAPL
+quant collect watchlist
 quant quote fetch AAPL
 quant quote history AAPL
 quant classify AAPL
@@ -122,6 +126,8 @@ quant hud --tmux
 quant tmux start
 quant order preview --symbol AAPL --side buy --qty 1 --price 100
 ```
+
+Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`.
 
 Safety defaults:
 - no web UI

@@ -1,4 +1,4 @@
-export const ROOT_COMPLETIONS = ['doctor', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup', 'exit', 'quit'];
+export const ROOT_COMPLETIONS = ['doctor', 'collect', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup', 'exit', 'quit'];
 export const SLASH_COMPLETIONS = ['/help', '/status', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant'];
 
 export function completionCandidates(line: string, mode = 'quant'): string[] {
@@ -11,6 +11,7 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
   if (first === '/watchlist') return ['add', 'fetch', 'list', 'remove'];
   if (first === '/hud') return ['tmux'];
   if (first === '/runtime') return ['line', 'snapshot'];
+  if (first === 'collect') return parts[1] === 'plan' ? ['--watchlist'] : ['plan', 'quote', 'watchlist'];
   if (first === 'quote') return ['fetch', 'history'];
   if (first === 'portfolio') return ['snapshot'];
   if (first === 'order') return ['preview'];

@@ -3,12 +3,13 @@ import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { classify, historyRows } from './analysis.ts';
+import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
 import { filteredCodexOutput } from './codex.ts';
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
 import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
-import { accountSummary, authStatus, orderPreview, portfolioPositions, quote, version } from './toss.ts';
+import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { completeLine } from './cli/completions.ts';
 import { chatBox, commandEchoBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 
@@ -85,14 +86,34 @@ function commandDoctor(dataDir: string): number {
 
 function commandQuoteFetch(dataDir: string, ticker?: string): number {
   if (!ticker) { warn('usage: quote fetch <TICKER>'); return 2; }
-  const result = quote(ticker);
-  if (!result.ok) { printJson({ ok: false, command: result.command, error: result.stderr || result.stdout }); return result.returncode || 1; }
-  const payload = parseJsonOrRaw(result.stdout, result.stderr, result.returncode) as object;
-  const record = { ticker: ticker.toUpperCase(), fetched_at: utcNow(), source: 'tossctl quote get', payload: redact(payload as never) };
-  const path = quoteHistoryPath(ticker, dataDir);
-  appendJsonl(path, record as never);
-  printJson({ ok: true, saved_to: path, ticker: ticker.toUpperCase(), fetched_at: record.fetched_at });
-  return 0;
+  const result = collectQuote(dataDir, ticker);
+  printJson(result.ok ? { ok: true, saved_to: result.saved_to, ticker: result.ticker, fetched_at: result.fetched_at } : result);
+  return result.ok ? 0 : result.returncode || 1;
+}
+
+
+function commandCollect(dataDir: string, sub?: string, tail: string[] = []): number {
+  if (!sub || sub === 'plan') {
+    const explicitTickers = tail.filter((item) => !item.startsWith('--'));
+    const includeWatchlist = tail.includes('--watchlist') || tail.includes('--all') || explicitTickers.length === 0;
+    printJson(collectionPlan({ dataDir, tickers: explicitTickers, includeWatchlist }));
+    return 0;
+  }
+  if (sub === 'quote') {
+    const ticker = tail[0];
+    if (!ticker) { warn('usage: collect quote <TICKER>'); return 2; }
+    const result = collectQuote(dataDir, ticker);
+    printJson(result);
+    return result.ok ? 0 : result.returncode || 1;
+  }
+  if (sub === 'watchlist') {
+    const plan = collectionPlan({ dataDir, includeWatchlist: true });
+    const summary = collectionSummary(runCollectionPlan(plan));
+    printJson({ ...summary, plan });
+    return summary.ok ? 0 : 1;
+  }
+  warn('usage: collect [plan [TICKER...|--watchlist]|quote <TICKER>|watchlist]');
+  return 2;
 }
 
 function commandQuoteHistory(dataDir: string, ticker?: string): number {
@@ -178,8 +199,8 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'start       /watchlist add AAPL  →  quote AAPL  →  history AAPL  →  classify AAPL',
-    'commands    /status · /watchlist list|fetch · runtime line · hud · doctor · exit',
+    'start       /watchlist add AAPL  →  collect quote AAPL  →  history AAPL  →  classify AAPL',
+    'commands    /status · collect plan|quote|watchlist · /watchlist list|fetch · runtime line · hud · doctor · exit',
     'codex       /ask <question> · /codex · /quant',
     'plain mode  quant --no-tmux',
     '',
@@ -224,6 +245,7 @@ export function runOnce(argv: string[]): number {
   const [cmd, sub, ...tail] = rest;
   if (!cmd) return 2;
   if (cmd === 'doctor') return commandDoctor(dataDir);
+  if (cmd === 'collect') return commandCollect(dataDir, sub, tail);
   if (cmd === 'quote' && sub === 'fetch') return commandQuoteFetch(dataDir, tail[0]);
   if (cmd === 'quote' && sub === 'history') return commandQuoteHistory(dataDir, tail[0]);
   if (cmd === 'quote' && sub) return commandQuoteFetch(dataDir, sub);
