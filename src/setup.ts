@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from 'node:fs';
+import { lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,8 +16,13 @@ function defaultBinDir(): string {
 
 function installOne(name: string, target: string, dir: string, force: boolean): { name: string; path: string; target: string; action: string } {
   const linkPath = resolve(dir, name);
-  if (existsSync(linkPath)) {
-    const stat = lstatSync(linkPath);
+  let stat: ReturnType<typeof lstatSync> | null = null;
+  try {
+    stat = lstatSync(linkPath);
+  } catch {
+    stat = null;
+  }
+  if (stat) {
     if (stat.isSymbolicLink()) {
       const current = resolve(dirname(linkPath), readlinkSync(linkPath));
       if (current === target) return { name, path: linkPath, target, action: 'exists' };
