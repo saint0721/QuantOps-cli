@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 export type SourceInfo = {
   id: string;
   name: string;
@@ -11,13 +14,53 @@ export type SourceInfo = {
 export type SymbolInfo = {
   symbol: string;
   name: string;
-  assetClass: 'stock' | 'etf' | 'index';
+  assetClass: 'stock' | 'etf' | 'index' | 'crypto';
   category: string;
   source: string;
   exchange?: string;
   tags: string[];
   next: string;
   note: string;
+};
+
+export type DiscoverSource = 'local' | 'yahoo';
+
+export type DiscoverResult = {
+  category: string;
+  source: DiscoverSource;
+  live: boolean;
+  items: SymbolInfo[];
+  note: string;
+  cachePath?: string;
+  fetchedAt?: string;
+  fallback?: string;
+};
+
+export type SymbolSearchResult = {
+  query: string;
+  source: DiscoverSource;
+  live: boolean;
+  items: SymbolInfo[];
+  note: string;
+  cachePath?: string;
+  fetchedAt?: string;
+  fallback?: string;
+};
+
+export type DiscoverOptions = {
+  category?: string;
+  source?: DiscoverSource | 'live';
+  limit?: number;
+  dataDir?: string;
+  fetcher?: typeof fetch;
+};
+
+export type SymbolSearchOptions = {
+  query: string;
+  source?: DiscoverSource | 'live';
+  limit?: number;
+  dataDir?: string;
+  fetcher?: typeof fetch;
 };
 
 export const SOURCES: SourceInfo[] = [
@@ -42,11 +85,11 @@ export const SOURCES: SourceInfo[] = [
   {
     id: 'yahoo',
     name: 'Yahoo Finance',
-    kind: 'screeners / trending / quotes',
-    auth: 'unofficial; may change',
-    coverage: 'most active, gainers, losers, trending, ETF/fund metadata',
-    command: '/discover most-active',
-    note: '실시간 앱형 탐색 후보 소스로 적합하지만 안정 API로 간주하지 않습니다.',
+    kind: 'live screeners / trending / quotes',
+    auth: 'unofficial; no API key',
+    coverage: 'trending, most active, day gainers, day losers; ETF/theme buckets fall back to local universe',
+    command: '/discover most-active --source yahoo --limit 25',
+    note: '실시간 앱형 탐색 후보 소스입니다. 비공식 endpoint라 실패 시 로컬 curated 목록으로 fallback합니다.',
   },
   {
     id: 'nasdaq',
@@ -192,6 +235,13 @@ export const DISCOVER_BUCKETS: Record<string, string[]> = {
   semiconductor: ['NVDA', 'SOXL', 'SOXS'],
 };
 
+const YAHOO_CATEGORY_ENDPOINT: Record<string, string> = {
+  trending: 'https://query1.finance.yahoo.com/v1/finance/trending/US',
+  'most-active': 'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives',
+  gainers: 'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_gainers',
+  losers: 'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_losers',
+};
+
 export function sourceById(id: string): SourceInfo | undefined {
   return SOURCES.find((source) => source.id === id.toLowerCase());
 }
@@ -211,14 +261,217 @@ export function symbolInfo(symbol: string): SymbolInfo | undefined {
   return SYMBOLS.find((item) => item.symbol === symbol.trim().toUpperCase());
 }
 
-export function discover(category = 'trending'): { category: string; items: SymbolInfo[]; note: string } {
+function normalizeCategory(category = 'trending'): string {
   const normalized = category.trim().toLowerCase() || 'trending';
-  const key = DISCOVER_BUCKETS[normalized] ? normalized : 'trending';
+  return DISCOVER_BUCKETS[normalized] || YAHOO_CATEGORY_ENDPOINT[normalized] ? normalized : 'trending';
+}
+
+function inferAssetClass(symbol: string, quoteType?: string, typeDisp?: string): SymbolInfo['assetClass'] {
+  const type = `${quoteType ?? ''} ${typeDisp ?? ''}`.toLowerCase();
+  if (type.includes('crypto') || /-(usd|usdt|btc|eth)$/i.test(symbol)) return 'crypto';
+  if (type.includes('etf') || ['SPY', 'QQQ', 'SOXL', 'SOXS', 'TQQQ', 'SQQQ'].includes(symbol)) return 'etf';
+  if (type.includes('index') || symbol.startsWith('^')) return 'index';
+  return 'stock';
+}
+
+function dynamicSymbolInfo(raw: any, category: string, source: DiscoverSource): SymbolInfo | undefined {
+  const symbol = String(raw?.symbol ?? '').trim().toUpperCase();
+  if (!symbol || symbol.includes('=')) return undefined;
+  const known = symbolInfo(symbol);
+  if (known) return { ...known, source };
+  const assetClass = inferAssetClass(symbol, raw?.quoteType, raw?.typeDisp);
+  const name = String(raw?.shortName ?? raw?.longName ?? raw?.displayName ?? symbol);
+  const exchange = String(raw?.fullExchangeName ?? raw?.exchange ?? '').trim() || undefined;
+  const tags = [category, assetClass, source].filter(Boolean);
+  const next = assetClass === 'crypto' ? `/symbol search ${symbol}` : `/data download ${symbol} --period 1y`;
+  return {
+    symbol,
+    name,
+    assetClass,
+    category,
+    source,
+    exchange,
+    tags,
+    next,
+    note: assetClass === 'crypto'
+      ? `${source} live discovery result; crypto download provider is not wired to the default Stooq downloader yet.`
+      : `${source} live discovery result; verify provider coverage before analysis.`,
+  };
+}
+
+function yahooUrl(category: string, limit: number): string | undefined {
+  const base = YAHOO_CATEGORY_ENDPOINT[category];
+  if (!base) return undefined;
+  const separator = base.includes('?') ? '&' : '?';
+  return `${base}${separator}count=${limit}`;
+}
+
+function yahooQuotes(payload: any): any[] {
+  const trending = payload?.finance?.result?.[0]?.quotes;
+  if (Array.isArray(trending)) return trending;
+  const screener = payload?.finance?.result?.[0]?.quotes;
+  if (Array.isArray(screener)) return screener;
+  return [];
+}
+
+function yahooSearchUrl(query: string, limit: number): string {
+  const params = new URLSearchParams({
+    q: query,
+    quotesCount: String(limit),
+    newsCount: '0',
+    enableFuzzyQuery: 'true',
+    quotesQueryId: 'tss_match_phrase_query',
+  });
+  return `https://query1.finance.yahoo.com/v1/finance/search?${params.toString()}`;
+}
+
+export function discover(category = 'trending'): { category: string; items: SymbolInfo[]; note: string } {
+  const requested = category.trim().toLowerCase() || 'trending';
+  const key = DISCOVER_BUCKETS[requested] ? requested : 'trending';
   const symbols = DISCOVER_BUCKETS[key] ?? [];
   const items = symbols.map((symbol) => symbolInfo(symbol)).filter((item): item is SymbolInfo => Boolean(item));
   return {
     category: key,
     items,
-    note: key === normalized ? 'curated local universe; live Yahoo/Nasdaq connectors are planned' : `unknown category "${category}", showing trending instead`,
+    note: key === requested ? 'curated local universe; use --source yahoo for live screeners where available' : `unknown category "${category}", showing trending instead`,
   };
+}
+
+async function writeDiscoveryCache(dataDir: string, result: DiscoverResult): Promise<string> {
+  const dir = join(dataDir, 'discovery', result.source);
+  await mkdir(dir, { recursive: true });
+  const safeCategory = result.category.replace(/[^a-z0-9_-]+/gi, '-');
+  const path = join(dir, `${safeCategory}.json`);
+  await writeFile(path, JSON.stringify(result, null, 2) + '\n', 'utf8');
+  return path;
+}
+
+async function writeSymbolSearchCache(dataDir: string, result: SymbolSearchResult): Promise<string> {
+  const dir = join(dataDir, 'symbols', result.source);
+  await mkdir(dir, { recursive: true });
+  const safeQuery = result.query.replace(/[^a-z0-9_-]+/gi, '-').replace(/^-|-$/g, '') || 'all';
+  const path = join(dir, `${safeQuery}.json`);
+  await writeFile(path, JSON.stringify(result, null, 2) + '\n', 'utf8');
+  return path;
+}
+
+async function fetchYahooDiscover(category: string, limit: number, fetcher: typeof fetch): Promise<SymbolInfo[]> {
+  const url = yahooUrl(category, limit);
+  if (!url) throw new Error(`Yahoo live discovery does not support category: ${category}`);
+  const response = await fetcher(url, {
+    headers: { 'User-Agent': 'TossQuant-cli/0.1' },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) throw new Error(`Yahoo discovery HTTP ${response.status}`);
+  const payload = await response.json();
+  return yahooQuotes(payload)
+    .map((item) => dynamicSymbolInfo(item, category, 'yahoo'))
+    .filter((item): item is SymbolInfo => Boolean(item))
+    .slice(0, limit);
+}
+
+export async function discoverMarket(options: DiscoverOptions = {}): Promise<DiscoverResult> {
+  const category = normalizeCategory(options.category ?? 'trending');
+  const limit = Math.max(1, Math.min(Number(options.limit ?? 25), 100));
+  const source = options.source === 'live' ? 'yahoo' : (options.source ?? 'local');
+  const local = discover(category);
+  let result: DiscoverResult;
+
+  if (source === 'local') {
+    result = {
+      category: local.category,
+      source: 'local',
+      live: false,
+      items: local.items.slice(0, limit),
+      note: local.note,
+      fetchedAt: new Date().toISOString(),
+    };
+  } else {
+    try {
+      const items = await fetchYahooDiscover(category, limit, options.fetcher ?? fetch);
+      result = {
+        category,
+        source: 'yahoo',
+        live: true,
+        items,
+        note: `live Yahoo ${category} discovery; cached for reproducibility`,
+        fetchedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      result = {
+        category: local.category,
+        source: 'local',
+        live: false,
+        items: local.items.slice(0, limit),
+        note: `${local.note}; live Yahoo fallback used local universe`,
+        fetchedAt: new Date().toISOString(),
+        fallback: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  if (options.dataDir) {
+    result.cachePath = await writeDiscoveryCache(options.dataDir, result);
+  }
+  return result;
+}
+
+async function fetchYahooSymbolSearch(query: string, limit: number, fetcher: typeof fetch): Promise<SymbolInfo[]> {
+  const response = await fetcher(yahooSearchUrl(query, limit), {
+    headers: { 'User-Agent': 'TossQuant-cli/0.1' },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) throw new Error(`Yahoo symbol search HTTP ${response.status}`);
+  const payload = await response.json();
+  const quotes = Array.isArray(payload?.quotes) ? payload.quotes : [];
+  return quotes
+    .map((item) => dynamicSymbolInfo(item, 'symbol-search', 'yahoo'))
+    .filter((item): item is SymbolInfo => Boolean(item))
+    .slice(0, limit);
+}
+
+export async function searchSymbolsLive(options: SymbolSearchOptions): Promise<SymbolSearchResult> {
+  const query = options.query.trim();
+  const limit = Math.max(1, Math.min(Number(options.limit ?? 10), 50));
+  const source = options.source === 'live' ? 'yahoo' : (options.source ?? 'yahoo');
+  const localItems = searchSymbols(query).slice(0, limit);
+  let result: SymbolSearchResult;
+
+  if (!query || source === 'local') {
+    result = {
+      query,
+      source: 'local',
+      live: false,
+      items: localItems,
+      note: query ? 'local curated symbol search' : 'empty query; showing local curated symbols',
+      fetchedAt: new Date().toISOString(),
+    };
+  } else {
+    try {
+      const items = await fetchYahooSymbolSearch(query, limit, options.fetcher ?? fetch);
+      result = {
+        query,
+        source: 'yahoo',
+        live: true,
+        items,
+        note: `live Yahoo symbol search for "${query}"; cached for reproducibility`,
+        fetchedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      result = {
+        query,
+        source: 'local',
+        live: false,
+        items: localItems,
+        note: `local fallback symbol search for "${query}"`,
+        fetchedAt: new Date().toISOString(),
+        fallback: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  if (options.dataDir) {
+    result.cachePath = await writeSymbolSearchCache(options.dataDir, result);
+  }
+  return result;
 }

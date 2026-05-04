@@ -22,8 +22,14 @@ use ratatui::Terminal;
 const TOSS_BLUE: Color = Color::Rgb(0, 100, 255);
 const CHAT_BG: Color = Color::Rgb(238, 238, 238);
 const PROMPT_LABEL: &str = " ❯ ";
-const INPUT_PLACEHOLDER: &str = "명령어를 입력하세요. 예: /data list";
+const INPUT_PLACEHOLDER: &str = "명령어를 입력하세요. 예: /find";
 const ROOT_COMMANDS: &[&str] = &[
+    "/start",
+    "/next",
+    "/find",
+    "/download",
+    "/analyze",
+    "/list",
     "/status",
     "/collect",
     "/data",
@@ -252,7 +258,7 @@ impl App {
     fn run_line(&self, line: &str) -> String {
         let args = self.command_args(line);
         if args.is_empty() {
-            return "slash commands only: try /status, /watchlist add AAPL, /collect plan AAPL, /quote history AAPL, or /exit"
+            return "slash commands only: try /start, /find, /download NVDA, /analyze NVDA, /next, or /exit"
                 .to_string();
         }
         let output = Command::new(&self.node)
@@ -269,7 +275,7 @@ impl App {
                 text.push_str(&String::from_utf8_lossy(&output.stderr));
                 let cleaned = strip_ansi(&text).trim().to_string();
                 if output.status.code() == Some(2) && cleaned.contains("unknown command:") {
-                    "unknown slash command: try /status, /watchlist add AAPL, /collect plan AAPL, /quote history AAPL, or /exit"
+                    "unknown slash command: try /start, /find, /download NVDA, /analyze NVDA, /next, or /exit"
                         .to_string()
                 } else {
                     cleaned
@@ -318,13 +324,13 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "flow     /discover trending → /data download SOXL --period 6mo → /stats SOXL".to_string(),
-        "discover /sources · /discover trending|most-active|etf · /symbol search SOX".to_string(),
-        "commands /status · /collect plan|quote|watchlist · /data download --period 1y · /data list · /stats <SYMBOL>".to_string(),
-        "tools    /runtime line · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
+        "beginner /start · /next · /find · /download <SYMBOL> · /analyze <SYMBOL> · /list".to_string(),
+        "flow     /find → /download NVDA → /analyze NVDA → /next".to_string(),
+        "advanced /discover · /data download --period 1y · /stats <SYMBOL> · /sources · /runtime".to_string(),
+        "tools    /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
-        "try      /discover trending".to_string(),
+        "try      /start".to_string(),
     ]
 }
 
@@ -340,24 +346,17 @@ fn command_candidates(
     match command {
         "/collect" => collect_candidates(parts, trailing_space),
         "/data" => data_candidates(parts, trailing_space),
-        "/discover" => one_level_candidates(
-            parts,
-            trailing_space,
-            &[
-                "trending",
-                "most-active",
-                "gainers",
-                "losers",
-                "etf",
-                "semiconductor",
-            ],
-        ),
+        "/find" => find_candidates(parts, trailing_space),
+        "/download" => download_candidates(parts, trailing_space),
+        "/analyze" => &[],
+        "/list" => &[],
+        "/discover" => discover_candidates(parts, trailing_space),
         "/sources" => one_level_candidates(
             parts,
             trailing_space,
             &["list", "stooq", "tossctl", "yahoo", "nasdaq", "vendor"],
         ),
-        "/symbol" => one_level_candidates(parts, trailing_space, &["search", "info"]),
+        "/symbol" => symbol_candidates(parts, trailing_space),
         "/stats" => &[],
         "/quote" => one_level_candidates(parts, trailing_space, &["fetch", "history"]),
         "/watchlist" => {
@@ -371,6 +370,28 @@ fn command_candidates(
     }
 }
 
+const DISCOVER_CATEGORIES: &[&str] = &[
+    "trending",
+    "most-active",
+    "gainers",
+    "losers",
+    "etf",
+    "semiconductor",
+];
+
+const DISCOVER_OPTIONS: &[&str] = &[
+    "--source",
+    "--limit",
+    "--download",
+    "--period",
+    "--start",
+    "--end",
+];
+
+const DISCOVER_SOURCES: &[&str] = &["local", "yahoo"];
+const DISCOVER_LIMITS: &[&str] = &["10", "25", "50", "100"];
+const DISCOVER_PERIODS: &[&str] = &["5d", "30d", "6mo", "1y", "ytd", "max"];
+
 fn one_level_candidates(
     parts: &[&str],
     trailing_space: bool,
@@ -381,6 +402,60 @@ fn one_level_candidates(
     } else {
         &[]
     }
+}
+
+fn discover_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        return DISCOVER_CATEGORIES;
+    }
+    if let Some(previous) = parts.last().copied() {
+        if trailing_space {
+            match previous {
+                "--source" => return DISCOVER_SOURCES,
+                "--limit" => return DISCOVER_LIMITS,
+                "--period" => return DISCOVER_PERIODS,
+                "--start" | "--end" => return &[],
+                _ => {}
+            }
+        }
+    }
+    if parts.len() >= 2 {
+        return DISCOVER_OPTIONS;
+    }
+    DISCOVER_CATEGORIES
+}
+
+fn find_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        return &["trending", "most-active", "gainers", "losers"];
+    }
+    if trailing_space && parts.last().copied() == Some("--limit") {
+        return DISCOVER_LIMITS;
+    }
+    &["--limit"]
+}
+
+fn download_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() >= 2 && trailing_space {
+        return &["--period", "--start", "--end"];
+    }
+    &[]
+}
+
+fn symbol_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        return &["search", "info"];
+    }
+    if parts.get(1).copied() == Some("search") {
+        if trailing_space && parts.last().copied() == Some("--source") {
+            return &["local", "yahoo"];
+        }
+        if trailing_space && parts.last().copied() == Some("--limit") {
+            return &["5", "10", "25", "50"];
+        }
+        return &["--source", "--limit"];
+    }
+    &[]
 }
 
 fn collect_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
@@ -920,6 +995,11 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/collect".to_string()));
         assert!(completion_matches("", "quant").contains(&"/data".to_string()));
         assert!(completion_matches("", "quant").contains(&"/discover".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/start".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/find".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/download".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/analyze".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/list".to_string()));
         assert!(completion_matches("", "quant").contains(&"/sources".to_string()));
         assert!(completion_matches("", "quant").contains(&"/symbol".to_string()));
         assert!(completion_matches("", "quant").contains(&"/stats".to_string()));
@@ -955,6 +1035,30 @@ mod tests {
             completion_matches("/data download AAPL ", "quant").contains(&"--period".to_string())
         );
         assert_eq!(
+            completion_matches("/find ", "quant"),
+            vec![
+                "trending".to_string(),
+                "most-active".to_string(),
+                "gainers".to_string(),
+                "losers".to_string()
+            ]
+        );
+        assert!(completion_matches("/find trending ", "quant").contains(&"--limit".to_string()));
+        assert_eq!(
+            completion_matches("/find trending --limit ", "quant"),
+            vec![
+                "10".to_string(),
+                "25".to_string(),
+                "50".to_string(),
+                "100".to_string()
+            ]
+        );
+        assert!(completion_matches("/download NVDA ", "quant").contains(&"--period".to_string()));
+        assert_eq!(
+            completion_matches("/analyze NVDA ", "quant"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
             completion_matches("/discover ", "quant"),
             vec![
                 "trending".to_string(),
@@ -963,6 +1067,23 @@ mod tests {
                 "losers".to_string(),
                 "etf".to_string(),
                 "semiconductor".to_string()
+            ]
+        );
+        assert!(completion_matches("/discover trending ", "quant")
+            .contains(&"--source".to_string()));
+        assert_eq!(
+            completion_matches("/discover trending --source ", "quant"),
+            vec!["local".to_string(), "yahoo".to_string()]
+        );
+        assert!(completion_matches("/discover trending --source yahoo ", "quant")
+            .contains(&"--download".to_string()));
+        assert_eq!(
+            completion_matches("/discover trending --limit ", "quant"),
+            vec![
+                "10".to_string(),
+                "25".to_string(),
+                "50".to_string(),
+                "100".to_string()
             ]
         );
         assert_eq!(
@@ -979,6 +1100,21 @@ mod tests {
         assert_eq!(
             completion_matches("/symbol ", "quant"),
             vec!["search".to_string(), "info".to_string()]
+        );
+        assert!(completion_matches("/symbol search TSM ", "quant")
+            .contains(&"--source".to_string()));
+        assert_eq!(
+            completion_matches("/symbol search TSM --source ", "quant"),
+            vec!["local".to_string(), "yahoo".to_string()]
+        );
+        assert_eq!(
+            completion_matches("/symbol search TSM --limit ", "quant"),
+            vec![
+                "5".to_string(),
+                "10".to_string(),
+                "25".to_string(),
+                "50".to_string()
+            ]
         );
         assert_eq!(
             completion_matches("/data list ", "quant"),
@@ -1066,7 +1202,7 @@ mod tests {
         let app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
 
         assert!(app.input.is_empty());
-        assert_eq!(INPUT_PLACEHOLDER, "명령어를 입력하세요. 예: /data list");
+        assert_eq!(INPUT_PLACEHOLDER, "명령어를 입력하세요. 예: /find");
         assert_eq!(input_cursor_column(&app.input, app.cursor), 0);
     }
 
@@ -1089,8 +1225,10 @@ mod tests {
         let lines = welcome_lines("quant");
         let text = lines.join("\n");
         assert!(text.contains("TossQuant-cli"));
-        assert!(text.contains("/discover trending"));
-        assert!(text.contains("/collect plan|quote|watchlist"));
+        assert!(text.contains("/start"));
+        assert!(text.contains("/find"));
+        assert!(text.contains("/download <SYMBOL>"));
+        assert!(text.contains("/analyze <SYMBOL>"));
         assert!(text.contains("Tab completes"));
         assert!(text.contains("/data download --period 1y"));
     }

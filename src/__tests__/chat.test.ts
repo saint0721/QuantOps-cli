@@ -18,9 +18,10 @@ test('input hint uses neofetch style without background or runtime HUD', () => {
   const hint = inputHintBox('quant');
   assert.match(hint, /TossQuant@quant/);
   assert.match(hint, /project\u001b\[0m  TossQuant-cli/);
-  assert.match(hint, /commands\u001b\[0m \/status/);
+  assert.match(hint, /beginner\u001b\[0m \/start/);
+  assert.match(hint, /flow\u001b\[0m     \/find/);
   assert.match(hint, /keys\u001b\[0m     Tab completes/);
-  assert.match(hint, /try\u001b\[0m      \/collect plan AAPL/);
+  assert.match(hint, /try\u001b\[0m      \/start/);
   assert.doesNotMatch(hint, /48;2;/);
   assert.doesNotMatch(hint, /\[TossQuant\]/);
 });
