@@ -1,9 +1,19 @@
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { buildRuntimeSnapshot, readRuntimeSnapshot, recordRuntime, renderRuntimeLine, writeRuntimeSnapshot } from './runtime.ts';
 
 const RESET = '\u001b[0m';
 const HUD = '\u001b[2m\u001b[94m';
 export const DEFAULT_SESSION = 'tossquant';
+
+export function sessionHash(source: string): string {
+  return createHash('sha256').update(source).digest('hex').slice(0, 8);
+}
+
+export function defaultTmuxSession(env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string {
+  const source = env.TOSSQUANT_SESSION || env.CODEX_SESSION_ID || env.OMX_SESSION_ID || env.OMX_SESSION || env.TMUX_PANE || cwd;
+  return `${DEFAULT_SESSION}-${sessionHash(source)}`;
+}
 
 export function color(text: string, ansi = HUD): string { return `${ansi}${text}${RESET}`; }
 export function tmuxPath(): string | null {

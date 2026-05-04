@@ -49,7 +49,9 @@ live HUD pane. Use `quant --no-tmux` or `TOSSQUANT_NO_TMUX=1 quant` for plain mo
 ```
 
 When `tmux` is installed and TossQuant is started from an interactive terminal,
-it opens a `tossquant` tmux session automatically: the top pane is the command
+it opens a `tossquant-<hash>` tmux session automatically. The hash is derived
+from `TOSSQUANT_SESSION`, `CODEX_SESSION_ID`, `OMX_SESSION_ID`, `OMX_SESSION`,
+`TMUX_PANE`, or the project path, in that order. The top pane is the command
 chat, and the bottom pane is a live HUD like:
 
 ```text
@@ -59,7 +61,8 @@ chat, and the bottom pane is a live HUD like:
 Use `TOSSQUANT_NO_TMUX=1 ./bin/tossquant` or `./bin/tossquant --no-tmux`
 to start the plain non-tmux interactive shell.
 
-Then type. Press `Tab` to autocomplete commands and slash modes:
+Then type. Press `Tab` to autocomplete commands, nested subcommands, slash modes,
+and tmux options such as `tmux start --session`:
 
 ```text
 TossQuant quant ❯ /help
@@ -169,6 +172,7 @@ sudo pacman -S tmux          # Arch
 ./bin/tossquant hud --watch        # repainting HUD loop
 ./bin/tossquant hud --tmux         # split a bottom tmux pane inside tmux
 ./bin/tossquant tmux start         # create/attach full TossQuant tmux runtime
+./bin/tossquant tmux start --session tq-research
 ```
 
 Inside interactive mode, `/hud` prints the same line and `/hud tmux` opens the

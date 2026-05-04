@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { classify, historyRows } from '../src/analysis.ts';
 import { filteredCodexOutput } from '../src/codex.ts';
-import { hudWatchCommand, interactiveCommand, shellCommand } from '../src/hud.ts';
+import { defaultTmuxSession, hudWatchCommand, interactiveCommand, sessionHash, shellCommand } from '../src/hud.ts';
 import { buildRuntimeSnapshot, recordRuntime, renderRuntimeLine, runtimeStatePath } from '../src/runtime.ts';
-import { interactivePrompt, welcomeCard } from '../src/cli.ts';
+import { completeLine, completionCandidates, interactivePrompt, welcomeCard } from '../src/cli.ts';
 import { installLocalBins } from '../src/setup.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, writeWatchlist } from '../src/storage.ts';
 
@@ -78,4 +78,20 @@ test('interactive prompt omits runtime HUD line while welcome keeps neofetch sum
   assert.match(welcome, /commands/);
   assert.match(welcome, /trading mutations disabled/);
   assert.doesNotMatch(welcome, /watchlist:\d/);
+});
+
+
+test('tab completion suggests root slash and nested commands', () => {
+  assert.ok(completionCandidates('', 'quant').includes('/status'));
+  assert.ok(completionCandidates('', 'quant').includes('doctor'));
+  assert.deepEqual(completionCandidates('quote ', 'quant'), ['fetch', 'history']);
+  assert.deepEqual(completionCandidates('/watchlist ', 'quant'), ['add', 'fetch', 'list', 'remove']);
+  assert.ok(completeLine('runt', 'quant')[0].includes('runtime'));
+  assert.ok(completeLine('tmux start --s', 'quant')[0].includes('--session'));
+});
+
+test('default tmux session derives a short stable hash from Codex or project context', () => {
+  assert.equal(sessionHash('abc').length, 8);
+  assert.equal(defaultTmuxSession({ CODEX_SESSION_ID: 'codex-session-1' } as any, '/repo'), `tossquant-${sessionHash('codex-session-1')}`);
+  assert.equal(defaultTmuxSession({} as any, '/repo'), `tossquant-${sessionHash('/repo')}`);
 });
