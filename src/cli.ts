@@ -9,6 +9,8 @@ import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, quote, version } from './toss.ts';
+import { completeLine } from './cli/completions.ts';
+import { chatBox, commandEchoBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 
 const APP = 'TossQuant';
 const VERSION = '0.1.0';
@@ -16,7 +18,6 @@ const GREEN = '\u001b[92m';
 const CYAN = '\u001b[96m';
 const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
-const CHAT_FRAME = '\u001b[30m\u001b[48;2;238;238;238m';
 let INTERACTIVE_CHAT_UI = false;
 
 function emitChat(title: string, text: string) {
@@ -46,35 +47,6 @@ function dataDirFrom(argv: string[]): { dataDir: string; rest: string[]; noTmux:
     rest.push(item);
   }
   return { dataDir, rest, noTmux };
-}
-
-export const ROOT_COMPLETIONS = ['doctor', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup', 'exit', 'quit'];
-export const SLASH_COMPLETIONS = ['/help', '/status', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant'];
-
-export function completionCandidates(line: string, mode = 'quant'): string[] {
-  const trimmed = line.trimStart();
-  if (mode === 'codex') return SLASH_COMPLETIONS;
-  if (!trimmed) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
-  const parts = trimmed.endsWith(' ') ? [...trimmed.split(/\s+/), ''] : trimmed.split(/\s+/);
-  if (parts.length <= 1) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
-  const first = parts[0];
-  if (first === '/watchlist') return ['add', 'fetch', 'list', 'remove'];
-  if (first === '/hud') return ['tmux'];
-  if (first === '/runtime') return ['line', 'snapshot'];
-  if (first === 'quote') return ['fetch', 'history'];
-  if (first === 'portfolio') return ['snapshot'];
-  if (first === 'order') return ['preview'];
-  if (first === 'runtime') return ['line', 'snapshot'];
-  if (first === 'hud') return ['--tmux', '--watch'];
-  if (first === 'tmux') return parts[1] === 'start' ? ['--session', '--height', '--interval'] : ['start'];
-  if (first === 'setup') return ['bin'];
-  return [];
-}
-
-export function completeLine(line: string, mode = 'quant'): [string[], string] {
-  const token = line.endsWith(' ') ? '' : (line.split(/\s+/).at(-1) ?? '');
-  const matches = completionCandidates(line, mode).filter((candidate) => candidate.startsWith(token));
-  return [matches.length ? matches : completionCandidates(line, mode), token];
 }
 
 function optionValue(args: string[], flag: string): string | undefined {
@@ -196,49 +168,6 @@ function handleWatchlist(parts: string[], dataDir: string): number {
 
 function runtimeLine(dataDir: string, mode = 'quant', lastAction = 'line'): string {
   return renderRuntimeLine(recordRuntime({ base: dataDir, mode, lastAction }));
-}
-
-export function chatColor(text: string): string {
-  return `${CHAT_FRAME}${text}${RESET}`;
-}
-
-export function chatDivider(width = 64): string {
-  return chatColor('─'.repeat(width));
-}
-
-function wrapChatLine(line: string, width: number): string[] {
-  if (line.length <= width) return [line];
-  const chunks: string[] = [];
-  for (let index = 0; index < line.length; index += width) chunks.push(line.slice(index, index + width));
-  return chunks;
-}
-
-export function chatBox(title: string, lines: string[], width = 76): string {
-  const contentWidth = Math.max(width, title.length + 8);
-  const topFill = '─'.repeat(Math.max(1, contentWidth - title.length - 4));
-  const bodyWidth = Math.max(1, contentWidth - 2);
-  const wrapped = (lines.length ? lines : ['']).flatMap((line) => wrapChatLine(line, bodyWidth - 2));
-  const body = wrapped.map((line) => `│ ${line.padEnd(bodyWidth - 2)} │`);
-  return chatColor([
-    `╭─ ${title} ${topFill}╮`,
-    ...body,
-    `╰${'─'.repeat(contentWidth)}╯`,
-  ].join('\n'));
-}
-
-export function interactivePrompt(mode: string): string {
-  return `${chatColor(`TossQuant ${mode} ❯`)} `;
-}
-
-export function inputHintBox(mode: string): string {
-  return chatBox(`TossQuant · ${mode}`, [
-    'Type a command, /ask, /codex, /watchlist, or press Tab.',
-    'HUD status lives in the bottom tmux pane.',
-  ]);
-}
-
-export function commandEchoBox(command: string): string {
-  return chatBox('You · command', [command]);
 }
 
 export function welcomeCard(): string {

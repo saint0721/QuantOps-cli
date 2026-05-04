@@ -1,0 +1,44 @@
+# TossQuant-cli Agent Guide
+
+This file is the repository-local operating contract for agents working in TossQuant-cli.
+
+## Project shape
+
+- `src/` is the active TypeScript runtime. Keep `src/cli.ts` as the entrypoint/dispatcher, not a dumping ground for reusable logic.
+- `src/ui/` owns terminal rendering concerns such as chat boxes, prompt styling, and other reusable UI primitives.
+- `src/cli/` owns CLI-specific helpers that are not the top-level executable, such as completion tables and argument-oriented utilities.
+- `src/__tests__/` contains TypeScript tests, split by module/file. Prefer adding `src/__tests__/<module>.test.ts` instead of re-creating root `tests-ts/`.
+- `tossquant_cli/` is the retained Python analysis/reference implementation. Do not delete it just because the active runtime is TypeScript.
+- `tossquant_cli/__tests__/` contains Python tests. Do not re-create a root `tests/` directory.
+- `bin/` is local-only and ignored. Do not add executable launchers in `bin/` to git; `setup bin` should link tracked source entrypoints.
+- `.omx/` and `data/` are local runtime state and must stay untracked.
+
+## Module rules
+
+- Put reusable rendering in `src/ui/*`.
+- Put CLI helper logic in `src/cli/*`.
+- Keep broker/tossctl integration in `src/toss.ts`.
+- Keep runtime state/HUD model logic in `src/runtime.ts` and tmux orchestration in `src/hud.ts` unless a follow-up refactor creates narrower modules.
+- Keep data redaction and persistence in `src/storage.ts`.
+- Avoid new dependencies unless the user explicitly asks for them.
+
+## UI rules
+
+- Chat UI uses `#eeeeee` as a background, not as foreground text.
+- Chat text should remain black/default-readable on the light background.
+- In interactive mode, user commands, TossQuant results, warnings, runtime lines, and Codex responses should be visually distinct.
+- In subcommand mode, preserve machine-friendly JSON/stdout behavior.
+- The tmux HUD belongs in the bottom pane; do not print persistent HUD spam into the top command pane.
+
+## Testing rules
+
+- TypeScript: run `npm test` for all TS tests or `node --test src/__tests__/<file>.test.ts` for a single module.
+- Python: run `python3 -m unittest discover -s tossquant_cli/__tests__`.
+- Compile check: run `python3 -m compileall tossquant_cli` after Python-adjacent changes.
+- Smoke check: run `npm run smoke`; for interactive UI changes also run a piped `quant --no-tmux` smoke.
+
+## Commit rules
+
+- Follow the Lore commit protocol from the session/root instructions.
+- Include verification evidence in commit trailers.
+- Keep diffs reviewable and reversible.
