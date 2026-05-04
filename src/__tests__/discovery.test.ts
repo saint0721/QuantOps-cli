@@ -7,8 +7,8 @@ import { discover, discoverMarket, searchSymbols, searchSymbolsLive, sourceById,
 import { periodToDateRange } from '../period.ts';
 
 test('source catalog explains available data providers', () => {
-  assert.equal(sourceById('stooq')?.auth, 'no API key');
-  assert.match(sourceById('yahoo')?.kind ?? '', /screeners/);
+  assert.match(sourceById('stooq')?.auth ?? '', /STOOQ_API_KEY/);
+  assert.match(sourceById('yahoo')?.coverage ?? '', /OHLCV/);
 });
 
 test('discover buckets expose app-like market exploration candidates', () => {

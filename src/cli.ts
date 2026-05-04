@@ -3,8 +3,10 @@ import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { classify, historyRows } from './analysis.ts';
+import { auditAll } from './audit.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
 import { filteredCodexOutput } from './codex.ts';
+import { downloadHistory, downloadWatchlist, listDatasets, type DownloadRequest } from './data.ts';
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
 import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
@@ -16,6 +18,7 @@ import { SOURCES, discoverMarket, searchSymbolsLive, sourceById, symbolInfo, typ
 import { formatNaturalPlan, planNatural } from './natural.ts';
 import { nextRecommendation } from './next.ts';
 import { periodToDateRange } from './period.ts';
+import { marketStats } from './marketAnalysis.ts';
 
 export { periodToDateRange } from './period.ts';
 
@@ -27,8 +30,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
 
@@ -61,6 +64,7 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
   }
   if (command === 'data') {
     if (parts.length <= 2) return ['download', 'watchlist', 'list'];
+    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return ['yahoo', 'stooq'];
     if (parts[1] === 'download') return ['--period', '--start', '--end', '--interval', '--source', '--provider-symbol'];
     if (parts[1] === 'watchlist') return ['--period', '--start', '--end', '--interval', '--source'];
     return [];
@@ -73,6 +77,7 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
   if (command === 'download') return parts.length >= 3 && trimmed.endsWith(' ') ? ['--period', '--start', '--end'] : [];
   if (command === 'analyze') return [];
   if (command === 'list') return [];
+  if (command === 'audit') return [];
   if (command === 'discover') {
     return discoverCompletionCandidates(parts);
   }
@@ -325,43 +330,71 @@ function commandCollect(dataDir: string, sub?: string, tail: string[] = []): num
   return 2;
 }
 
-function commandPythonStats(dataDir: string, symbol?: string, tail: string[] = []): number {
-  if (!symbol) { warn('usage: stats <SYMBOL>'); return 2; }
-  const command = ['-m', 'tossquant_cli.cli', '--data-dir', dataDir, 'stats', symbol, ...tail];
-  const result = spawnSync('python3', command, { encoding: 'utf8', cwd: process.cwd() });
-  const stdout = result.stdout?.trim();
-  const stderr = result.stderr?.trim();
-  if (stdout) {
-    if (INTERACTIVE_CHAT_UI) emitChat(stdout);
-    else console.log(stdout);
-  }
-  if (stderr) warn(stderr);
-  if (result.error) warn(result.error.message);
-  return result.status ?? (result.error ? 127 : 1);
+function dataOptionsFromTail(tail: string[]): { json: boolean; request: Omit<DownloadRequest, 'symbol'>; rest: string[] } {
+  const rest = [...tail];
+  const json = rest.includes('--json');
+  for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--json') rest.splice(i, 1);
+  const expanded = expandDataArgs(rest);
+  const source = takeOption(expanded, '--source');
+  const interval = takeOption(expanded, '--interval');
+  const start = takeOption(expanded, '--start');
+  const end = takeOption(expanded, '--end');
+  const providerSymbol = takeOption(expanded, '--provider-symbol');
+  return { json, request: { source: source || 'yahoo', interval, start, end, providerSymbol }, rest: expanded };
 }
 
-function commandPythonData(dataDir: string, sub?: string, tail: string[] = []): number {
-  if (!sub) { warn('usage: data [download <SYMBOL>|watchlist|list]'); return 2; }
-  const json = tail.includes('--json');
-  let expandedTail: string[];
+function commandStats(dataDir: string, symbol?: string, tail: string[] = []): number {
+  if (!symbol) { warn('usage: stats <SYMBOL>'); return 2; }
   try {
-    expandedTail = expandDataArgs(tail);
+    const { request } = dataOptionsFromTail(tail);
+    const result = marketStats(symbol, { base: dataDir, source: request.source, interval: request.interval, providerSymbol: request.providerSymbol });
+    printJson(result);
+    return result.ok ? 0 : 1;
   } catch (error) {
-    warn(error instanceof Error ? error.message : String(error));
-    return 2;
+    printJson({ ok: false, symbol: symbol.toUpperCase(), error: error instanceof Error ? error.message : String(error) });
+    return 1;
   }
-  const command = ['-m', 'tossquant_cli.cli', '--data-dir', dataDir, 'data', sub, ...expandedTail];
-  const result = spawnSync('python3', command, { encoding: 'utf8', cwd: process.cwd() });
-  const stdout = result.stdout?.trim();
-  const stderr = result.stderr?.trim();
-  if (stdout) {
-    const text = json ? stdout : formatDataOutput(sub, stdout);
-    if (INTERACTIVE_CHAT_UI) emitChat(text);
-    else console.log(text);
+}
+
+async function commandData(dataDir: string, sub?: string, tail: string[] = []): Promise<number> {
+  if (!sub) { warn('usage: data [download <SYMBOL>|watchlist|list]'); return 2; }
+  try {
+    const { json, request, rest } = dataOptionsFromTail(tail);
+    if (sub === 'download') {
+      const symbol = rest[0];
+      if (!symbol) { warn('usage: data download <SYMBOL>'); return 2; }
+      const result = await downloadHistory({ symbol, ...request }, { base: dataDir });
+      printText(json ? JSON.stringify(result, null, 2) : formatDataOutput(sub, JSON.stringify(result)));
+      return result.ok ? 0 : 1;
+    }
+    if (sub === 'watchlist') {
+      const result = await downloadWatchlist({
+        base: dataDir,
+        source: request.source,
+        interval: request.interval,
+        start: request.start,
+        end: request.end,
+      });
+      printText(json ? JSON.stringify(result, null, 2) : formatDataOutput(sub, JSON.stringify(result)));
+      return result.ok ? 0 : 1;
+    }
+    if (sub === 'list') {
+      const result = { ok: true, datasets: listDatasets(dataDir) };
+      printText(json ? JSON.stringify(result, null, 2) : formatDataOutput(sub, JSON.stringify(result)));
+      return 0;
+    }
+  } catch (error) {
+    printJson({ ok: false, sub, error: error instanceof Error ? error.message : String(error) });
+    return 1;
   }
-  if (stderr) warn(stderr);
-  if (result.error) warn(result.error.message);
-  return result.status ?? (result.error ? 127 : 1);
+  warn('usage: data [download <SYMBOL>|watchlist|list]');
+  return 2;
+}
+
+function commandAudit(dataDir: string, ticker?: string): number {
+  const findings = auditAll(dataDir, ticker);
+  printJson({ ok: !findings.some((item) => item.severity === 'error'), findings });
+  return findings.some((item) => item.severity === 'error') ? 1 : 0;
 }
 
 function commandSources(kind = 'list'): number {
@@ -457,16 +490,18 @@ function formatDiscoverResult(result: DiscoverResult): string {
   ].join('\n');
 }
 
-function downloadDiscoveredSymbols(dataDir: string, result: DiscoverResult, dataArgs: string[]): { ok: boolean; text: string } {
+async function downloadDiscoveredSymbols(dataDir: string, result: DiscoverResult, dataArgs: string[]): Promise<{ ok: boolean; text: string }> {
   const rows: string[][] = [];
   let failed = 0;
   const args = dataArgs.length ? dataArgs : ['--period', '1y'];
   for (const item of result.items) {
-    const expanded = expandDataArgs(['download', item.symbol, ...args]);
-    const command = ['-m', 'tossquant_cli.cli', '--data-dir', dataDir, 'data', ...expanded];
-    const run = spawnSync('python3', command, { encoding: 'utf8', cwd: process.cwd() });
     let parsed: any = {};
-    try { parsed = JSON.parse(run.stdout?.trim() ?? '{}'); } catch { parsed = { ok: false, error: run.stderr || run.stdout }; }
+    try {
+      const { request } = dataOptionsFromTail(args);
+      parsed = await downloadHistory({ symbol: item.symbol, ...request }, { base: dataDir });
+    } catch (error) {
+      parsed = { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
     if (!parsed.ok) failed += 1;
     rows.push([
       item.symbol,
@@ -498,9 +533,10 @@ async function commandDiscover(dataDir: string, parts: string[]): Promise<number
     limit: options.limit,
     dataDir,
   });
+  const downloaded = options.download ? await downloadDiscoveredSymbols(dataDir, result, options.dataArgs) : undefined;
   printText([
     formatDiscoverResult(result),
-    options.download ? ['', downloadDiscoveredSymbols(dataDir, result, options.dataArgs).text].join('\n') : '',
+    downloaded ? ['', downloaded.text].join('\n') : '',
   ].join('\n'));
   return 0;
 }
@@ -694,7 +730,52 @@ async function runInteractive(dataDir: string): Promise<number> {
   let lastAction = 'ready';
   INTERACTIVE_CHAT_UI = true;
   console.log(inputHintBox(mode));
+  const handleLine = async (rawLine: string): Promise<boolean> => {
+    output.write(RESET);
+    const line = rawLine.trim();
+    if (!line) return false;
+    if (line === '/exit') {
+      shutdownManagedTmuxRuntime();
+      return true;
+    }
+    if (['exit', '/quit', 'quit', '/:q', ':q'].includes(line)) {
+      warn('Use /exit to close TossQuant and its managed tmux session.');
+      lastAction = 'exit-help';
+      return false;
+    }
+    const parts = line.split(/\s+/);
+    if (line === '/codex') { mode = 'codex'; lastAction = '/codex'; console.log(inputHintBox(mode)); return false; }
+    if (line === '/quant') { mode = 'quant'; lastAction = '/quant'; console.log(inputHintBox(mode)); return false; }
+    if (line === '/start') { commandStart(); lastAction = '/start'; return false; }
+    if (line === '/next') { commandNext(dataDir); lastAction = '/next'; return false; }
+    if (line === '/status') { printStatus(dataDir); lastAction = '/status'; return false; }
+    if (line.startsWith('/watchlist')) { handleWatchlist(parts, dataDir); lastAction = '/watchlist'; return false; }
+    if (line === '/hud') { emitChat(runtimeLine(dataDir, mode, lastAction)); lastAction = '/hud'; return false; }
+    if (line === '/hud tmux') { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); lastAction = '/hud'; return false; }
+    if (line.startsWith('/runtime')) { emitChat(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; return false; }
+    if (line.startsWith('/ask ')) { runCodexPrompt(line.slice(5)); lastAction = '/ask'; return false; }
+    if (mode === 'codex') { runCodexPrompt(line); lastAction = 'codex'; return false; }
+    if (!line.startsWith('/')) {
+      emitChat(formatNaturalPlan(planNatural(line)));
+      lastAction = 'natural-plan';
+      return false;
+    }
+    const commandParts = line.slice(1).split(/\s+/);
+    const code = await runOnce(['--data-dir', dataDir, ...commandParts], { quietUnknown: true });
+    lastAction = commandParts.slice(0, 2).join(' ');
+    if (code === 2) warn('unknown slash command: try /start, /find, /download NVDA, /analyze NVDA, /next, or /exit');
+    return false;
+  };
   const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode) });
+  if (!input.isTTY) {
+    for await (const line of rl) {
+      recordRuntime({ base: dataDir, mode, lastAction });
+      if (await handleLine(line)) break;
+    }
+    output.write(RESET);
+    rl.close();
+    return 0;
+  }
   const lines = rl[Symbol.asyncIterator]();
   for (;;) {
     recordRuntime({ base: dataDir, mode, lastAction });
@@ -702,40 +783,10 @@ async function runInteractive(dataDir: string): Promise<number> {
     rl.prompt();
     const answer = await lines.next();
     if (answer.done) { output.write(RESET); rl.close(); return 0; }
-    output.write(RESET);
-    const line = answer.value.trim();
-    if (!line) continue;
-    if (line === '/exit') {
+    if (await handleLine(answer.value)) {
       rl.close();
-      shutdownManagedTmuxRuntime();
       return 0;
     }
-    if (['exit', '/quit', 'quit', '/:q', ':q'].includes(line)) {
-      warn('Use /exit to close TossQuant and its managed tmux session.');
-      lastAction = 'exit-help';
-      continue;
-    }
-    const parts = line.split(/\s+/);
-    if (line === '/codex') { mode = 'codex'; lastAction = '/codex'; console.log(inputHintBox(mode)); continue; }
-    if (line === '/quant') { mode = 'quant'; lastAction = '/quant'; console.log(inputHintBox(mode)); continue; }
-    if (line === '/start') { commandStart(); lastAction = '/start'; continue; }
-    if (line === '/next') { commandNext(dataDir); lastAction = '/next'; continue; }
-    if (line === '/status') { printStatus(dataDir); lastAction = '/status'; continue; }
-    if (line.startsWith('/watchlist')) { handleWatchlist(parts, dataDir); lastAction = '/watchlist'; continue; }
-    if (line === '/hud') { emitChat(runtimeLine(dataDir, mode, lastAction)); lastAction = '/hud'; continue; }
-    if (line === '/hud tmux') { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); lastAction = '/hud'; continue; }
-    if (line.startsWith('/runtime')) { emitChat(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; continue; }
-    if (line.startsWith('/ask ')) { runCodexPrompt(line.slice(5)); lastAction = '/ask'; continue; }
-    if (mode === 'codex') { runCodexPrompt(line); lastAction = 'codex'; continue; }
-    if (!line.startsWith('/')) {
-      emitChat(formatNaturalPlan(planNatural(line)));
-      lastAction = 'natural-plan';
-      continue;
-    }
-    const commandParts = line.slice(1).split(/\s+/);
-    const code = await runOnce(['--data-dir', dataDir, ...commandParts], { quietUnknown: true });
-    lastAction = commandParts.slice(0, 2).join(' ');
-    if (code === 2) warn('unknown slash command: try /start, /find, /download NVDA, /analyze NVDA, /next, or /exit');
   }
 }
 
@@ -749,17 +800,18 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
     return commandSymbol(dataDir, 'search', [sub, ...tail].join(' '));
   }
   if (cmd === 'find') return commandDiscover(dataDir, findAliasArgs(sub, tail));
-  if (cmd === 'download') return commandPythonData(dataDir, 'download', downloadAliasArgs(sub, tail));
-  if (cmd === 'analyze') return commandPythonStats(dataDir, sub, tail);
-  if (cmd === 'list') return commandPythonData(dataDir, 'list', tail);
+  if (cmd === 'download') return commandData(dataDir, 'download', downloadAliasArgs(sub, tail));
+  if (cmd === 'analyze') return commandStats(dataDir, sub, tail);
+  if (cmd === 'list') return commandData(dataDir, 'list', tail);
   if (cmd === 'status') { printStatus(dataDir); return 0; }
   if (cmd === 'doctor') return commandDoctor(dataDir);
   if (cmd === 'collect') return commandCollect(dataDir, sub, tail);
-  if (cmd === 'data') return commandPythonData(dataDir, sub, tail);
+  if (cmd === 'data') return commandData(dataDir, sub, tail);
   if (cmd === 'sources') return commandSources(sub ?? 'list');
   if (cmd === 'discover') return commandDiscover(dataDir, [sub, ...tail].filter(Boolean));
   if (cmd === 'symbol') return commandSymbol(dataDir, sub ?? 'search', tail.join(' '));
-  if (cmd === 'stats') return commandPythonStats(dataDir, sub, tail);
+  if (cmd === 'stats') return commandStats(dataDir, sub, tail);
+  if (cmd === 'audit') return commandAudit(dataDir, sub);
   if (cmd === 'quote' && sub === 'fetch') return commandQuoteFetch(dataDir, tail[0]);
   if (cmd === 'quote' && sub === 'history') return commandQuoteHistory(dataDir, tail[0]);
   if (cmd === 'quote' && sub) return commandQuoteFetch(dataDir, sub);
