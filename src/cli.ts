@@ -9,7 +9,7 @@ import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, tmu
 import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
-import { accountSummary, authStatus, orderPreview, portfolioPositions, quote, version } from './toss.ts';
+import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { completeLine } from './cli/completions.ts';
 import { chatBox, commandEchoBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 
@@ -199,8 +199,8 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'start       /watchlist add AAPL  →  quote AAPL  →  history AAPL  →  classify AAPL',
-    'commands    /status · /watchlist list|fetch · runtime line · hud · doctor · exit',
+    'start       /watchlist add AAPL  →  collect quote AAPL  →  history AAPL  →  classify AAPL',
+    'commands    /status · collect plan|quote|watchlist · /watchlist list|fetch · runtime line · hud · doctor · exit',
     'codex       /ask <question> · /codex · /quant',
     'plain mode  quant --no-tmux',
     '',
