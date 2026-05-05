@@ -78,6 +78,8 @@ TossQuant quant ❯ classify AAPL
 TossQuant quant ❯ portfolio
 TossQuant quant ❯ /ask what should I study next?
 TossQuant quant ❯ /skills
+TossQuant quant ❯ /tools
+TossQuant quant ❯ /agent NVDA earnings momentum research
 TossQuant quant ❯ $tossquant-idea-coach --lang ko
 TossQuant quant ❯ /brief
 TossQuant quant ❯ /research AAPL
@@ -219,6 +221,9 @@ TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls 
 - `/codex` changes the prompt to `tossquant/codex>`; normal text is sent to Codex.
 - `/quant` returns to normal TossQuant commands.
 - `/skills` lists Codex skills found under `$CODEX_HOME/skills` or `~/.codex/skills`.
+- `/tools` lists the safe TossQuant tool registry exposed to agents and MCP clients.
+- `/agent <request>` runs a beginner-friendly local tool loop, records meaningful context under `.quant/`, and can optionally ask a provider with `--provider codex|claude`. Use `--download` before allowing network/local data-download writes.
+- `/session handoff` prints the recent `.quant/` session summary so Codex/Claude can continue the conversation without raw credentials.
 - `$skill-name ...` invokes an installed Codex skill from interactive quant/TUI; Tab completion suggests installed skills such as `$tossquant-idea-coach`.
 - `/brief` or `/today` asks Codex for a local-data session brief and next TossQuant commands.
 - `/research <TICKER>` combines local OHLCV/stat/audit context with a Codex/web event-summary prompt, saves a redacted report under `data/research/`, and avoids buy/sell/hold advice or single-score conclusions.
@@ -241,6 +246,22 @@ Market data defaults:
 - `quant data watchlist refresh` refreshes every ticker in `data/watchlist.json`.
 - `quant data download AAPL --source stooq --period 1y` uses Stooq when `STOOQ_API_KEY` is available or Stooq allows CSV access.
 - `quant stats AAPL` reads the default Yahoo dataset unless you pass another `--source`.
+
+## LLM tool/workbench mode
+
+TossQuant exposes a curated tool registry instead of letting LLMs run arbitrary shell commands:
+
+```bash
+quant tools list --json
+quant tools run data.info --symbol NVDA --json
+quant agent "NVDA earnings momentum research"
+quant agent "NVDA earnings momentum research" --download --provider codex
+quant provider list --json
+quant session handoff
+quant mcp
+```
+
+The registry currently includes safe research/data tools such as `data.info`, `data.download`, `data.validate`, `stats.run`, `research.run`, `idea.create`, `idea.add-symbol`, `lab.workflow`, and `lab.stage`. It intentionally does not expose order placement, account mutation, or raw broker commands. `.quant/` stores session handoff state while `data/` remains the market-data store. `quant mcp` serves the same registry over stdio MCP (`initialize`, `tools/list`, `tools/call`) for external Codex/Claude-style clients.
 
 Codex is launched as `codex exec --sandbox read-only --cd <project> ...` so the first integration is intentionally read-only.
 TossQuant filters Codex CLI transcript noise such as hook lines and sandbox warnings, then renders the model response in a colored Codex window.

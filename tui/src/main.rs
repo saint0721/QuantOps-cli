@@ -33,6 +33,10 @@ const ROOT_COMMANDS: &[&str] = &[
     "/research",
     "/idea",
     "/lab",
+    "/tools",
+    "/agent",
+    "/provider",
+    "/session",
     "/skills",
     "/list",
     "/status",
@@ -389,7 +393,7 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "beginner /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
         "flow     /idea new \"NVDA momentum\" → /idea add-symbol latest NVDA → /lab workflow latest".to_string(),
         "advanced /lab discuss latest · /lab verify latest · /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL>".to_string(),
-        "tools    /skills · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
+        "tools    /skills · /tools · /agent · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
         "try      /start".to_string(),
@@ -454,6 +458,10 @@ fn command_candidates(
         "/analyze" => &[],
         "/research" => research_candidates(parts, trailing_space),
         "/skills" => &[],
+        "/tools" => &["list", "run"],
+        "/agent" => &["--provider", "--download", "--json", "--session"],
+        "/provider" => &["list", "--json"],
+        "/session" => &["current", "list", "handoff", "--json"],
         "/idea" => one_level_candidates(
             parts,
             trailing_space,
@@ -1384,6 +1392,8 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/research".to_string()));
         assert!(completion_matches("", "quant").contains(&"/idea".to_string()));
         assert!(completion_matches("", "quant").contains(&"/lab".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/tools".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/agent".to_string()));
         assert!(completion_matches("", "quant").contains(&"/skills".to_string()));
         assert!(completion_matches("", "quant").contains(&"/list".to_string()));
         assert!(completion_matches("", "quant").contains(&"/sources".to_string()));
