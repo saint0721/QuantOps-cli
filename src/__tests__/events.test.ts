@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { marketDatasetPath } from '../data.ts';
 import { defineEvent, parseEventWindows, runEventStudy } from '../events.ts';
+import { runEventStudyRuntime } from '../rustEvent.ts';
 import { appendJsonl } from '../storage.ts';
 
 function writeClose(base: string, symbol: string, day: number, close: number) {
@@ -56,4 +57,23 @@ test('event study computes target and benchmark windows from saved data', () => 
   assert.equal(result.benchmark_symbol, 'SOXX');
   assert.equal((result.windows as any[]).length, 2);
   assert.equal((result.abnormal_returns as any[]).length, 2);
+});
+
+test('event study runtime preserves a TypeScript fallback contract', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-event-runtime-'));
+  for (let day = 1; day <= 10; day += 1) writeClose(dir, 'TSM', day, 100 + day);
+
+  const previous = process.env.QUANTOPS_EVENT_ENGINE;
+  process.env.QUANTOPS_EVENT_ENGINE = 'typescript';
+  const result = runEventStudyRuntime('TSM', {
+    base: dir,
+    eventDate: '2026-01-05',
+    windows: parseEventWindows(['1,3']),
+  });
+  if (previous === undefined) delete process.env.QUANTOPS_EVENT_ENGINE;
+  else process.env.QUANTOPS_EVENT_ENGINE = previous;
+
+  assert.equal(result.ok, true);
+  assert.equal(result.engine, 'typescript');
+  assert.equal((result.windows as any[]).length, 1);
 });
