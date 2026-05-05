@@ -14,6 +14,7 @@ import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './lab.ts';
+import { listCodexSkills, skillInvocationCandidates, type CodexSkill } from './skills.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 import { table } from './ui/table.ts';
 import { SOURCES, discoverMarket, searchSymbolsLive, sourceById, symbolInfo, type DiscoverResult, type SourceInfo, type SymbolInfo, type SymbolSearchResult } from './discovery.ts';
@@ -33,8 +34,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'idea', 'lab', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/idea', '/lab', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'idea', 'lab', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/idea', '/lab', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
 
@@ -52,6 +53,7 @@ function discoverCompletionCandidates(parts: string[]): string[] {
 export function completionCandidates(line: string, mode = 'quant', completionDataDir = 'data'): string[] {
   const trimmed = line.trimStart();
   if (mode === 'codex') return SLASH_COMPLETIONS;
+  if (trimmed.startsWith('$')) return skillInvocationCandidates();
   if (!trimmed) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
   const baseParts = trimmed.trimEnd().split(/\s+/).filter(Boolean);
   const parts = trimmed.endsWith(' ') ? [...baseParts, ''] : baseParts;
@@ -767,6 +769,26 @@ function commandStart(): number {
   return 0;
 }
 
+function skillSummaryRow(skill: CodexSkill): string[] {
+  const shorten = (text: string, max: number) => text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  return [skill.name, shorten(skill.description || '-', 96), skill.path];
+}
+
+function commandSkills(): number {
+  const skills = listCodexSkills();
+  printText([
+    'Codex skills',
+    '',
+    skills.length ? table(['skill', 'description', 'path'], skills.map(skillSummaryRow)) : 'No skills found under $CODEX_HOME/skills or ~/.codex/skills.',
+    '',
+    'Use inside quant:',
+    '  /skills',
+    '  $tossquant-idea-coach --lang ko',
+    '  $tossquant-research-lab latest --lang ko',
+  ].join('\n'));
+  return 0;
+}
+
 function commandNext(dataDir: string): number {
   printText(nextRecommendation(dataDir));
   return 0;
@@ -1045,10 +1067,10 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'beginner    /start · /next · /idea · /lab · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
+    'beginner    /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
     'flow        /idea new "NVDA momentum"  →  /idea add-symbol latest NVDA  →  /lab workflow latest',
     'advanced    /lab discuss latest · /lab verify latest · /discover · /data info · /stats <SYMBOL>',
-    'codex       /ask <question> · /codex · /quant · /exit',
+    'codex       /skills · $tossquant-idea-coach · /ask <question> · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
     '',
   ].join('\n');
@@ -1081,6 +1103,7 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (line === '/quant') { mode = 'quant'; lastAction = '/quant'; console.log(inputHintBox(mode)); return false; }
     if (line === '/start') { commandStart(); lastAction = '/start'; return false; }
     if (line === '/next') { commandNext(dataDir); lastAction = '/next'; return false; }
+    if (line === '/skills') { commandSkills(); lastAction = '/skills'; return false; }
     if (line === '/status') { printStatus(dataDir); lastAction = '/status'; return false; }
     if (line.startsWith('/watchlist')) { handleWatchlist(parts, dataDir); lastAction = '/watchlist'; return false; }
     if (line === '/hud') { emitChat(runtimeLine(dataDir, mode, lastAction)); lastAction = '/hud'; return false; }
@@ -1088,6 +1111,7 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (line.startsWith('/runtime')) { emitChat(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; return false; }
     if (line.startsWith('/ask ')) { runCodexPrompt(line.slice(5)); lastAction = '/ask'; return false; }
     if (line.startsWith('/research ')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/research'; return false; }
+    if (line.startsWith('$')) { runCodexPrompt(line); lastAction = 'skill'; return false; }
     if (mode === 'codex') { runCodexPrompt(line); lastAction = 'codex'; return false; }
     if (!line.startsWith('/')) {
       emitChat(formatNaturalPlan(planNatural(line)));
@@ -1139,6 +1163,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'research') return commandResearch(dataDir, sub, tail);
   if (cmd === 'idea') return commandIdea(dataDir, sub ?? 'list', tail);
   if (cmd === 'lab') return commandLab(dataDir, sub ?? 'workflow', tail);
+  if (cmd === 'skills') return commandSkills();
   if (cmd === 'list') return commandData(dataDir, 'list', tail);
   if (cmd === 'status') { printStatus(dataDir); return 0; }
   if (cmd === 'doctor') return commandDoctor(dataDir);
@@ -1158,6 +1183,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'order' && sub === 'preview') return commandOrderPreview(tail);
   if (cmd === 'watchlist') return handleWatchlist(['watchlist', sub ?? 'list', ...tail], dataDir);
   if (cmd === 'ask') return runCodexPrompt([sub, ...tail].filter(Boolean).join(' '));
+  if (cmd?.startsWith('$')) return runCodexPrompt([cmd, sub, ...tail].filter(Boolean).join(' '));
   if (cmd === 'runtime' && sub === 'snapshot') { printJson(recordRuntime({ base: dataDir, lastAction: 'snapshot' })); return 0; }
   if (cmd === 'runtime' && sub === 'line') { console.log(runtimeLine(dataDir)); return 0; }
   if (cmd === 'hud' && rest.includes('--watch')) { void watchHud(dataDir, Number(rest[rest.indexOf('--interval') + 1] ?? 1)); return 0; }
