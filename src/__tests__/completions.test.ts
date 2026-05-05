@@ -127,17 +127,17 @@ test('codex mode limits completion to slash controls', () => {
   assert.equal(candidates.includes('quote'), false);
 });
 
-test('skill invocation completion suggests local Codex skills', () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'tq-complete-skills-'));
-  const dir = join(codexHome, 'skills', 'tossquant-idea-coach');
+test('skill invocation completion suggests TossQuant local skills', () => {
+  const skillsRoot = mkdtempSync(join(tmpdir(), 'tq-complete-skills-'));
+  const dir = join(skillsRoot, 'tossquant-idea-coach');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'SKILL.md'), '---\nname: tossquant-idea-coach\ndescription: "Idea coach"\n---\n', 'utf8');
-  const previous = process.env.CODEX_HOME;
-  process.env.CODEX_HOME = codexHome;
+  const previous = process.env.TOSSQUANT_SKILLS_DIR;
+  process.env.TOSSQUANT_SKILLS_DIR = skillsRoot;
   try {
     assert.deepEqual(completeLine('$toss', 'quant')[0], ['$tossquant-idea-coach']);
   } finally {
-    if (previous === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = previous;
+    if (previous === undefined) delete process.env.TOSSQUANT_SKILLS_DIR;
+    else process.env.TOSSQUANT_SKILLS_DIR = previous;
   }
 });

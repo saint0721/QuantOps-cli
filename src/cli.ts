@@ -14,7 +14,7 @@ import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist, type JsonObject } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './lab.ts';
-import { listCodexSkills, skillInvocationCandidates, type CodexSkill } from './skills.ts';
+import { listQuantSkills, quantSkillInvocationCandidates, type QuantSkill } from './skills.ts';
 import { listTools, runTool, toolSummaries } from './tools.ts';
 import { runAgent } from './agent.ts';
 import { providersJson, listProviders } from './providers.ts';
@@ -60,7 +60,7 @@ function discoverCompletionCandidates(parts: string[]): string[] {
 export function completionCandidates(line: string, mode = 'quant', completionDataDir = 'data'): string[] {
   const trimmed = line.trimStart();
   if (mode === 'codex') return SLASH_COMPLETIONS;
-  if (trimmed.startsWith('$')) return skillInvocationCandidates();
+  if (trimmed.startsWith('$')) return quantSkillInvocationCandidates();
   if (!trimmed) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
   const baseParts = trimmed.trimEnd().split(/\s+/).filter(Boolean);
   const parts = trimmed.endsWith(' ') ? [...baseParts, ''] : baseParts;
@@ -1004,17 +1004,17 @@ function commandSession(action = 'current', tail: string[] = []): number {
   return 2;
 }
 
-function skillSummaryRow(skill: CodexSkill): string[] {
+function skillSummaryRow(skill: QuantSkill): string[] {
   const shorten = (text: string, max: number) => text.length > max ? `${text.slice(0, max - 1)}…` : text;
   return [skill.name, shorten(skill.description || '-', 96), skill.path];
 }
 
 function commandSkills(): number {
-  const skills = listCodexSkills();
+  const skills = listQuantSkills();
   printText([
-    'Codex skills',
+    'TossQuant local skills',
     '',
-    skills.length ? table(['skill', 'description', 'path'], skills.map(skillSummaryRow)) : 'No skills found under $CODEX_HOME/skills or ~/.codex/skills.',
+    skills.length ? table(['skill', 'description', 'path'], skills.map(skillSummaryRow)) : 'No TossQuant skills found under quant-skills/ or $TOSSQUANT_SKILLS_DIR.',
     '',
     'Use inside quant:',
     '  /skills',

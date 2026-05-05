@@ -150,23 +150,23 @@ test('backtest command runs a selected strategy for latest idea symbol', async (
   assert.match(backtest.output, /"fast":5/);
 });
 
-test('skills command lists local Codex skills with dollar invocation hints', async () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'tq-cli-skills-'));
-  const skillDir = join(codexHome, 'skills', 'tossquant-idea-coach');
+test('skills command lists TossQuant local skills with dollar invocation hints', async () => {
+  const skillsRoot = mkdtempSync(join(tmpdir(), 'tq-cli-skills-'));
+  const skillDir = join(skillsRoot, 'tossquant-idea-coach');
   mkdirSync(skillDir, { recursive: true });
   writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: tossquant-idea-coach\ndescription: "Beginner idea coach"\n---\n', 'utf8');
-  const previous = process.env.CODEX_HOME;
-  process.env.CODEX_HOME = codexHome;
+  const previous = process.env.TOSSQUANT_SKILLS_DIR;
+  process.env.TOSSQUANT_SKILLS_DIR = skillsRoot;
   try {
     const result = await captureConsole(() => runOnce(['--no-tmux', 'skills']));
 
     assert.equal(result.code, 0);
-    assert.match(result.output, /Codex skills/);
+    assert.match(result.output, /TossQuant local skills/);
     assert.match(result.output, /tossquant-idea-coach/);
     assert.match(result.output, /\$tossquant-idea-coach --lang ko/);
   } finally {
-    if (previous === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = previous;
+    if (previous === undefined) delete process.env.TOSSQUANT_SKILLS_DIR;
+    else process.env.TOSSQUANT_SKILLS_DIR = previous;
   }
 });
 

@@ -613,19 +613,18 @@ fn lab_candidates(parts: &[&str], trailing_space: bool, data_dir: Option<&str>) 
     Vec::new()
 }
 
-fn codex_skills_dir() -> PathBuf {
-    env::var("CODEX_HOME")
+fn quant_skills_dir() -> PathBuf {
+    env::var("TOSSQUANT_SKILLS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            env::var("HOME")
-                .map(|home| PathBuf::from(home).join(".codex"))
-                .unwrap_or_else(|_| PathBuf::from(".codex"))
+            env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("quant-skills")
         })
-        .join("skills")
 }
 
 fn skill_invocation_candidates() -> Vec<String> {
-    skill_invocation_candidates_in(&codex_skills_dir())
+    skill_invocation_candidates_in(&quant_skills_dir())
 }
 
 fn skill_invocation_candidates_in(skills_dir: &Path) -> Vec<String> {
@@ -1702,7 +1701,7 @@ mod tests {
     }
 
     #[test]
-    fn skill_invocation_completion_reads_codex_skill_dirs() {
+    fn skill_invocation_completion_reads_quant_skill_dirs() {
         let root = env::temp_dir().join(format!(
             "tq-tui-skills-complete-{}",
             std::process::id()

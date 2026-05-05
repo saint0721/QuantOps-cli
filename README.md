@@ -224,12 +224,12 @@ TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls 
 - `/ask <question>` runs one Codex request.
 - `/codex` changes the prompt to `tossquant/codex>`; normal text is sent to Codex.
 - `/quant` returns to normal TossQuant commands.
-- `/skills` lists Codex skills found under `$CODEX_HOME/skills` or `~/.codex/skills`.
+- `/skills` lists TossQuant-only local skills found under `quant-skills/` or `$TOSSQUANT_SKILLS_DIR`.
 - `/tools` lists the safe TossQuant tool registry exposed to agents and MCP clients.
 - `/agent ko|en|auto` sets the default local agent report language.
 - `/agent <request>` runs a beginner-friendly local tool loop, continues the shared `.quant` `agent-chat` session by default, and can optionally ask a provider with `--provider codex|claude`. Use `--download` before allowing network/local data-download writes.
 - `/session handoff` prints the recent `.quant/` session summary so Codex/Claude can continue the conversation without raw credentials.
-- `$skill-name ...` invokes an installed Codex skill from interactive quant/TUI; Tab completion suggests installed skills such as `$tossquant-idea-coach`.
+- `$skill-name ...` invokes a TossQuant local skill from interactive quant/TUI; Tab completion suggests quant-only skills such as `$tossquant-idea-coach`.
 - `/brief` or `/today` asks Codex for a local-data session brief and next TossQuant commands.
 - `/research <TICKER>` combines local OHLCV/stat/audit context with a Codex/web event-summary prompt, saves a redacted report under `data/research/`, and avoids buy/sell/hold advice or single-score conclusions.
 - `/audit [TICKER]` runs deterministic local data-quality checks; add `explain` or `--explain` to ask Codex to explain the findings.
