@@ -59,9 +59,11 @@ chat, and the bottom pane is a live HUD like:
 ```
 
 Use `QUANTOPS_NO_TMUX=1 quant` or `quant --no-tmux`
-to start the plain non-tmux interactive shell. If your terminal mouse selection
-is captured by the Rust TUI, start it with `QUANTOPS_TUI_MOUSE=off quant` or
-use copy-friendly subcommands such as `quant idea status latest --plain`.
+to start the plain non-tmux interactive shell. The Rust TUI leaves terminal
+mouse selection available by default, so normal mouse drag can copy visible
+text. If you prefer app-level mouse wheel scrolling instead, start it with
+`QUANTOPS_TUI_MOUSE=1 quant`; use copy-friendly subcommands such as
+`quant idea status latest --plain` when you need stable text output.
 Inside the managed tmux runtime, `exit`, `quit`, or `:q` closes the whole
 QuantOps session, including the HUD pane.
 

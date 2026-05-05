@@ -23,11 +23,14 @@ test('agent extracts symbols and records a .quant session while running safe too
   const run = await runAgent('NVDA earnings momentum research', { base: dir, sessionRoot, sessionId: 'test-session', now: '2026-05-05T00:00:00Z' });
 
   assert.deepEqual(extractSymbols('check NVDA and AAPL'), ['NVDA', 'AAPL']);
+  assert.deepEqual(extractSymbols('삼성전자의 악재가 TSMC의 호재일까?'), ['TSM', '005930.KS']);
   assert.equal(run.ok, true);
   assert.equal(run.session.id, 'test-session');
   assert.equal(run.language, 'en');
   assert.ok(run.steps.some((step) => step.tool === 'stats.run'));
-  assert.match(run.report, /Next safe commands/);
+  assert.match(run.report, /checked only the local state needed/);
+  assert.doesNotMatch(run.report, /Next safe commands/);
+  assert.doesNotMatch(run.report, /Local tool output/);
 });
 
 test('agent local report can auto-select Korean or explicit English', async () => {
@@ -38,12 +41,13 @@ test('agent local report can auto-select Korean or explicit English', async () =
   const english = await runAgent('지금 전략 목록 알려줘', { base: dir, sessionRoot, sessionId: 'lang-en', language: 'en', now: '2026-05-05T00:00:00Z' });
 
   assert.equal(korean.language, 'ko');
-  assert.match(korean.report, /에이전트 실행/);
-  assert.match(korean.report, /다음 안전 명령/);
+  assert.match(korean.report, /필요한 로컬 상태만 조용히 확인/);
+  assert.match(korean.report, /기본 전략 템플릿/);
+  assert.doesNotMatch(korean.report, /다음 안전 명령/);
   assert.ok(korean.steps.some((step) => step.tool === 'strategy.list'));
   assert.equal(korean.steps.some((step) => step.tool === 'idea.create'), false);
   assert.equal(english.language, 'en');
-  assert.match(english.report, /Agent run/);
+  assert.match(english.report, /checked only the local state needed/);
 });
 
 test('agent keeps a conversational local reply when no tools are needed', async () => {
@@ -62,10 +66,9 @@ test('agent keeps a conversational local reply when no tools are needed', async 
   assert.equal(run.ok, true);
   assert.equal(run.session.id, 'agent-chat');
   assert.deepEqual(run.steps, []);
-  assert.match(run.report, /에이전트 답변/);
   assert.match(run.report, /agent-chat 대화/);
-  assert.match(run.report, /최근 이어받은 대화/);
-  assert.match(run.report, /lab\.discuss/);
+  assert.doesNotMatch(run.report, /최근 이어받은 대화/);
+  assert.doesNotMatch(run.report, /lab\.discuss/);
   assert.doesNotMatch(run.report, /제공자 요약/);
   assert.doesNotMatch(run.report, /도구 실행\n- 없음/);
   assert.doesNotMatch(run.report, /idea new "<your strategy idea>"/);
@@ -80,8 +83,8 @@ test('agent carries prior conversation replies instead of restarting command gui
   const events = sessionEvents(second.session, sessionRoot);
 
   assert.match(first.report, /명령어 가이드가 아니라 agent-chat 대화/);
-  assert.match(second.report, /최근 이어받은 대화/);
-  assert.match(second.report, /이전 에이전트 답변/);
+  assert.doesNotMatch(second.report, /최근 이어받은 대화/);
+  assert.doesNotMatch(second.report, /이전 에이전트 답변/);
   assert.equal(events.some((event) => event.type === 'agent.reply'), true);
   assert.doesNotMatch(second.report, /바로 이어서 이렇게 물어볼 수 있어요/);
   assert.doesNotMatch(second.report, /다음 안전 명령/);
@@ -127,11 +130,11 @@ test('agent explains lab workflow latest by running the lab workflow tool', asyn
 
   assert.equal(run.ok, true);
   assert.ok(run.steps.some((step) => step.tool === 'lab.workflow'));
-  assert.match(run.report, /Lab workflow: NVDA earnings momentum/);
+  assert.match(run.report, /workflow latest/);
   assert.match(run.report, /discuss/);
   assert.match(run.report, /verify/);
   assert.match(run.report, /backtest/);
-  assert.match(run.report, /lab discuss latest/);
+  assert.doesNotMatch(run.report, /lab discuss latest/);
   assert.doesNotMatch(run.report, /--no-codex/);
   assert.doesNotMatch(run.report, /idea new "<your strategy idea>"/);
 });
