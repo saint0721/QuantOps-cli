@@ -10,8 +10,11 @@ test('mcp server exposes registry tools and calls them through the safe wrapper'
   ]);
 
   assert.equal(replies[0]?.result?.serverInfo?.name, 'quantops-cli');
-  assert.ok((replies[1]?.result?.tools as any[]).some((tool) => tool.name === 'stats.run'));
+  const listedTools = replies[1]?.result?.tools as any[];
+  assert.ok(listedTools.some((tool) => tool.name === 'stats.run'));
+  assert.ok(listedTools.some((tool) => tool.name === 'event.study' && /rtk event study/.test(tool.rtkCommand)));
   assert.equal((replies[2]?.result?.content as any[])[0].type, 'text');
+  assert.match((replies[2]?.result?.content as any[])[0].text, /rtk data info AAPL --json/);
 });
 
 

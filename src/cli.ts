@@ -910,7 +910,7 @@ function argsToObject(args: string[]): JsonObject {
 }
 
 function toolRow(tool: ReturnType<typeof toolSummaries>[number]): string[] {
-  return [String(tool.name), tool.read_only ? 'read' : 'local-write', tool.mutates_trading ? 'yes' : 'no', String(tool.description)];
+  return [String(tool.name), tool.read_only ? 'read' : 'local-write', tool.mutates_trading ? 'yes' : 'no', String(tool.rtk_command), String(tool.description)];
 }
 
 async function commandTools(dataDir: string, action = 'list', tail: string[] = []): Promise<number> {
@@ -919,7 +919,7 @@ async function commandTools(dataDir: string, action = 'list', tail: string[] = [
     const args = tail.filter((item) => item !== '--json');
     if (action === 'list') {
       const payload = { ok: true, tools: toolSummaries() };
-      printText(json ? JSON.stringify(payload, null, 2) : table(['tool', 'mode', 'trading', 'description'], payload.tools.map(toolRow)));
+      printText(json ? JSON.stringify(payload, null, 2) : table(['tool', 'mode', 'trading', 'rtk command', 'description'], payload.tools.map(toolRow)));
       return 0;
     }
     if (action === 'run') {
