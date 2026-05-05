@@ -78,6 +78,10 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--topic'));
   assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--provider-symbol'));
   assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--no-codex'));
+  assert.deepEqual(completeLine('/research NVDA --', 'quant')[0], ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--no-codex']);
+  assert.deepEqual(completionCandidates('/research NVDA --source ', 'quant'), ['yahoo', 'stooq']);
+  assert.deepEqual(completionCandidates('/research NVDA --interval ', 'quant'), ['d', '1d', '1wk', '1mo']);
+  assert.deepEqual(completionCandidates('/research NVDA --topic ', 'quant'), []);
   assert.deepEqual(completionCandidates('/watchlist ', 'quant'), ['add', 'fetch', 'list', 'remove']);
   assert.ok(completeLine('/co', 'quant')[0].includes('/collect'));
   assert.ok(completeLine('runt', 'quant')[0].includes('runtime'));
