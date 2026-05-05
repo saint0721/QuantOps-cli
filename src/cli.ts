@@ -19,6 +19,8 @@ import { listTools, runTool, toolSummaries } from './tools.ts';
 import { runAgent } from './agent.ts';
 import { providersJson, listProviders } from './providers.ts';
 import { ensureQuantSession, listQuantSessions, sessionHandoff } from './session.ts';
+import { formatAgentLanguagePreference, normalizeAgentLanguage, readAgentPreferences, writeAgentLanguage } from './preferences.ts';
+import { formatBacktestResult, formatStrategyList, listBacktestStrategies, runBacktest } from './backtest.ts';
 import { runMcpServer } from './mcp.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 import { table } from './ui/table.ts';
@@ -39,8 +41,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'idea', 'lab', 'tools', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/idea', '/lab', '/tools', '/agent', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'research', 'idea', 'lab', 'tools', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/research', '/idea', '/lab', '/tools', '/agent', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/backtest', '/strategy', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
 
@@ -81,7 +83,12 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
     return [];
   }
   if (command === 'tools') return parts.length <= 2 ? ['list', 'run'] : (parts[1] === 'run' && parts.length <= 3 ? listTools().map((tool) => tool.name) : ['--json', '--input']);
-  if (command === 'agent') return ['--provider', '--download', '--json', '--session'];
+  if (command === 'agent') {
+    if (parts.length <= 2) return ['lang', '--lang', '--provider', '--download', '--json', '--session'];
+    if (parts[1] === 'lang' && parts.length <= 3) return ['ko', 'en', 'auto'];
+    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--lang') return ['ko', 'en', 'auto'];
+    return ['--lang', '--provider', '--download', '--json', '--session'];
+  }
   if (command === 'provider') return parts.length <= 2 ? ['list'] : ['--json'];
   if (command === 'session') return parts.length <= 2 ? ['current', 'list', 'handoff'] : ['--json'];
   if (command === 'lab') {
@@ -112,6 +119,17 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
   }
   if (command === 'download') return parts.length >= 3 && trimmed.endsWith(' ') ? ['--period', '--start', '--end'] : [];
   if (command === 'analyze') return [];
+  if (command === 'backtest') {
+    if (parts.length <= 2) return ['run', 'strategies', 'list'];
+    if (parts[1] === 'run') {
+      if (parts.length <= 3) return ['latest', 'AAPL', 'NVDA', 'SPY'];
+      if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--strategy') return listBacktestStrategies().map((strategy) => strategy.name);
+      if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return ['yahoo', 'stooq'];
+      return ['--strategy', '--fast', '--slow', '--lookback', '--threshold', '--source', '--interval', '--provider-symbol', '--no-save', '--json'];
+    }
+    return [];
+  }
+  if (command === 'strategy') return parts.length <= 2 ? ['list'] : [];
   if (command === 'research') {
     if (parts.length <= 2) return ['AAPL', 'NVDA', 'TSM', 'SPY'];
     if (trimmed.endsWith(' ') && parts.at(-2) === '--source') return ['yahoo', 'stooq'];
@@ -765,15 +783,16 @@ function commandStart(): number {
         ['1', '/find', '실시간 후보 10개 찾기'],
         ['2', '/symbol info NVDA', '고른 심볼이 뭔지 확인'],
         ['3', '/download NVDA', '1년치 일봉 데이터 저장'],
-        ['4', '/analyze NVDA', '수익률/변동성/추세 확인'],
+        ['4', '/stats NVDA', '수익률/변동성/추세 확인'],
         ['5', '/idea new "NVDA momentum"', '전략 아이디어를 저장'],
         ['6', '/lab workflow latest', '논의/검증/백테스트 작업 흐름 시작'],
-        ['7', '/next', '현재 상태에서 다음 행동 추천'],
+        ['7', '/backtest run latest --strategy ma-cross', '전략을 직접 백테스트'],
+        ['8', '/next', '현재 상태에서 다음 행동 추천'],
       ],
     ),
     '',
-    '기본 흐름: /find → /download <SYMBOL> → /analyze <SYMBOL> → /idea new ... → /lab workflow latest',
-    '고급 명령: /idea, /lab, /discover, /data download, /stats, /sources, /runtime',
+    '기본 흐름: /find → /download <SYMBOL> → /stats <SYMBOL> → /idea new ... → /lab workflow latest → /backtest run latest',
+    '고급 명령: /idea, /lab, /backtest, /strategy, /discover, /data download, /stats, /sources, /runtime',
   ].join('\n'));
   return 0;
 }
@@ -836,15 +855,103 @@ async function commandAgent(dataDir: string, tail: string[] = []): Promise<numbe
     const json = args.includes('--json');
     const allowDownloads = args.includes('--download');
     for (let i = args.length - 1; i >= 0; i -= 1) if (args[i] === '--json' || args[i] === '--download') args.splice(i, 1);
+    if (args[0] === 'lang' || args[0] === 'language') {
+      const requested = args[1];
+      if (!requested) {
+        printText(formatAgentLanguagePreference(readAgentPreferences(dataDir)));
+        return 0;
+      }
+      const prefs = writeAgentLanguage(dataDir, normalizeAgentLanguage(requested));
+      printText(formatAgentLanguagePreference(prefs));
+      return 0;
+    }
     const provider = takeOption(args, '--provider') || 'none';
+    const requestedLanguage = takeOption(args, '--lang');
+    const language = requestedLanguage ? normalizeAgentLanguage(requestedLanguage) : readAgentPreferences(dataDir).language;
     const sessionId = takeOption(args, '--session');
     const request = args.join(' ');
-    if (!request) { warn('usage: agent <REQUEST> [--provider codex|claude|none] [--download] [--session ID] [--json]'); return 2; }
-    const run = await runAgent(request, { base: dataDir, provider, allowDownloads, sessionId });
+    if (!request) { warn('usage: agent <REQUEST> [--lang auto|ko|en] [--provider codex|claude|none] [--download] [--session ID] [--json]\n       agent lang [auto|ko|en]'); return 2; }
+    const run = await runAgent(request, { base: dataDir, provider, allowDownloads, sessionId, language });
     printText(json ? JSON.stringify({ ...run, report: undefined }, null, 2) : run.report);
     return run.ok ? 0 : 1;
   } catch (error) {
     printJson({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
+}
+
+function numberOption(rest: string[], name: string): number | undefined {
+  const value = takeOption(rest, name);
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new Error(`${name} must be a number`);
+  return parsed;
+}
+
+function symbolFromBacktestTarget(dataDir: string, target: string): string {
+  if (target === 'latest' || target.startsWith('idea-')) {
+    const status = ideaStatus(dataDir, target);
+    const symbol = status.idea.symbols[0];
+    if (!symbol) throw new Error(`idea has no symbols yet: ${status.idea.id}`);
+    return symbol;
+  }
+  return target.toUpperCase();
+}
+
+function commandStrategy(action = 'list'): number {
+  if (action === 'list') {
+    printText(formatStrategyList());
+    return 0;
+  }
+  warn('usage: strategy list');
+  return 2;
+}
+
+function commandBacktest(dataDir: string, action = 'run', tail: string[] = []): number {
+  try {
+    if (action === 'list' || action === 'strategies') {
+      printText(formatStrategyList());
+      return 0;
+    }
+    if (action !== 'run') {
+      warn('usage: backtest [run <SYMBOL|latest>|strategies] [--strategy NAME] [--fast N] [--slow N] [--lookback N] [--threshold N] [--source yahoo|stooq] [--json] [--no-save]');
+      return 2;
+    }
+    const rest = [...tail];
+    const json = rest.includes('--json');
+    const noSave = rest.includes('--no-save');
+    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--json' || rest[i] === '--no-save') rest.splice(i, 1);
+    const strategy = takeOption(rest, '--strategy') || 'ma-cross';
+    const fast = numberOption(rest, '--fast');
+    const slow = numberOption(rest, '--slow');
+    const lookback = numberOption(rest, '--lookback');
+    const threshold = numberOption(rest, '--threshold');
+    const explicitSource = rest.includes('--source');
+    const explicitInterval = rest.includes('--interval');
+    const explicitProvider = rest.includes('--provider-symbol');
+    const { request, rest: expanded } = dataOptionsFromTail(rest);
+    const target = expanded[0];
+    if (!target) {
+      warn('usage: backtest run <SYMBOL|latest> [--strategy ma-cross|momentum|mean-reversion|buy-hold]');
+      return 2;
+    }
+    const symbol = symbolFromBacktestTarget(dataDir, target);
+    const result = runBacktest(symbol, {
+      base: dataDir,
+      source: explicitSource ? request.source : 'yahoo',
+      interval: explicitInterval ? request.interval : 'd',
+      providerSymbol: explicitProvider ? request.providerSymbol : undefined,
+      strategy,
+      fast,
+      slow,
+      lookback,
+      threshold,
+      save: !noSave,
+    });
+    printText(json ? JSON.stringify(result, null, 2) : formatBacktestResult(result));
+    return result.ok ? 0 : 1;
+  } catch (error) {
+    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
     return 1;
   }
 }
@@ -1186,9 +1293,9 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'beginner    /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
+    'beginner    /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list',
     'flow        /idea new "NVDA momentum"  →  /idea add-symbol latest NVDA  →  /lab workflow latest',
-    'advanced    /tools · /agent "NVDA momentum" · /lab discuss latest · /lab verify latest · /discover · /data info · /stats <SYMBOL>',
+    'advanced    /tools · /agent lang ko · /agent "NVDA momentum" · /backtest run latest · /strategy list · /discover · /data info · /stats <SYMBOL>',
     'codex       /skills · /tools · /agent · $tossquant-idea-coach · /ask <question> · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
     '',
@@ -1244,7 +1351,7 @@ async function runInteractive(dataDir: string): Promise<number> {
     const commandParts = line.slice(1).split(/\s+/);
     const code = await runOnce(['--data-dir', dataDir, ...commandParts], { quietUnknown: true });
     lastAction = commandParts.slice(0, 2).join(' ');
-    if (code === 2) warn('unknown slash command: try /start, /find, /download NVDA, /analyze NVDA, /next, or /exit');
+    if (code === 2) warn('unknown slash command: try /start, /find, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or /exit');
     return false;
   };
   const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode, dataDir) });
@@ -1286,6 +1393,8 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'research') return commandResearch(dataDir, sub, tail);
   if (cmd === 'idea') return commandIdea(dataDir, sub ?? 'list', tail);
   if (cmd === 'lab') return commandLab(dataDir, sub ?? 'workflow', tail);
+  if (cmd === 'backtest') return commandBacktest(dataDir, sub ?? 'run', tail);
+  if (cmd === 'strategy') return commandStrategy(sub ?? 'list');
   if (cmd === 'tools') return commandTools(dataDir, sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
   if (cmd === 'agent') return commandAgent(dataDir, [sub, ...tail].filter(Boolean));
   if (cmd === 'provider' || cmd === 'providers') return commandProviders(sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);

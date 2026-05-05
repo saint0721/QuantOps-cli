@@ -30,7 +30,6 @@ const ROOT_COMMANDS: &[&str] = &[
     "/next",
     "/find",
     "/download",
-    "/analyze",
     "/research",
     "/idea",
     "/lab",
@@ -47,6 +46,8 @@ const ROOT_COMMANDS: &[&str] = &[
     "/sources",
     "/symbol",
     "/stats",
+    "/backtest",
+    "/strategy",
     "/quote",
     "/history",
     "/classify",
@@ -294,7 +295,7 @@ impl App {
     fn start_line(&mut self, line: &str) -> Result<(), String> {
         let args = self.command_args(line);
         if args.is_empty() {
-            return Err("slash commands only: try /start, /idea, /find, /download NVDA, /analyze NVDA, /research NVDA, /next, or /exit"
+            return Err("slash commands only: try /start, /idea, /find, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or /exit"
                 .to_string());
         }
         let child = Command::new(&self.node)
@@ -335,7 +336,7 @@ impl App {
                 text.push_str(&String::from_utf8_lossy(&output.stderr));
                 let cleaned = strip_ansi(&text).trim().to_string();
                 if output.status.code() == Some(2) && cleaned.contains("unknown command:") {
-                    "unknown slash command: try /start, /idea, /find, /download NVDA, /analyze NVDA, /research NVDA, /next, or /exit"
+                    "unknown slash command: try /start, /idea, /find, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or /exit"
                         .to_string()
                 } else {
                     cleaned
@@ -391,10 +392,10 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "beginner /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
+        "beginner /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list".to_string(),
         "flow     /idea new \"NVDA momentum\" → /idea add-symbol latest NVDA → /lab workflow latest".to_string(),
-        "advanced /lab discuss latest · /lab verify latest · /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL>".to_string(),
-        "tools    /skills · /tools · /agent · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
+        "advanced /backtest run latest · /strategy list · /lab verify latest · /discover · /data info · /stats <SYMBOL>".to_string(),
+        "tools    /skills · /tools · /agent lang ko · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
         "try      /start".to_string(),
@@ -460,7 +461,7 @@ fn command_candidates(
         "/research" => research_candidates(parts, trailing_space),
         "/skills" => &[],
         "/tools" => &["list", "run"],
-        "/agent" => &["--provider", "--download", "--json", "--session"],
+        "/agent" => agent_candidates(parts, trailing_space),
         "/provider" => &["list", "--json"],
         "/session" => &["current", "list", "handoff", "--json"],
         "/idea" => one_level_candidates(
@@ -482,6 +483,8 @@ fn command_candidates(
         ),
         "/symbol" => symbol_candidates(parts, trailing_space),
         "/stats" => &[],
+        "/backtest" => backtest_candidates(parts, trailing_space),
+        "/strategy" => one_level_candidates(parts, trailing_space, &["list"]),
         "/quote" => one_level_candidates(parts, trailing_space, &["fetch", "history"]),
         "/watchlist" => {
             one_level_candidates(parts, trailing_space, &["add", "fetch", "list", "remove"])
@@ -492,6 +495,49 @@ fn command_candidates(
         "/order" => one_level_candidates(parts, trailing_space, &["preview"]),
         _ => &[],
     }
+}
+
+fn agent_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        return &["lang", "--lang", "--provider", "--download", "--json", "--session"];
+    }
+    if parts.get(1) == Some(&"lang") && (parts.len() <= 2 || (parts.len() == 3 && !trailing_space)) {
+        return &["ko", "en", "auto"];
+    }
+    if trailing_space && parts.last() == Some(&"--lang") {
+        return &["ko", "en", "auto"];
+    }
+    &["--lang", "--provider", "--download", "--json", "--session"]
+}
+
+fn backtest_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        return &["run", "strategies", "list"];
+    }
+    if parts.get(1) == Some(&"run") {
+        if parts.len() <= 2 || (parts.len() == 3 && !trailing_space) {
+            return &["latest", "AAPL", "NVDA", "SPY"];
+        }
+        if trailing_space && parts.last() == Some(&"--strategy") {
+            return &["buy-hold", "ma-cross", "momentum", "mean-reversion"];
+        }
+        if trailing_space && parts.last() == Some(&"--source") {
+            return &["yahoo", "stooq"];
+        }
+        return &[
+            "--strategy",
+            "--fast",
+            "--slow",
+            "--lookback",
+            "--threshold",
+            "--source",
+            "--interval",
+            "--provider-symbol",
+            "--no-save",
+            "--json",
+        ];
+    }
+    &[]
 }
 
 fn idea_reference_candidates(data_dir: Option<&str>) -> Vec<String> {
@@ -1395,7 +1441,7 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/start".to_string()));
         assert!(completion_matches("", "quant").contains(&"/find".to_string()));
         assert!(completion_matches("", "quant").contains(&"/download".to_string()));
-        assert!(completion_matches("", "quant").contains(&"/analyze".to_string()));
+        assert!(!completion_matches("", "quant").contains(&"/analyze".to_string()));
         assert!(completion_matches("", "quant").contains(&"/research".to_string()));
         assert!(completion_matches("", "quant").contains(&"/idea".to_string()));
         assert!(completion_matches("", "quant").contains(&"/lab".to_string()));
@@ -1406,6 +1452,8 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/sources".to_string()));
         assert!(completion_matches("", "quant").contains(&"/symbol".to_string()));
         assert!(completion_matches("", "quant").contains(&"/stats".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/backtest".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/strategy".to_string()));
         assert!(completion_matches("", "quant").contains(&"/research".to_string()));
         assert_eq!(
             completion_matches("/co", "quant"),
@@ -1508,6 +1556,21 @@ mod tests {
         assert_eq!(
             completion_matches("/analyze NVDA ", "quant"),
             Vec::<String>::new()
+        );
+        assert!(completion_matches("/agent ", "quant").contains(&"lang".to_string()));
+        assert_eq!(
+            completion_matches("/agent lang ", "quant"),
+            vec!["ko".to_string(), "en".to_string(), "auto".to_string()]
+        );
+        assert!(completion_matches("/backtest run NVDA ", "quant").contains(&"--strategy".to_string()));
+        assert_eq!(
+            completion_matches("/backtest run NVDA --strategy ", "quant"),
+            vec![
+                "buy-hold".to_string(),
+                "ma-cross".to_string(),
+                "momentum".to_string(),
+                "mean-reversion".to_string()
+            ]
         );
         assert!(completion_matches("/research NVDA ", "quant").contains(&"--source".to_string()));
         assert_eq!(
@@ -1786,10 +1849,11 @@ mod tests {
         assert!(text.contains("/start"));
         assert!(text.contains("/find"));
         assert!(text.contains("/download <SYMBOL>"));
-        assert!(text.contains("/analyze <SYMBOL>"));
+        assert!(text.contains("/stats <SYMBOL>"));
+        assert!(text.contains("/backtest run latest"));
         assert!(text.contains("/research <SYMBOL>"));
         assert!(text.contains("/idea"));
         assert!(text.contains("Tab completes"));
-        assert!(text.contains("/data refresh <SYMBOL>"));
+        assert!(text.contains("/strategy list"));
     }
 }
