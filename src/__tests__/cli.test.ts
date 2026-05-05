@@ -189,6 +189,7 @@ test('tools and agent commands expose LLM execution surfaces', async () => {
   assert.match(agent.output, /data.download/);
   assert.equal(continued.code, 0);
   assert.match(continued.output, /세션: agent-chat/);
+  assert.match(continued.output, /에이전트 답변/);
 });
 
 test('provider and session commands report local integration state', async () => {

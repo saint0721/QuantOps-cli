@@ -1,6 +1,6 @@
 import { runTool, type ToolResult } from './tools.ts';
 import { providerStatus, runProviderPrompt } from './providers.ts';
-import { ensureQuantSession, recordSessionEvent, sessionHandoff, redactSessionText, type QuantSession } from './session.ts';
+import { ensureQuantSession, recordSessionEvent, sessionEvents, sessionHandoff, redactSessionText, type QuantSession } from './session.ts';
 import type { JsonObject } from './storage.ts';
 import { normalizeAgentLanguage, type AgentLanguage } from './preferences.ts';
 
@@ -23,6 +23,7 @@ export type AgentRun = {
   symbols: string[];
   steps: ToolResult[];
   skipped: JsonObject[];
+  local_response: string;
   provider_response?: { ok: boolean; provider: string; text?: string; error?: string; returncode?: number };
   report: string;
 };
@@ -101,6 +102,66 @@ function nextSafeCommands(run: AgentRun): string[] {
   return ['- idea new "<your strategy idea>"'];
 }
 
+function summarizeRecentEvents(session: QuantSession): string[] {
+  const events = sessionEvents(session)
+    .filter((event) => !['agent.run', 'user.request'].includes(String(event.type)))
+    .slice(-4);
+  if (!events.length) return [];
+  return events.map((event) => {
+    const type = String(event.type);
+    const summary = String(event.summary ?? '').trim();
+    const payload = event.payload && typeof event.payload === 'object' ? event.payload as JsonObject : {};
+    const rawFocus = typeof payload.focus === 'string' ? payload.focus.trim() : '';
+    const focus = rawFocus && rawFocus !== summary ? ` · ${rawFocus}` : '';
+    return `- ${type}${summary ? `: ${summary}` : ''}${focus}`;
+  });
+}
+
+function localAgentResponse(run: Omit<AgentRun, 'provider_response' | 'report'>): string {
+  const recent = summarizeRecentEvents(run.session);
+  const commandExamples = nextSafeCommands({ ...run, ok: true, provider_response: undefined, report: '' });
+  const toolSummary = run.steps.length
+    ? run.steps.map((step) => `- ${step.tool}: ${step.ok ? (run.language === 'ko' ? '완료' : 'ok') : (run.language === 'ko' ? '차단됨' : 'blocked')}`)
+    : [];
+  const asksNext = /next|what now|뭐해|다음|이제|어떻게/i.test(run.request);
+
+  if (run.language === 'ko') {
+    return [
+      run.steps.length
+        ? '좋아. 로컬 도구 결과를 바탕으로 대화를 이어갈게.'
+        : '좋아. 이 요청은 도구 실행 없이 agent-chat 대화로 이어갈게.',
+      '',
+      ...(recent.length ? ['최근 이어받은 맥락', ...recent, ''] : ['최근 이어받은 맥락', '- 아직 저장된 논의 맥락이 많지 않습니다. 지금 질문부터 agent-chat 세션에 계속 누적할게.', '']),
+      ...(toolSummary.length ? ['이번에 확인한 것', ...toolSummary, ''] : []),
+      asksNext
+        ? '다음 단계는 아이디어를 검증 가능한 가설로 좁히고, 필요한 데이터/전략/백테스트 명령으로 연결하는 것입니다.'
+        : '자연어로 계속 말해도 됩니다. 내가 필요한 경우 아이디어, 리서치, 데이터 확인, 백테스트 명령으로 바꿔서 안내할게.',
+      '',
+      '바로 이어서 이렇게 물어볼 수 있어요:',
+      '- /agent 이 논의 주제를 검증 가능한 가설로 바꿔줘',
+      '- /agent 필요한 데이터와 백테스트 전략을 추천해줘',
+      ...commandExamples.slice(0, 3),
+    ].join('\n');
+  }
+
+  return [
+    run.steps.length
+      ? 'Got it. I will continue the conversation from the local tool results.'
+      : 'Got it. I will treat this as an agent-chat conversation even though no local tools were needed.',
+    '',
+    ...(recent.length ? ['Recent carried context', ...recent, ''] : ['Recent carried context', '- There is not much saved discussion context yet. I will keep adding from this agent-chat session.', '']),
+    ...(toolSummary.length ? ['What I checked this turn', ...toolSummary, ''] : []),
+    asksNext
+      ? 'A useful next step is to narrow the idea into a testable hypothesis, then connect it to data, strategy choice, and a backtest command.'
+      : 'You can keep speaking naturally. I will translate the discussion into idea, research, data-check, or backtest commands when useful.',
+    '',
+    'Try next:',
+    '- /agent turn this discussion into a testable hypothesis',
+    '- /agent recommend the data and backtest strategy I need',
+    ...commandExamples.slice(0, 3),
+  ].join('\n');
+}
+
 function safeProviderPrompt(run: Omit<AgentRun, 'provider_response' | 'report'>): string {
   const languageInstruction = run.language === 'ko'
     ? 'Return Korean beginner guidance. Keep command names exactly as TossQuant commands.'
@@ -135,10 +196,11 @@ function formatAgentReport(run: AgentRun): string {
       ...(run.steps.length ? ['', '로컬 도구 출력', ...run.steps.map(toolObservation)] : []),
       ...(run.skipped.length ? ['', '건너뜀 / 권한 필요', ...run.skipped.map((item) => `- ${String(item.tool)}: ${String(item.reason)}`)] : []),
       '',
-      '제공자 요약',
+      '에이전트 답변',
       run.provider_response?.ok && run.provider_response.text?.trim()
         ? redactSessionText(run.provider_response.text.trim())
-        : `- 제공자 요약을 실행하지 않았습니다${run.provider_response?.error ? `: ${redactSessionText(run.provider_response.error)}` : ''}. 로컬 도구 실행은 완료되었습니다.`,
+        : redactSessionText(run.local_response),
+      ...(run.provider_response?.error ? ['', '제공자 상태', `- ${redactSessionText(run.provider_response.error)}`] : []),
       '',
       '다음 안전 명령',
       ...nextSafeCommands(run),
@@ -157,10 +219,11 @@ function formatAgentReport(run: AgentRun): string {
     ...(run.steps.length ? ['', 'Local tool output', ...run.steps.map(toolObservation)] : []),
     ...(run.skipped.length ? ['', 'Skipped / needs permission', ...run.skipped.map((item) => `- ${String(item.tool)}: ${String(item.reason)}`)] : []),
     '',
-    'Provider synthesis',
+    'Agent reply',
     run.provider_response?.ok && run.provider_response.text?.trim()
       ? redactSessionText(run.provider_response.text.trim())
-      : `- Provider synthesis not run${run.provider_response?.error ? `: ${redactSessionText(run.provider_response.error)}` : ''}. Local tool loop still completed.`,
+      : redactSessionText(run.local_response),
+    ...(run.provider_response?.error ? ['', 'Provider status', `- ${redactSessionText(run.provider_response.error)}`] : []),
     '',
     'Next safe commands',
     ...nextSafeCommands(run),
@@ -207,7 +270,9 @@ export async function runAgent(request: string, options: AgentOptions = {}): Pro
     if (wantsBacktest(cleaned)) steps.push(await runTool('backtest.run', { symbol, strategy: 'ma-cross', source: 'yahoo' }, { base: options.base }));
   }
 
-  const partial: Omit<AgentRun, 'provider_response' | 'report'> = { ok: true, request: requestPreview, session, provider, language, symbols, steps, skipped };
+  const partialWithoutResponse: Omit<AgentRun, 'local_response' | 'provider_response' | 'report'> = { ok: true, request: requestPreview, session, provider, language, symbols, steps, skipped };
+  const localResponse = localAgentResponse({ ...partialWithoutResponse, local_response: '' });
+  const partial: Omit<AgentRun, 'provider_response' | 'report'> = { ...partialWithoutResponse, local_response: localResponse };
   const status = providerStatus(provider);
   const rawProviderResponse = provider !== 'none' && status.available ? runProviderPrompt(provider, safeProviderPrompt(partial)) : undefined;
   const providerResponse = rawProviderResponse ? { ...rawProviderResponse, text: rawProviderResponse.text ? redactSessionText(rawProviderResponse.text) : undefined, error: rawProviderResponse.error ? redactSessionText(rawProviderResponse.error) : undefined } : undefined;
