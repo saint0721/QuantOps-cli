@@ -34,9 +34,14 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/collect plan ', 'quant'), ['--watchlist']);
   assert.deepEqual(completionCandidates('/collect plan --watchlist ', 'quant'), []);
   assert.deepEqual(completionCandidates('/collect quote AAPL ', 'quant'), []);
-  assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list']);
-  assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list']);
+  assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
+  assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));
+  assert.ok(completionCandidates('/data refresh AAPL ', 'quant').includes('--period'));
+  assert.ok(completionCandidates('/data info AAPL ', 'quant').includes('--json'));
+  assert.ok(completionCandidates('/data validate AAPL ', 'quant').includes('--max-stale-days'));
+  assert.ok(completionCandidates('/data watchlist ', 'quant').includes('refresh'));
+  assert.ok(completionCandidates('/data watchlist refresh ', 'quant').includes('--period'));
   assert.ok(completionCandidates('/data watchlist ', 'quant').includes('--start'));
   assert.deepEqual(completionCandidates('/data list ', 'quant'), []);
   assert.deepEqual(completionCandidates('/find ', 'quant'), ['trending', 'most-active', 'gainers', 'losers']);

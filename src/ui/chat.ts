@@ -47,7 +47,7 @@ export function inputHintBox(mode: string): string {
     '',
     `${NEOFETCH_ACCENT}beginner${RESET} /start · /next · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list`,
     `${NEOFETCH_ACCENT}flow${RESET}     /find → /download NVDA → /analyze NVDA → /research NVDA → /next`,
-    `${NEOFETCH_ACCENT}advanced${RESET} /discover · /data download --period 1y · /stats <SYMBOL> · /sources · /runtime`,
+    `${NEOFETCH_ACCENT}advanced${RESET} /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL> · /sources`,
     `${NEOFETCH_ACCENT}tools${RESET}    /hud · /ask <question> · /codex · /quant · /exit`,
     `${NEOFETCH_ACCENT}keys${RESET}     Tab completes · ↑/↓ history · ←/→ cursor`,
     '',

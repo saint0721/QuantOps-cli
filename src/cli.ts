@@ -6,7 +6,7 @@ import { classify, historyRows } from './analysis.ts';
 import { auditAll } from './audit.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
 import { filteredCodexOutput } from './codex.ts';
-import { downloadHistory, downloadWatchlist, listDatasets, type DownloadRequest } from './data.ts';
+import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist, validateData, type DownloadRequest } from './data.ts';
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
 import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
@@ -64,10 +64,17 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
     return parts.length <= 2 ? ['plan', 'quote', 'watchlist'] : [];
   }
   if (command === 'data') {
-    if (parts.length <= 2) return ['download', 'watchlist', 'list'];
+    if (parts.length <= 2) return ['download', 'watchlist', 'list', 'info', 'validate', 'refresh'];
     if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return ['yahoo', 'stooq'];
     if (parts[1] === 'download') return ['--period', '--start', '--end', '--interval', '--source', '--provider-symbol'];
-    if (parts[1] === 'watchlist') return ['--period', '--start', '--end', '--interval', '--source'];
+    if (parts[1] === 'refresh') return ['--period', '--start', '--end', '--interval', '--source', '--provider-symbol'];
+    if (parts[1] === 'info') return ['--json', '--source', '--interval'];
+    if (parts[1] === 'validate') return ['--json', '--max-stale-days'];
+    if (parts[1] === 'watchlist') {
+      if (parts.length <= 3) return ['refresh', '--period', '--start', '--end', '--interval', '--source'];
+      if (parts[2] === 'refresh') return ['--period', '--start', '--end', '--interval', '--source'];
+      return ['--period', '--start', '--end', '--interval', '--source'];
+    }
     return [];
   }
   if (command === 'find') {
@@ -181,6 +188,15 @@ function formatSymbolSearchResult(result: SymbolSearchResult): string {
 }
 
 function formatDownloadResult(result: any): string {
+  if (result?.skipped) {
+    return [
+      `✅ ${result.ticker ?? result.symbol} refresh skipped`,
+      result.reason ?? 'dataset already current',
+      `latest: ${result.latest_date ?? '-'}`,
+      '',
+      `next  /${result.next_command ?? `stats ${result.ticker ?? result.symbol}`}`,
+    ].join('\n');
+  }
   if (!result?.ok) return JSON.stringify(result, null, 2);
   const period = `${compactDate(result.start)} ~ ${compactDate(result.end)}`;
   return [
@@ -207,6 +223,9 @@ function formatDownloadResult(result: any): string {
 
 function formatWatchlistDownloadResult(result: any): string {
   if (!result?.results) return JSON.stringify(result, null, 2);
+  const completed = result.downloaded ?? result.refreshed ?? 0;
+  const action = result.refreshed === undefined ? 'downloaded' : 'refreshed';
+  const title = result.refreshed === undefined ? 'watchlist 다운로드' : 'watchlist refresh';
   const rows = result.results.map((item: any) => [
     item.ticker ?? '-',
     item.ok ? 'ok' : 'failed',
@@ -217,11 +236,11 @@ function formatWatchlistDownloadResult(result: any): string {
     item.error ?? item.dataset_path ?? '-',
   ]);
   return [
-    result.ok ? '✅ watchlist 다운로드 완료' : '⚠️ watchlist 다운로드 일부 실패',
+    result.ok ? `✅ ${title} 완료` : `⚠️ ${title} 일부 실패`,
     '',
     table(['symbol', 'status', 'source', 'provider', 'rows', 'new', 'detail'], rows),
     '',
-    `downloaded ${result.downloaded ?? 0}, failed ${result.failed ?? 0}`,
+    `${action} ${completed}, failed ${result.failed ?? 0}`,
   ].join('\n');
 }
 
@@ -240,12 +259,53 @@ function formatDataList(result: any): string {
   return table(['symbol', 'source', 'int', 'rows', 'first', 'last', 'path'], rows);
 }
 
+function formatDataInfo(result: any): string {
+  const datasets = result?.datasets ?? [];
+  if (!datasets.length) return `저장된 market dataset이 없습니다.\nnext  /${result?.next_command ?? 'data download AAPL --period 1y'}`;
+  const rows = datasets.map((item: any) => [
+    String(item.provider_symbol ?? item.name ?? '-').toUpperCase(),
+    String(item.source ?? '-'),
+    String(item.interval ?? '-'),
+    String(item.rows ?? 0),
+    String(item.first_date ?? '-'),
+    String(item.latest_date ?? '-'),
+    item.latest_age_days === null || item.latest_age_days === undefined ? '-' : `${item.latest_age_days}d`,
+    String(item.next_command ?? '-'),
+  ]);
+  return [
+    `Market data info: ${result.symbol ?? 'all'} (${result.count ?? rows.length} dataset${(result.count ?? rows.length) === 1 ? '' : 's'})`,
+    '',
+    table(['symbol', 'source', 'int', 'rows', 'first', 'last', 'age', 'next'], rows),
+  ].join('\n');
+}
+
+function formatDataValidation(result: any): string {
+  const issues = result?.issues ?? [];
+  const rows = issues.map((item: any) => [
+    String(item.severity ?? '-'),
+    String(item.code ?? '-'),
+    String(item.dataset ?? '-'),
+    String(item.date ?? '-'),
+    String(item.message ?? '-'),
+  ]);
+  return [
+    result.ok ? '✅ market data validation passed' : '⚠️ market data validation found issues',
+    `datasets: ${(result.datasets ?? []).length}`,
+    '',
+    rows.length ? table(['sev', 'code', 'dataset', 'date', 'message'], rows) : 'No issues found.',
+    result.next_command ? `\nnext  /${result.next_command}` : '',
+  ].join('\n').trimEnd();
+}
+
 function formatDataOutput(sub: string, stdout: string): string {
   let parsed: any;
   try { parsed = JSON.parse(stdout); } catch { return stdout; }
   if (sub === 'download') return formatDownloadResult(parsed);
+  if (sub === 'refresh') return formatDownloadResult(parsed);
   if (sub === 'watchlist') return formatWatchlistDownloadResult(parsed);
   if (sub === 'list') return formatDataList(parsed);
+  if (sub === 'info') return formatDataInfo(parsed);
+  if (sub === 'validate') return formatDataValidation(parsed);
   return stdout;
 }
 
@@ -278,6 +338,14 @@ function optionNumber(args: string[], flag: string, fallback: number): number {
   const value = optionValue(args, flag);
   const parsed = value === undefined ? Number.NaN : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function takeNumberOption(args: string[], flag: string): number | undefined {
+  const value = takeOption(args, flag);
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new Error(`${flag} requires a number`);
+  return parsed;
 }
 
 function parseJsonOrRaw(stdout: string, stderr: string, returncode: number): unknown {
@@ -392,8 +460,10 @@ function commandStats(dataDir: string, symbol?: string, tail: string[] = []): nu
 }
 
 async function commandData(dataDir: string, sub?: string, tail: string[] = []): Promise<number> {
-  if (!sub) { warn('usage: data [download <SYMBOL>|watchlist|list]'); return 2; }
+  if (!sub) { warn('usage: data [download <SYMBOL>|refresh <SYMBOL>|watchlist [refresh]|list|info|validate]'); return 2; }
   try {
+    const explicitSource = tail.includes('--source');
+    const explicitInterval = tail.includes('--interval');
     const { json, request, rest } = dataOptionsFromTail(tail);
     if (sub === 'download') {
       const symbol = rest[0];
@@ -402,8 +472,22 @@ async function commandData(dataDir: string, sub?: string, tail: string[] = []): 
       printText(json ? JSON.stringify(result, null, 2) : formatDataOutput(sub, JSON.stringify(result)));
       return result.ok ? 0 : 1;
     }
+    if (sub === 'refresh') {
+      const symbol = rest[0];
+      if (!symbol) { warn('usage: data refresh <SYMBOL>'); return 2; }
+      const result = await refreshHistory({ symbol, ...request }, { base: dataDir });
+      printText(json ? JSON.stringify(result, null, 2) : formatDataOutput(sub, JSON.stringify(result)));
+      return result.ok ? 0 : 1;
+    }
     if (sub === 'watchlist') {
-      const result = await downloadWatchlist({
+      const action = rest[0] === 'refresh' ? 'refresh' : 'download';
+      const result = action === 'refresh' ? await refreshWatchlist({
+        base: dataDir,
+        source: request.source,
+        interval: request.interval,
+        start: request.start,
+        end: request.end,
+      }) : await downloadWatchlist({
         base: dataDir,
         source: request.source,
         interval: request.interval,
@@ -418,11 +502,30 @@ async function commandData(dataDir: string, sub?: string, tail: string[] = []): 
       printText(json ? JSON.stringify(result, null, 2) : formatDataOutput(sub, JSON.stringify(result)));
       return 0;
     }
+    if (sub === 'info') {
+      const symbol = rest.find((item) => !item.startsWith('--'));
+      const result = dataInfo(dataDir, symbol, {
+        source: explicitSource ? request.source : undefined,
+        interval: explicitInterval ? request.interval : undefined,
+      });
+      printText(json ? JSON.stringify(result, null, 2) : formatDataOutput(sub, JSON.stringify(result)));
+      return result.ok ? 0 : 1;
+    }
+    if (sub === 'validate') {
+      const validateArgs = [...tail];
+      const jsonOut = validateArgs.includes('--json');
+      for (let i = validateArgs.length - 1; i >= 0; i -= 1) if (validateArgs[i] === '--json') validateArgs.splice(i, 1);
+      const maxStaleDays = takeNumberOption(validateArgs, '--max-stale-days');
+      const symbol = validateArgs.find((item) => !item.startsWith('--'));
+      const result = validateData(dataDir, symbol, { maxStaleDays });
+      printText(jsonOut ? JSON.stringify(result, null, 2) : formatDataOutput(sub, JSON.stringify(result)));
+      return result.ok ? 0 : 1;
+    }
   } catch (error) {
     printJson({ ok: false, sub, error: error instanceof Error ? error.message : String(error) });
     return 1;
   }
-  warn('usage: data [download <SYMBOL>|watchlist|list]');
+  warn('usage: data [download <SYMBOL>|refresh <SYMBOL>|watchlist [refresh]|list|info|validate]');
   return 2;
 }
 
@@ -757,7 +860,7 @@ export function welcomeCard(): string {
     '',
     'beginner    /start · /next · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
     'flow        /find  →  /download NVDA  →  /analyze NVDA  →  /research NVDA  →  /next',
-    'advanced    /discover · /data download --period 1y · /stats <SYMBOL> · /sources · /runtime',
+    'advanced    /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL> · /sources',
     'codex       /ask <question> · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
     '',

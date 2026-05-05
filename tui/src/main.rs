@@ -327,7 +327,7 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "".to_string(),
         "beginner /start · /next · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
         "flow     /find → /download NVDA → /analyze NVDA → /research NVDA → /next".to_string(),
-        "advanced /discover · /data download --period 1y · /stats <SYMBOL> · /research <SYMBOL>".to_string(),
+        "advanced /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL>".to_string(),
         "tools    /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
@@ -485,10 +485,12 @@ fn collect_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'stati
 
 fn data_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
     if parts.len() <= 1 {
-        return &["download", "watchlist", "list"];
+        return &["download", "watchlist", "list", "info", "validate", "refresh"];
     }
     match parts.get(1).copied() {
         Some("list") => &[],
+        Some("info") if parts.len() >= 3 && trailing_space => &["--json", "--source", "--interval"],
+        Some("validate") if parts.len() >= 3 && trailing_space => &["--json", "--max-stale-days"],
         Some("download") if parts.len() >= 3 && trailing_space => &[
             "--period",
             "--start",
@@ -497,11 +499,25 @@ fn data_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static s
             "--source",
             "--provider-symbol",
         ],
-        Some("download") if parts.len() <= 2 => &["download", "watchlist", "list"],
-        Some("watchlist") if parts.len() >= 2 && trailing_space => {
+        Some("refresh") if parts.len() >= 3 && trailing_space => &[
+            "--period",
+            "--start",
+            "--end",
+            "--interval",
+            "--source",
+            "--provider-symbol",
+        ],
+        Some("download" | "refresh") if parts.len() <= 2 => &["download", "watchlist", "list", "info", "validate", "refresh"],
+        Some("watchlist") if parts.len() <= 2 || (parts.len() <= 3 && !trailing_space) => {
+            &["refresh", "--period", "--start", "--end", "--interval", "--source"]
+        }
+        Some("watchlist") if parts.get(2).copied() == Some("refresh") && trailing_space => {
             &["--period", "--start", "--end", "--interval", "--source"]
         }
-        _ if parts.len() <= 2 => &["download", "watchlist", "list"],
+        Some("watchlist") if parts.len() >= 2 && trailing_space => {
+            &["refresh", "--period", "--start", "--end", "--interval", "--source"]
+        }
+        _ if parts.len() <= 2 => &["download", "watchlist", "list", "info", "validate", "refresh"],
         _ => &[],
     }
 }
@@ -1046,11 +1062,26 @@ mod tests {
             vec![
                 "download".to_string(),
                 "watchlist".to_string(),
-                "list".to_string()
+                "list".to_string(),
+                "info".to_string(),
+                "validate".to_string(),
+                "refresh".to_string()
             ]
         );
         assert!(
             completion_matches("/data download AAPL ", "quant").contains(&"--period".to_string())
+        );
+        assert!(
+            completion_matches("/data refresh AAPL ", "quant").contains(&"--period".to_string())
+        );
+        assert!(
+            completion_matches("/data info AAPL ", "quant").contains(&"--json".to_string())
+        );
+        assert!(
+            completion_matches("/data validate AAPL ", "quant").contains(&"--max-stale-days".to_string())
+        );
+        assert!(
+            completion_matches("/data watchlist ", "quant").contains(&"refresh".to_string())
         );
         assert_eq!(
             completion_matches("/find ", "quant"),
@@ -1254,6 +1285,6 @@ mod tests {
         assert!(text.contains("/analyze <SYMBOL>"));
         assert!(text.contains("/research <SYMBOL>"));
         assert!(text.contains("Tab completes"));
-        assert!(text.contains("/data download --period 1y"));
+        assert!(text.contains("/data refresh <SYMBOL>"));
     }
 }
