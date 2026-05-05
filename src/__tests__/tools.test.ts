@@ -13,13 +13,21 @@ function writeYahooClose(base: string, day: number, close: number) {
   });
 }
 
+function writeYahooCloseFor(base: string, symbol: string, day: number, close: number) {
+  appendJsonl(marketDatasetPath(base, 'yahoo', symbol, 'd'), {
+    ticker: symbol, provider_symbol: symbol, source: 'yahoo', interval: 'd', date: `2026-01-${String(day).padStart(2, '0')}`, fetched_at: '2026-01-01T00:00:00Z', payload: { open: close, high: close + 1, low: close - 1, close, volume: 1000 + day },
+  });
+}
+
 test('tool registry exposes a curated safe allowlist without trading mutation tools', () => {
   const names = listTools().map((tool) => tool.name);
 
   assert.ok(names.includes('data.info'));
   assert.ok(names.includes('stats.run'));
+  assert.ok(names.includes('event.study'));
   assert.equal(names.some((name) => name.includes('order')), false);
   assert.equal(toolSummaries().every((tool) => tool.mutates_trading === false), true);
+  assert.equal(toolSummaries().every((tool) => typeof tool.rtk_command === 'string' && tool.rtk_command.startsWith('rtk ')), true);
 });
 
 test('stats.run tool reads local yahoo market data', async () => {
@@ -31,6 +39,30 @@ test('stats.run tool reads local yahoo market data', async () => {
   assert.equal(result.ok, true);
   assert.equal(result.output.ticker, 'AAPL');
   assert.equal((result.output.readiness as any).backtest_ready, true);
+  assert.equal(result.rtk_command, 'rtk stats AAPL --source yahoo --json');
+});
+
+test('event.study tool routes event windows through the runtime contract', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-tools-event-'));
+  const previous = process.env.QUANTOPS_EVENT_ENGINE;
+  process.env.QUANTOPS_EVENT_ENGINE = 'typescript';
+  for (let i = 1; i <= 20; i += 1) {
+    writeYahooCloseFor(dir, 'TSM', i, 100 + i);
+    writeYahooCloseFor(dir, 'SOXX', i, 200 + i);
+  }
+
+  try {
+    const result = await runTool('event.study', { symbol: 'TSM', event_date: '2026-01-10', benchmark: 'SOXX', windows: ['1,5'], source: 'yahoo' }, { base: dir });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.output.symbol, 'TSM');
+    assert.equal(result.output.benchmark_symbol, 'SOXX');
+    assert.equal(result.output.engine, 'typescript');
+    assert.equal(result.rtk_command, 'rtk event study TSM --event-date 2026-01-10 --benchmark SOXX --source yahoo --window 1,5 --json');
+  } finally {
+    if (previous === undefined) delete process.env.QUANTOPS_EVENT_ENGINE;
+    else process.env.QUANTOPS_EVENT_ENGINE = previous;
+  }
 });
 
 

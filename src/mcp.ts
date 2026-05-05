@@ -33,6 +33,7 @@ export async function handleMcpMessage(message: RpcMessage, options: { base?: st
         name: tool.name,
         description: tool.description,
         inputSchema: tool.input_schema,
+        rtkCommand: tool.rtk_command,
       })),
     });
   }
@@ -42,7 +43,7 @@ export async function handleMcpMessage(message: RpcMessage, options: { base?: st
     const args = (params.arguments && typeof params.arguments === 'object' && !Array.isArray(params.arguments) ? params.arguments : {}) as JsonObject;
     const result = await runTool(name, args, { base: options.base });
     return response(message.id, {
-      content: [{ type: 'text', text: JSON.stringify(result.output, null, 2) }],
+      content: [{ type: 'text', text: JSON.stringify({ ...result.output, rtk_command: result.rtk_command ?? null }, null, 2) }],
       isError: !result.ok,
     });
   }

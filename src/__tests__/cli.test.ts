@@ -210,6 +210,8 @@ test('tools and agent commands expose LLM execution surfaces', async () => {
   assert.equal(tools.code, 0);
   assert.match(tools.output, /stats.run/);
   assert.match(tools.output, /backtest.run/);
+  assert.match(tools.output, /event.study/);
+  assert.match(tools.output, /rtk event study/);
   assert.equal(lang.code, 0);
   assert.match(lang.output, /current: ko/);
   assert.equal(agent.code, 0);
