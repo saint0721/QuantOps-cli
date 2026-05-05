@@ -6,11 +6,11 @@ import { classify, historyRows } from './analysis.ts';
 import { auditAll } from './audit.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
 import { filteredCodexOutput } from './codex.ts';
-import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist, validateData, type DownloadRequest } from './data.ts';
+import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist, validateData } from './data.ts';
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
 import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
 import { installLocalBins, pathHint } from './setup.ts';
-import { buildRuntimeSnapshot, recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
+import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist, type JsonObject } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './lab.ts';
@@ -31,6 +31,9 @@ import { marketStats } from './marketAnalysis.ts';
 import { formatResearchReport, runResearch, type ResearchCodexResult } from './research.ts';
 import { codexRuntimeGuide, formatCodexRuntimeGuide } from './guide.ts';
 import { defineEvent, parseEventWindows, runEventStudy } from './events.ts';
+import { compareSymbols, formatCompareResult } from './compare.ts';
+import { runtimeInfoPayload, formatRuntimeInfo } from './runtimeContract.ts';
+import { dataOptionsFromTail, numberOption, takeOption, takeRepeatedOption } from './cliArgs.ts';
 
 export { periodToDateRange } from './period.ts';
 
@@ -189,24 +192,6 @@ function printText(text: string) {
   console.log(text);
 }
 
-function expandDataArgs(args: string[]): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < args.length; i += 1) {
-    const item = args[i]!;
-    if (item === '--json') continue;
-    if (item === '--period') {
-      const period = args[++i];
-      if (!period) throw new Error('--period requires a value such as 1y, 6mo, 30d, ytd, or max');
-      if (['max', 'all', 'full'].includes(period.trim().toLowerCase())) continue;
-      const range = periodToDateRange(period);
-      out.push('--start', range.start, '--end', range.end);
-      continue;
-    }
-    out.push(item);
-  }
-  return out;
-}
-
 function compactDate(value: unknown): string {
   const text = String(value ?? '');
   return text.length === 8 && /^\d+$/.test(text) ? `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6)}` : text || '-';
@@ -357,13 +342,6 @@ function formatDataOutput(sub: string, stdout: string): string {
   return stdout;
 }
 
-function takeOption(args: string[], flag: string): string | undefined {
-  const index = args.indexOf(flag);
-  if (index < 0) return undefined;
-  const value = args[index + 1];
-  args.splice(index, value === undefined ? 1 : 2);
-  return value;
-}
 function dataDirFrom(argv: string[]): { dataDir: string; rest: string[]; noTmux: boolean } {
   const rest: string[] = [];
   let dataDir = 'data';
@@ -603,19 +581,6 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
   return 2;
 }
 
-function dataOptionsFromTail(tail: string[]): { json: boolean; request: Omit<DownloadRequest, 'symbol'>; rest: string[] } {
-  const rest = [...tail];
-  const json = rest.includes('--json');
-  for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--json') rest.splice(i, 1);
-  const expanded = expandDataArgs(rest);
-  const source = takeOption(expanded, '--source');
-  const interval = takeOption(expanded, '--interval');
-  const start = takeOption(expanded, '--start');
-  const end = takeOption(expanded, '--end');
-  const providerSymbol = takeOption(expanded, '--provider-symbol');
-  return { json, request: { source: source || 'yahoo', interval, start, end, providerSymbol }, rest: expanded };
-}
-
 function commandResearch(dataDir: string, symbol?: string, tail: string[] = []): number {
   if (!symbol) { warn('usage: research <SYMBOL> [--topic <TEXT>] [--source yahoo|stooq] [--provider-symbol <ID>]'); return 2; }
   try {
@@ -719,48 +684,14 @@ function commandCompare(dataDir: string, symbols: string[] = []): number {
   const { request, rest: expanded } = dataOptionsFromTail(rest);
   const targets = expanded.filter((item) => !item.startsWith('--'));
   if (targets.length < 2) { warn('usage: compare <SYMBOL> <PEER_OR_BENCHMARK...> [--json]'); return 2; }
-  const results = targets.map((symbol) => marketStats(symbol, {
+  const payload = compareSymbols(targets, {
     base: dataDir,
     source: explicitSource ? request.source : 'yahoo',
     interval: explicitInterval ? request.interval : 'd',
-    providerSymbol: explicitProvider && targets.length === 1 ? request.providerSymbol : undefined,
-  }));
-  const payload = {
-    ok: results.every((item) => item.ok !== false),
-    command: 'compare',
-    symbols: targets.map((symbol) => symbol.toUpperCase()),
-    results,
-    note: 'Compare uses saved local datasets; download/validate missing symbols before interpreting relative performance.',
-  };
-  printText(json ? JSON.stringify(payload, null, 2) : table(
-    ['symbol', 'ok', 'rows', 'start', 'end', 'total_return', 'volatility', 'regime'],
-    results.map((item) => [
-      String(item.ticker ?? '-'),
-      item.ok === false ? 'no' : 'yes',
-      String(item.rows ?? '-'),
-      String(item.start_date ?? '-'),
-      String(item.end_date ?? '-'),
-      item.total_return === null || item.total_return === undefined ? '-' : Number(item.total_return).toFixed(4),
-      item.volatility === null || item.volatility === undefined ? '-' : Number(item.volatility).toFixed(4),
-      String(item.regime ?? '-'),
-    ]),
-  ));
+    providerSymbol: explicitProvider ? request.providerSymbol : undefined,
+  });
+  printText(json ? JSON.stringify(payload, null, 2) : formatCompareResult(payload));
   return payload.ok ? 0 : 1;
-}
-
-function takeRepeatedOption(args: string[], flag: string): string[] {
-  const values: string[] = [];
-  for (let i = 0; i < args.length;) {
-    if (args[i] === flag) {
-      const value = args[i + 1];
-      if (!value || value.startsWith('--')) throw new Error(`${flag} requires a value`);
-      values.push(value);
-      args.splice(i, 2);
-      continue;
-    }
-    i += 1;
-  }
-  return values;
 }
 
 function commandEvent(dataDir: string, action = 'windows', tail: string[] = []): number {
@@ -816,30 +747,8 @@ function commandEvent(dataDir: string, action = 'windows', tail: string[] = []):
 }
 
 function commandRuntimeInfo(dataDir: string, json = false): number {
-  const snapshot = buildRuntimeSnapshot({ base: dataDir, lastAction: 'runtime.info' });
-  const guide = codexRuntimeGuide();
-  const payload = {
-    ok: true,
-    command: 'runtime.info',
-    runtime: snapshot,
-    contract: {
-      primary_interface: 'shell-cli-json',
-      human_primary_surface: 'Codex conversation',
-      quantops_role: guide.role,
-      mcp: 'optional integration layer after CLI JSON contracts are stable',
-      tui: 'de-emphasized; dashboard/debug/report browser only',
-      trading_mutations: 'disabled by default',
-    },
-    recommended_start: guide.minimal_commands,
-  };
-  printText(json ? JSON.stringify(payload, null, 2) : [
-    renderRuntimeLine(snapshot),
-    '',
-    'Agent runtime contract',
-    '- Primary interface: shell CLI with --json',
-    '- Human talks to Codex; Codex calls quantops commands',
-    '- MCP is optional later; TUI is not the primary UX',
-  ].join('\n'));
+  const payload = runtimeInfoPayload(dataDir);
+  printText(json ? JSON.stringify(payload, null, 2) : formatRuntimeInfo(payload));
   return 0;
 }
 
@@ -1054,14 +963,6 @@ async function commandAgent(dataDir: string, tail: string[] = []): Promise<numbe
     printJson({ ok: false, error: error instanceof Error ? error.message : String(error) });
     return 1;
   }
-}
-
-function numberOption(rest: string[], name: string): number | undefined {
-  const value = takeOption(rest, name);
-  if (value === undefined) return undefined;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) throw new Error(`${name} must be a number`);
-  return parsed;
 }
 
 function symbolFromBacktestTarget(dataDir: string, target: string): string {
