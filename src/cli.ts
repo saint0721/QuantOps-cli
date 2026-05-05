@@ -103,7 +103,10 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
   if (command === 'analyze') return [];
   if (command === 'research') {
     if (parts.length <= 2) return ['AAPL', 'NVDA', 'TSM', 'SPY'];
-    return trimmed.endsWith(' ') ? ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--no-codex'] : [];
+    if (trimmed.endsWith(' ') && parts.at(-2) === '--source') return ['yahoo', 'stooq'];
+    if (trimmed.endsWith(' ') && parts.at(-2) === '--interval') return ['d', '1d', '1wk', '1mo'];
+    if (trimmed.endsWith(' ') && (parts.at(-2) === '--topic' || parts.at(-2) === '--provider-symbol')) return [];
+    return trimmed.endsWith(' ') || (parts.at(-1) ?? '').startsWith('--') ? ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--no-codex'] : [];
   }
   if (command === 'list') return [];
   if (command === 'audit') return [];

@@ -2,8 +2,8 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Duration;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
@@ -68,6 +68,13 @@ struct App {
     draft_input: String,
     transcript: Vec<String>,
     scroll_offset: usize,
+    pending: Option<PendingRun>,
+}
+
+struct PendingRun {
+    child: Child,
+    command: String,
+    started_at: Instant,
 }
 
 impl App {
@@ -84,6 +91,7 @@ impl App {
             draft_input: String::new(),
             transcript: welcome_lines("quant"),
             scroll_offset: 0,
+            pending: None,
         }
     }
 
@@ -230,8 +238,17 @@ impl App {
             self.append_exchange(&line, "mode   quant");
             return false;
         }
-        let output = self.run_line(&line);
-        self.append_exchange(&line, &output);
+        if self.pending.is_some() {
+            self.append_exchange(
+                &line,
+                "A command is still running. Wait for it to finish before submitting another command.",
+            );
+            return false;
+        }
+        match self.start_line(&line) {
+            Ok(()) => {}
+            Err(output) => self.append_exchange(&line, &output),
+        }
         false
     }
 
@@ -244,12 +261,21 @@ impl App {
     }
 
     fn append_exchange(&mut self, command: &str, output: &str) {
+        self.append_command(command);
+        self.append_output(output);
+    }
+
+    fn append_command(&mut self, command: &str) {
         self.scroll_offset = 0;
         if self.transcript.last().is_some_and(|line| !line.is_empty()) {
             self.transcript.push(String::new());
         }
         self.transcript
             .push(format!("TossQuant {} ❯ {command}", self.mode));
+    }
+
+    fn append_output(&mut self, output: &str) {
+        self.scroll_offset = 0;
         let cleaned = output.trim();
         if cleaned.is_empty() {
             self.transcript.push("done".to_string());
@@ -259,20 +285,44 @@ impl App {
         }
     }
 
-    fn run_line(&self, line: &str) -> String {
+    fn start_line(&mut self, line: &str) -> Result<(), String> {
         let args = self.command_args(line);
         if args.is_empty() {
-            return "slash commands only: try /start, /idea, /find, /download NVDA, /analyze NVDA, /research NVDA, /next, or /exit"
-                .to_string();
+            return Err("slash commands only: try /start, /idea, /find, /download NVDA, /analyze NVDA, /research NVDA, /next, or /exit"
+                .to_string());
         }
-        let output = Command::new(&self.node)
+        let child = Command::new(&self.node)
             .arg(&self.entry)
             .arg("--no-tmux")
             .arg("--data-dir")
             .arg(&self.data_dir)
             .args(args)
-            .output();
-        match output {
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("failed to run command: {error}"))?;
+        self.append_command(line);
+        self.transcript.push("running...".to_string());
+        self.pending = Some(PendingRun {
+            child,
+            command: line.to_string(),
+            started_at: Instant::now(),
+        });
+        Ok(())
+    }
+
+    fn poll_pending(&mut self) {
+        let Some(pending) = &mut self.pending else {
+            return;
+        };
+        let Ok(Some(_status)) = pending.child.try_wait() else {
+            return;
+        };
+        let Some(pending) = self.pending.take() else {
+            return;
+        };
+        let output = pending.child.wait_with_output();
+        let text = match output {
             Ok(output) => {
                 let mut text = String::new();
                 text.push_str(&String::from_utf8_lossy(&output.stdout));
@@ -285,8 +335,12 @@ impl App {
                     cleaned
                 }
             }
-            Err(error) => format!("failed to run command: {error}"),
+            Err(error) => format!("failed to read command output: {error}"),
+        };
+        if self.transcript.last().is_some_and(|line| line == "running...") {
+            self.transcript.pop();
         }
+        self.append_output(&text);
     }
 
     fn command_args(&self, line: &str) -> Vec<String> {
@@ -339,7 +393,48 @@ fn welcome_lines(mode: &str) -> Vec<String> {
 }
 
 fn split_args(line: &str) -> Vec<String> {
-    line.split_whitespace().map(str::to_string).collect()
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for ch in line.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            } else {
+                current.push(ch);
+            }
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
+            quote = Some(ch);
+            continue;
+        }
+        if ch.is_whitespace() {
+            if !current.is_empty() {
+                args.push(current);
+                current = String::new();
+            }
+            continue;
+        }
+        current.push(ch);
+    }
+    if escaped {
+        current.push('\\');
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+    args
 }
 
 fn command_candidates(
@@ -534,8 +629,24 @@ fn research_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'stat
     if parts.len() <= 1 || (parts.len() <= 2 && !trailing_space) {
         return &["AAPL", "NVDA", "TSM", "SPY"];
     }
-    if trailing_space {
-        return &["--topic", "--source", "--interval", "--provider-symbol", "--no-save", "--no-codex"];
+    if trailing_space && parts.last().copied() == Some("--source") {
+        return &["yahoo", "stooq"];
+    }
+    if trailing_space && parts.last().copied() == Some("--interval") {
+        return &["d", "1d", "1wk", "1mo"];
+    }
+    if trailing_space && matches!(parts.last().copied(), Some("--topic" | "--provider-symbol")) {
+        return &[];
+    }
+    if trailing_space || parts.last().is_some_and(|token| token.starts_with("--")) {
+        return &[
+            "--topic",
+            "--source",
+            "--interval",
+            "--provider-symbol",
+            "--no-save",
+            "--no-codex",
+        ];
     }
     &[]
 }
@@ -781,6 +892,7 @@ fn main() -> io::Result<()> {
 
 fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
     loop {
+        app.poll_pending();
         terminal.draw(|frame| render(frame, app))?;
         if !event::poll(Duration::from_millis(250))? {
             continue;
@@ -933,6 +1045,9 @@ fn shutdown_managed_tmux_runtime() {
 }
 
 fn suggestion_line(app: &App) -> Line<'static> {
+    if let Some(pending) = &app.pending {
+        return loading_line(&pending.command, pending.started_at.elapsed());
+    }
     let matches = app.completion_matches();
     let token = active_completion_token(&app.input);
     let mut spans = vec![Span::styled(
@@ -957,6 +1072,33 @@ fn suggestion_line(app: &App) -> Line<'static> {
         spans.extend(highlight_candidate(candidate, &token));
     }
     Line::from(spans)
+}
+
+fn loading_line(command: &str, elapsed: Duration) -> Line<'static> {
+    const FRAMES: [&str; 8] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
+    let frame = FRAMES[((elapsed.as_millis() / 125) as usize) % FRAMES.len()];
+    let seconds = elapsed.as_secs_f32();
+    let command = if command.chars().count() > 72 {
+        let mut shortened = command.chars().take(69).collect::<String>();
+        shortened.push('…');
+        shortened
+    } else {
+        command.to_string()
+    };
+    Line::from(vec![
+        Span::styled(
+            "running ",
+            Style::default().fg(TOSS_BLUE).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(frame.to_string(), Style::default().fg(TOSS_BLUE)),
+        Span::raw("  "),
+        Span::styled(
+            format!("{seconds:.1}s"),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::raw("  "),
+        Span::styled(command, Style::default().fg(Color::Black)),
+    ])
 }
 
 fn active_completion_token(input: &str) -> String {
@@ -1091,10 +1233,10 @@ mod tests {
     use super::{
         active_completion_token, completion_matches, completion_matches_with_data_dir,
         display_width, dynamic_input_height, input_cursor_column, input_cursor_visual_position,
-        input_visual_rows, suggestion_line, transcript_line, visible_transcript_window,
+        input_visual_rows, loading_line, suggestion_line, transcript_line, visible_transcript_window,
         visual_transcript_lines, welcome_lines, App, INPUT_PLACEHOLDER,
     };
-    use std::{env, fs};
+    use std::{env, fs, time::Duration};
 
     #[test]
     fn cursor_column_uses_terminal_display_width_for_korean() {
@@ -1134,6 +1276,10 @@ mod tests {
         assert_eq!(
             app.command_args("/research AAPL"),
             vec!["research", "AAPL"]
+        );
+        assert_eq!(
+            app.command_args("/research NVDA --topic \"NVDA earnings momentum\""),
+            vec!["research", "NVDA", "--topic", "NVDA earnings momentum"]
         );
         assert_eq!(app.command_args("collect plan AAPL"), Vec::<String>::new());
     }
@@ -1292,6 +1438,25 @@ mod tests {
         );
         assert!(completion_matches("/research NVDA ", "quant").contains(&"--source".to_string()));
         assert_eq!(
+            completion_matches("/research NVDA --", "quant"),
+            vec![
+                "--topic".to_string(),
+                "--source".to_string(),
+                "--interval".to_string(),
+                "--provider-symbol".to_string(),
+                "--no-save".to_string(),
+                "--no-codex".to_string()
+            ]
+        );
+        assert_eq!(
+            completion_matches("/research NVDA --source ", "quant"),
+            vec!["yahoo".to_string(), "stooq".to_string()]
+        );
+        assert_eq!(
+            completion_matches("/research NVDA --interval ", "quant"),
+            vec!["d".to_string(), "1d".to_string(), "1wk".to_string(), "1mo".to_string()]
+        );
+        assert_eq!(
             completion_matches("/discover ", "quant"),
             vec![
                 "trending".to_string(),
@@ -1415,6 +1580,24 @@ mod tests {
         assert!(rendered.contains(&("llect")));
         assert!(rendered.contains(&("dex")));
         assert_eq!(line.spans[2].style.bg, None);
+    }
+
+    #[test]
+    fn loading_line_animates_running_commands_with_elapsed_time() {
+        let line = loading_line(
+            "/research NVDA --topic \"NVDA earnings momentum\"",
+            Duration::from_millis(375),
+        );
+        let rendered = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+
+        assert!(rendered.contains("running"));
+        assert!(rendered.contains("0.4s"));
+        assert!(rendered.contains("/research NVDA"));
+        assert_ne!(line.spans[1].content.as_ref(), "");
     }
 
     #[test]
