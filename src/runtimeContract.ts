@@ -11,6 +11,8 @@ export function runtimeInfoPayload(dataDir: string): JsonObject {
     runtime: snapshot as unknown as JsonObject,
     contract: {
       primary_interface: 'shell-cli-json',
+      preferred_launcher: 'rtk',
+      launcher_aliases: ['rtk', 'quantops', 'quant'],
       human_primary_surface: 'Codex conversation',
       quantops_role: guide.role,
       mcp: 'optional integration layer after CLI JSON contracts are stable',
@@ -27,7 +29,8 @@ export function formatRuntimeInfo(payload: JsonObject): string {
     '',
     'Agent runtime contract',
     '- Primary interface: shell CLI with --json',
-    '- Human talks to Codex; Codex calls quantops commands',
+    '- Preferred launcher: rtk',
+    '- Human talks to Codex; Codex calls rtk/quantops commands',
     '- MCP is optional later; TUI is not the primary UX',
   ].join('\n');
 }

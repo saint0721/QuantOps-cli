@@ -42,6 +42,7 @@ export function installLocalBins(options: InstallBinOptions = {}): InstallBinRes
   mkdirSync(dir, { recursive: true });
   const force = Boolean(options.force);
   const links = [
+    installOne('rtk', repoPath('src/cli.ts'), dir, force),
     installOne('quant', repoPath('src/cli.ts'), dir, force),
     installOne('quantops', repoPath('src/cli.ts'), dir, force),
   ];
