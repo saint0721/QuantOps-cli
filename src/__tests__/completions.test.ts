@@ -1,12 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { completeLine, completionCandidates } from '../cli.ts';
+import { createIdea } from '../idea.ts';
 
 test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/status'));
   assert.ok(completionCandidates('', 'quant').includes('doctor'));
   assert.ok(completionCandidates('', 'quant').includes('research'));
   assert.ok(completionCandidates('', 'quant').includes('idea'));
+  assert.ok(completionCandidates('', 'quant').includes('lab'));
   assert.ok(completionCandidates('', 'quant').includes('collect'));
   assert.ok(completionCandidates('', 'quant').includes('/collect'));
   assert.ok(completionCandidates('', 'quant').includes('data'));
@@ -22,6 +27,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/analyze'));
   assert.ok(completionCandidates('', 'quant').includes('/research'));
   assert.ok(completionCandidates('', 'quant').includes('/idea'));
+  assert.ok(completionCandidates('', 'quant').includes('/lab'));
   assert.ok(completionCandidates('', 'quant').includes('/list'));
   assert.ok(completionCandidates('', 'quant').includes('/discover'));
   assert.ok(completionCandidates('', 'quant').includes('/sources'));
@@ -37,7 +43,8 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/collect plan --watchlist ', 'quant'), []);
   assert.deepEqual(completionCandidates('/collect quote AAPL ', 'quant'), []);
   assert.deepEqual(completionCandidates('/idea ', 'quant'), ['new', 'list', 'show', 'add-symbol', 'add-hypothesis', 'status']);
-  assert.deepEqual(completionCandidates('/idea status idea-20260505T031000-nvda ', 'quant'), []);
+  assert.deepEqual(completionCandidates('/idea status idea-20260505T031000-nvda ', 'quant'), ['--plain']);
+  assert.deepEqual(completionCandidates('/lab ', 'quant'), ['workflow', 'discuss', 'verify', 'backtest']);
   assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));
@@ -75,6 +82,19 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completeLine('/co', 'quant')[0].includes('/collect'));
   assert.ok(completeLine('runt', 'quant')[0].includes('runtime'));
   assert.ok(completeLine('tmux start --s', 'quant')[0].includes('--session'));
+});
+
+test('idea tab completion suggests latest and saved idea ids', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-complete-idea-'));
+  const idea = createIdea(dir, 'NVDA earnings momentum', { now: '2026-05-05T03:15:00Z' });
+
+  assert.deepEqual(completionCandidates('/idea status ', 'quant', dir), ['latest', idea.id]);
+  assert.deepEqual(completeLine('/idea status idea-20260505', 'quant', dir)[0], [idea.id]);
+  assert.deepEqual(completionCandidates('/idea show latest ', 'quant', dir), ['--plain']);
+  assert.deepEqual(completeLine('/idea status latest --', 'quant', dir)[0], ['--plain']);
+  assert.deepEqual(completionCandidates('/lab verify ', 'quant', dir), ['latest', idea.id]);
+  assert.deepEqual(completeLine('/lab backtest idea-20260505', 'quant', dir)[0], [idea.id]);
+  assert.ok(completionCandidates('/lab discuss latest ', 'quant', dir).includes('--no-codex'));
 });
 
 test('codex mode limits completion to slash controls', () => {

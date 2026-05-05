@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { marketDatasetPath } from '../data.ts';
-import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaStatus, listIdeas, readIdea } from '../idea.ts';
+import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea } from '../idea.ts';
 import { researchReportPath } from '../research.ts';
 import { appendJsonl } from '../storage.ts';
 
@@ -62,4 +62,17 @@ test('idea status without symbols starts with add-symbol guidance', () => {
 
   assert.deepEqual(status.readiness, []);
   assert.deepEqual(status.next_commands, [`idea add-symbol ${idea.id} AAPL`]);
+});
+
+test('idea references accept latest, prefixes, symbols, and title text', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-idea-ref-'));
+  const older = createIdea(dir, 'AAPL buyback event study', { now: '2026-05-05T03:13:00Z' });
+  const newer = createIdea(dir, 'NVDA earnings momentum', { now: '2026-05-05T03:14:00Z' });
+  addIdeaSymbol(dir, newer.id, 'NVDA');
+
+  assert.equal(readIdea(dir, 'latest').id, newer.id);
+  assert.equal(readIdea(dir, older.id.slice(0, 25)).id, older.id);
+  assert.equal(readIdea(dir, 'NVDA').id, newer.id);
+  assert.equal(ideaStatus(dir, 'earnings').idea.id, newer.id);
+  assert.deepEqual(ideaReferenceCandidates(dir), ['latest', newer.id, older.id]);
 });
