@@ -29,8 +29,9 @@ test('next recommendation prioritizes saved idea workflow readiness', async () =
   assert.match(nextRecommendation(tmp), /\/lab workflow latest → \/backtest run latest/);
 });
 
-test('next recommendation falls through to find when no local state exists', async () => {
+test('next recommendation falls through to natural chat when no local state exists', async () => {
   const tmp = await mkdtemp(join(tmpdir(), 'quantops-next-empty-'));
 
-  assert.match(nextRecommendation(tmp), /next  \/find/);
+  assert.match(nextRecommendation(tmp), /많이 거래되는 종목 10개 찾아줘/);
+  assert.match(nextRecommendation(tmp), /\/discover most-active/);
 });

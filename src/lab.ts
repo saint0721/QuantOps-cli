@@ -112,7 +112,7 @@ function discussionOutput(status: IdeaStatusReport, focus: string): string[] {
       '- 자연스럽게 이렇게 입력하세요:',
       `  /lab discuss ${idea.id} NVDA 실적 모멘텀이 가격에 반영되는지 검증하고 싶어`,
       `  /lab discuss latest 뉴스 이벤트와 이동평균 백테스트를 연결해서 보고 싶어`,
-      '- 그 다음 질문은 /agent 로 이어가면 같은 agent-chat 세션에 계속 쌓입니다.',
+      '- 그 다음 질문은 그냥 자연어로 입력하면 같은 agent-chat 세션에 계속 쌓입니다.',
     ];
   }
   return [
@@ -123,7 +123,7 @@ function discussionOutput(status: IdeaStatusReport, focus: string): string[] {
     '- 주의점: 매수/매도 결론이 아니라 검증 가능한 연구 질문으로 유지합니다.',
     '',
     '이어가기',
-    `- /agent ${target}`,
+    `- 그냥 입력: ${target}`,
     `- /lab verify ${idea.id}`,
     `- /backtest run ${idea.symbols[0] ?? 'latest'} --strategy ma-cross`,
   ];

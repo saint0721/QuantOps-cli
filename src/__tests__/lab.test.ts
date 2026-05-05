@@ -55,5 +55,5 @@ test('lab discuss accepts a natural-language focus without Codex', () => {
   assert.equal(run.focus, '실적 모멘텀이 가격에 반영되는지 보고 싶어');
   assert.match(run.report, /discussion_focus/);
   assert.match(run.report, /논의 주제: 실적 모멘텀이 가격에 반영되는지 보고 싶어/);
-  assert.match(run.report, /\/agent 실적 모멘텀이 가격에 반영되는지 보고 싶어/);
+  assert.match(run.report, /그냥 입력: 실적 모멘텀이 가격에 반영되는지 보고 싶어/);
 });

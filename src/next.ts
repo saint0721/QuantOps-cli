@@ -93,7 +93,7 @@ export function nextRecommendation(dataDir: string): string {
       `데이터가 준비된 종목이 있습니다: ${marketSymbols.join(', ')}`,
       `next  /stats ${symbol}`,
       '',
-      '그 다음에는 /find 로 새 후보를 찾거나 /download <SYMBOL> 로 비교 대상을 추가하세요.',
+      '그 다음에는 자연어로 새 후보를 물어보거나 /discover 로 비교 대상을 추가하세요.',
     ].join('\n');
   }
   const discovered = latestDiscoverySymbol(dataDir);
@@ -121,8 +121,8 @@ export function nextRecommendation(dataDir: string): string {
     '추천 다음 행동',
     '',
     '아직 market 데이터가 없습니다.',
-    'next  /find',
+    'next  그냥 입력: 많이 거래되는 종목 10개 찾아줘',
     '',
-    '/find 는 /discover most-active --source yahoo --limit 10 의 쉬운 별칭입니다.',
+    '에이전트/고급 CLI에서는 /discover most-active --source yahoo --limit 10 을 사용할 수 있습니다.',
   ].join('\n');
 }

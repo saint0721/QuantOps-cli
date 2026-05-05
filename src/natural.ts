@@ -12,10 +12,10 @@ export type NaturalPlan = {
 };
 
 const CATEGORY_ALIASES: Array<[RegExp, string]> = [
-  [/많이\s*(거래|활동)|거래량|most[-\s]?active|active/i, 'find most-active'],
-  [/오르|상승|gainer|gain/i, 'find gainers'],
-  [/내리|하락|loser|loss/i, 'find losers'],
-  [/트렌딩|유행|인기|trend/i, 'find trending'],
+  [/많이\s*(거래|활동)|거래량|most[-\s]?active|active/i, 'discover most-active'],
+  [/오르|상승|gainer|gain/i, 'discover gainers'],
+  [/내리|하락|loser|loss/i, 'discover losers'],
+  [/트렌딩|유행|인기|trend/i, 'discover trending'],
 ];
 
 const PERIOD_ALIASES: Array<[RegExp, string]> = [

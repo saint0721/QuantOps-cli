@@ -25,7 +25,8 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('research'));
   assert.ok(completionCandidates('', 'quant').includes('/data'));
   assert.ok(completionCandidates('', 'quant').includes('/start'));
-  assert.ok(completionCandidates('', 'quant').includes('/find'));
+  assert.equal(completionCandidates('', 'quant').includes('/find'), false);
+  assert.equal(completionCandidates('', 'quant').includes('/ask'), false);
   assert.ok(completionCandidates('', 'quant').includes('/download'));
   assert.equal(completionCandidates('', 'quant').includes('/analyze'), false);
   assert.ok(completionCandidates('', 'quant').includes('/research'));
@@ -33,7 +34,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/lab'));
   assert.ok(completionCandidates('', 'quant').includes('/skills'));
   assert.ok(completionCandidates('', 'quant').includes('/tools'));
-  assert.ok(completionCandidates('', 'quant').includes('/agent'));
+  assert.equal(completionCandidates('', 'quant').includes('/agent'), false);
   assert.ok(completionCandidates('', 'quant').includes('/list'));
   assert.ok(completionCandidates('', 'quant').includes('/discover'));
   assert.ok(completionCandidates('', 'quant').includes('/sources'));
@@ -70,9 +71,6 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('/data watchlist refresh ', 'quant').includes('--period'));
   assert.ok(completionCandidates('/data watchlist ', 'quant').includes('--start'));
   assert.deepEqual(completionCandidates('/data list ', 'quant'), []);
-  assert.deepEqual(completionCandidates('/find ', 'quant'), ['trending', 'most-active', 'gainers', 'losers']);
-  assert.ok(completionCandidates('/find trending ', 'quant').includes('--limit'));
-  assert.deepEqual(completionCandidates('/find trending --limit ', 'quant'), ['10', '25', '50', '100']);
   assert.ok(completionCandidates('/download NVDA ', 'quant').includes('--period'));
   assert.deepEqual(completionCandidates('/analyze NVDA ', 'quant'), []);
   assert.deepEqual(completionCandidates('/backtest ', 'quant'), ['run', 'strategies', 'list']);
