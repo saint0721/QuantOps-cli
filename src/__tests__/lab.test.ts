@@ -14,13 +14,14 @@ test('lab prompt turns a saved idea into safe swarm workflow instructions', () =
   addIdeaHypothesis(dir, idea.id, 'Earnings surprise momentum persists');
 
   const run = runLabStage('verify', 'latest', { base: dir, save: false, now: '2026-05-05T04:01:00Z' });
-  const prompt = buildLabPrompt({ ok: true, idea: run.idea, readiness: run.readiness, next_commands: [] }, 'backtest');
+  const prompt = buildLabPrompt({ ok: true, idea: run.idea, readiness: run.readiness, next_commands: [] }, 'backtest', 'earnings drift');
 
   assert.match(run.report, /Lab verify: NVDA earnings momentum/);
   assert.match(run.report, /Blocking gaps/);
   assert.match(run.prompt, /Agent-swarm task split/);
   assert.match(run.prompt, /Do not provide buy\/sell\/hold advice/);
   assert.match(prompt, /backtest implementation swarm lead/);
+  assert.match(prompt, /User discussion focus/);
 });
 
 test('lab run can save and format workflow artifacts without Codex', () => {
@@ -35,7 +36,24 @@ test('lab run can save and format workflow artifacts without Codex', () => {
   assert.equal(run.saved_to, labReportPath(idea.id, dir));
   assert.equal(existsSync(run.saved_to!), true);
   assert.match(formatted, /saved_to:/);
-  assert.match(formatted, /Codex discussion was not run/);
+  assert.match(formatted, /아직 논의 주제가 없습니다/);
   assert.match(workflow, /quant lab discuss/);
   assert.match(workflow, /quant lab backtest/);
+});
+
+test('lab discuss accepts a natural-language focus without Codex', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-lab-focus-'));
+  const idea = createIdea(dir, 'NVDA earnings momentum', { now: '2026-05-05T04:04:00Z' });
+  addIdeaSymbol(dir, idea.id, 'NVDA');
+
+  const run = runLabStage('discuss', 'latest', {
+    base: dir,
+    save: false,
+    focus: '실적 모멘텀이 가격에 반영되는지 보고 싶어',
+  });
+
+  assert.equal(run.focus, '실적 모멘텀이 가격에 반영되는지 보고 싶어');
+  assert.match(run.report, /discussion_focus/);
+  assert.match(run.report, /논의 주제: 실적 모멘텀이 가격에 반영되는지 보고 싶어/);
+  assert.match(run.report, /\/agent 실적 모멘텀이 가격에 반영되는지 보고 싶어/);
 });

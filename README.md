@@ -131,6 +131,7 @@ quant idea status latest
 quant idea status latest --plain
 quant lab workflow latest
 quant lab discuss latest
+quant lab discuss latest 실적 모멘텀이 가격에 반영되는지 보고 싶어
 quant lab verify latest
 quant lab backtest latest --prompt
 quant strategy list
@@ -240,7 +241,7 @@ Market data defaults:
 - `quant idea status latest` shows whether each linked symbol has market data, validation status, saved research, and next TossQuant commands. You can also use a unique id prefix, title text, or a linked symbol instead of the full id.
 - `quant idea status latest --plain` prints a copy-friendly version for Codex/Claude discussions.
 - `quant lab workflow latest` shows the discuss → verify → backtest workflow for the saved idea.
-- `quant lab discuss latest` builds a local discussion checklist; add `--codex` to ask Codex when available.
+- `quant lab discuss latest <what you want to discuss>` starts a focused local discussion without quotes in the interactive prompt, records it in the shared `agent-chat` session, and suggests the next `/agent ...` follow-up; add `--codex` to ask Codex when available.
 - `quant lab verify latest` builds a skeptical validation/falsification checklist.
 - `quant lab backtest latest --prompt` prints the backtest coding prompt to copy into Codex/Claude.
 - `quant strategy list` shows deterministic strategy templates such as `ma-cross`, `momentum`, `mean-reversion`, and `buy-hold`.

@@ -18,7 +18,7 @@ import { listCodexSkills, skillInvocationCandidates, type CodexSkill } from './s
 import { listTools, runTool, toolSummaries } from './tools.ts';
 import { runAgent } from './agent.ts';
 import { providersJson, listProviders } from './providers.ts';
-import { ensureQuantSession, listQuantSessions, sessionHandoff } from './session.ts';
+import { ensureQuantSession, listQuantSessions, recordSessionEvent, sessionHandoff } from './session.ts';
 import { formatAgentLanguagePreference, normalizeAgentLanguage, readAgentPreferences, writeAgentLanguage } from './preferences.ts';
 import { formatBacktestResult, formatStrategyList, listBacktestStrategies, runBacktest } from './backtest.ts';
 import { runMcpServer } from './mcp.ts';
@@ -648,7 +648,16 @@ function commandLab(dataDir: string, action = 'workflow', tail: string[] = []): 
       return 0;
     }
     if (stages.has(action)) {
-      const result = runLabStage(action as LabStage, ref, { base: dataDir, save: !noSave }, useCodex && !promptOnly ? runCodexPromptText : undefined);
+      const focus = args.slice(1).join(' ');
+      const result = runLabStage(action as LabStage, ref, { base: dataDir, save: !noSave, focus }, useCodex && !promptOnly ? runCodexPromptText : undefined);
+      if (action === 'discuss') {
+        const session = ensureQuantSession({ id: 'agent-chat', title: `Discuss ${result.idea.title}` });
+        recordSessionEvent(session, {
+          type: 'lab.discuss',
+          summary: focus || `started discussion for ${result.idea.title}`,
+          payload: { idea: result.idea.id, focus: focus || '', next: ['agent <your follow-up>', `lab verify ${result.idea.id}`] },
+        });
+      }
       printText(formatLabRun(result, { promptOnly }));
       return 0;
     }

@@ -105,12 +105,16 @@ test('lab command builds idea workflow and prompt-only artifacts', async () => {
   await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'add-symbol', 'latest', 'NVDA']));
 
   const workflow = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'workflow', 'latest']));
+  const discuss = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'discuss', 'latest', '실적', '모멘텀을', '뉴스와', '연결해서', '보고', '싶어', '--no-save']));
   const verify = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'verify', 'latest', '--no-save']));
   const prompt = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'backtest', 'latest', '--prompt']));
 
   assert.equal(workflow.code, 0);
   assert.match(workflow.output, /Lab workflow: NVDA earnings momentum/);
   assert.match(workflow.output, /quant lab discuss/);
+  assert.equal(discuss.code, 0);
+  assert.match(discuss.output, /논의 주제: 실적 모멘텀을 뉴스와 연결해서 보고 싶어/);
+  assert.match(discuss.output, /\/agent 실적 모멘텀을 뉴스와 연결해서 보고 싶어/);
   assert.equal(verify.code, 0);
   assert.match(verify.output, /Lab verify: NVDA earnings momentum/);
   assert.match(verify.output, /Blocking gaps/);
