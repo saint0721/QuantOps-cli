@@ -1076,6 +1076,12 @@ function skillSummaryRow(skill: QuantSkill): string[] {
 
 function commandSkills(): number {
   const skills = listQuantSkills();
+  const examples = [
+    '$quantops-agent-runtime --lang ko',
+    '$quantops-data-backtest-check latest --lang ko',
+    '$quantops-idea-coach --lang ko',
+    '$quantops-research-lab latest --lang ko',
+  ].filter((example) => skills.some((skill) => example.startsWith(`$${skill.name}`)));
   printText([
     'QuantOps local skills',
     '',
@@ -1083,8 +1089,7 @@ function commandSkills(): number {
     '',
     'Use inside quant:',
     '  /skills',
-    '  $quantops-idea-coach --lang ko',
-    '  $quantops-research-lab latest --lang ko',
+    ...examples.map((example) => `  ${example}`),
   ].join('\n'));
   return 0;
 }

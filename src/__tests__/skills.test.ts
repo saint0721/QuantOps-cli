@@ -22,3 +22,17 @@ test('QuantOps local skills are discovered from QUANTOPS_SKILLS_DIR with invocat
   assert.match(skills[0]!.description, /Beginner/);
   assert.deepEqual(quantSkillInvocationCandidates({ QUANTOPS_SKILLS_DIR: skillsRoot }), ['$quantops-idea-coach', '$quantops-research-lab']);
 });
+
+test('repository QuantOps skills cover agent runtime and backtest readiness workflows', () => {
+  const skills = listQuantSkills({});
+  const names = skills.map((skill) => skill.name);
+
+  assert.ok(names.includes('quantops-agent-runtime'));
+  assert.ok(names.includes('quantops-data-backtest-check'));
+  assert.ok(names.includes('quantops-idea-coach'));
+  assert.ok(names.includes('quantops-research-lab'));
+  assert.match(skills.find((skill) => skill.name === 'quantops-agent-runtime')!.description, /rtk-based CLI harness/);
+  assert.match(skills.find((skill) => skill.name === 'quantops-data-backtest-check')!.description, /before backtesting/);
+  assert.ok(quantSkillInvocationCandidates({}).includes('$quantops-agent-runtime'));
+  assert.ok(quantSkillInvocationCandidates({}).includes('$quantops-data-backtest-check'));
+});

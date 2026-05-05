@@ -350,6 +350,13 @@ Codex is launched as `codex exec --sandbox read-only --cd <project> ...` so the 
 QuantOps filters Codex CLI transcript noise such as hook lines and sandbox warnings, then renders the model response in a colored Codex window.
 When invoking a skill from a regular shell instead of the interactive prompt, quote the `$...` token (for example `quant '$quantops-idea-coach --lang ko'`) so your shell does not expand it as an environment variable.
 
+Built-in QuantOps local skills:
+
+- `$quantops-agent-runtime`: use when Codex needs to operate QuantOps as an `rtk ... --json` harness, verify `rtk doctor`, inspect tools, and preserve `.quant` handoff state.
+- `$quantops-data-backtest-check`: use before trusting or writing a backtest; checks OHLCV readiness, validation, benchmark, leakage controls, and backtest readiness.
+- `$quantops-idea-coach`: use when a beginner needs help choosing or registering a research idea.
+- `$quantops-research-lab`: use after an idea exists to move through discuss → verify → backtest planning.
+
 Codex safety boundaries:
 - Codex receives summarized/redacted local context, not raw credentials.
 - Codex should recommend research steps and supported QuantOps commands only.
