@@ -8,6 +8,7 @@ import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } fr
 import { filteredCodexOutput } from './codex.ts';
 import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist, validateData, type DownloadRequest } from './data.ts';
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
+import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
 import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
@@ -31,8 +32,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'idea', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/idea', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
 
@@ -62,6 +63,10 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
   if (command === 'collect') {
     if (parts[1] === 'plan') return parts.length <= 3 ? ['--watchlist'] : [];
     return parts.length <= 2 ? ['plan', 'quote', 'watchlist'] : [];
+  }
+  if (command === 'idea') {
+    if (parts.length <= 2) return ['new', 'list', 'show', 'add-symbol', 'add-hypothesis', 'status'];
+    return [];
   }
   if (command === 'data') {
     if (parts.length <= 2) return ['download', 'watchlist', 'list', 'info', 'validate', 'refresh'];
@@ -403,6 +408,112 @@ function commandCollect(dataDir: string, sub?: string, tail: string[] = []): num
   return 2;
 }
 
+function ideaSummaryRow(idea: QuantIdea): string[] {
+  return [
+    idea.id,
+    idea.status,
+    idea.symbols.join(', ') || '-',
+    String(idea.hypotheses.length),
+    idea.title,
+  ];
+}
+
+function formatIdea(idea: QuantIdea): string {
+  return [
+    `Idea: ${idea.title}`,
+    `ID: ${idea.id}`,
+    `Status: ${idea.status}`,
+    `Created: ${idea.created_at}`,
+    `Updated: ${idea.updated_at}`,
+    '',
+    'Symbols:',
+    ...(idea.symbols.length ? idea.symbols.map((symbol) => `- ${symbol}`) : ['- none']),
+    '',
+    'Hypotheses:',
+    ...(idea.hypotheses.length ? idea.hypotheses.map((item) => `- ${item}`) : ['- none']),
+  ].join('\n');
+}
+
+function formatReadiness(item: IdeaReadiness): string[] {
+  return [item.symbol, item.market_data, item.validation, item.research, item.next_commands.map((cmd) => `/${cmd}`).join(' | ')];
+}
+
+function formatIdeaStatus(result: ReturnType<typeof ideaStatus>): string {
+  const idea = result.idea;
+  const next = result.next_commands.map((cmd, index) => `${index + 1}. /${cmd}`);
+  return [
+    formatIdea(idea),
+    '',
+    'Evidence readiness:',
+    result.readiness.length ? table(['symbol', 'market', 'validation', 'research', 'next'], result.readiness.map(formatReadiness)) : '- no symbols yet',
+    '',
+    'Next commands:',
+    ...(next.length ? next : [`1. /idea add-symbol ${idea.id} AAPL`]),
+  ].join('\n');
+}
+
+function commandIdea(dataDir: string, action = 'list', tail: string[] = []): number {
+  try {
+    if (action === 'new') {
+      const title = tail.join(' ');
+      const idea = createIdea(dataDir, title);
+      const suggestedSymbol = title.match(/\b[A-Z][A-Z0-9.-]{1,9}\b/)?.[0] ?? 'AAPL';
+      printText([
+        `created idea ${idea.id}`,
+        `title: ${idea.title}`,
+        `saved_to: ${ideaPath(dataDir, idea.id)}`,
+        `next  /idea add-symbol ${idea.id} ${suggestedSymbol}`,
+      ].join('\n'));
+      return 0;
+    }
+    if (action === 'list') {
+      const ideas = listIdeas(dataDir);
+      printText(ideas.length ? table(['id', 'status', 'symbols', 'hypotheses', 'title'], ideas.map(ideaSummaryRow)) : '저장된 idea가 없습니다.\nnext  /idea new "NVDA earnings momentum"');
+      return 0;
+    }
+    if (action === 'show') {
+      const id = tail[0];
+      if (!id) { warn('usage: idea show <ID>'); return 2; }
+      printText(formatIdea(readIdea(dataDir, id)));
+      return 0;
+    }
+    if (action === 'add-symbol') {
+      const [id, symbol] = tail;
+      if (!id || !symbol) { warn('usage: idea add-symbol <ID> <SYMBOL>'); return 2; }
+      const idea = addIdeaSymbol(dataDir, id, symbol);
+      printText([
+        `updated idea ${idea.id}`,
+        `symbols: ${idea.symbols.join(', ') || '-'}`,
+        `next  /idea status ${idea.id}`,
+      ].join('\n'));
+      return 0;
+    }
+    if (action === 'add-hypothesis') {
+      const id = tail[0];
+      const hypothesis = tail.slice(1).join(' ');
+      if (!id || !hypothesis) { warn('usage: idea add-hypothesis <ID> <TEXT>'); return 2; }
+      const idea = addIdeaHypothesis(dataDir, id, hypothesis);
+      printText([
+        `updated idea ${idea.id}`,
+        `hypotheses: ${idea.hypotheses.length}`,
+        `next  /idea status ${idea.id}`,
+      ].join('\n'));
+      return 0;
+    }
+    if (action === 'status') {
+      const id = tail[0];
+      if (!id) { warn('usage: idea status <ID>'); return 2; }
+      printText(formatIdeaStatus(ideaStatus(dataDir, id)));
+      return 0;
+    }
+  } catch (error) {
+    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
+  warn('usage: idea [new <TITLE>|list|show <ID>|add-symbol <ID> <SYMBOL>|add-hypothesis <ID> <TEXT>|status <ID>]');
+  return 2;
+}
+
 function dataOptionsFromTail(tail: string[]): { json: boolean; request: Omit<DownloadRequest, 'symbol'>; rest: string[] } {
   const rest = [...tail];
   const json = rest.includes('--json');
@@ -575,7 +686,7 @@ function commandStart(): number {
     ),
     '',
     '기본 흐름: /find → /download <SYMBOL> → /analyze <SYMBOL> → /next',
-    '고급 명령: /discover, /data download, /stats, /sources, /runtime',
+    '고급 명령: /idea, /discover, /data download, /stats, /sources, /runtime',
   ].join('\n'));
   return 0;
 }
@@ -858,8 +969,8 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'beginner    /start · /next · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
-    'flow        /find  →  /download NVDA  →  /analyze NVDA  →  /research NVDA  →  /next',
+    'beginner    /start · /next · /idea · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
+    'flow        /idea new "NVDA momentum"  →  /idea add-symbol <ID> NVDA  →  /download NVDA  →  /analyze NVDA',
     'advanced    /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL> · /sources',
     'codex       /ask <question> · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
@@ -950,6 +1061,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'download') return commandData(dataDir, 'download', downloadAliasArgs(sub, tail));
   if (cmd === 'analyze') return commandStats(dataDir, sub, tail);
   if (cmd === 'research') return commandResearch(dataDir, sub, tail);
+  if (cmd === 'idea') return commandIdea(dataDir, sub ?? 'list', tail);
   if (cmd === 'list') return commandData(dataDir, 'list', tail);
   if (cmd === 'status') { printStatus(dataDir); return 0; }
   if (cmd === 'doctor') return commandDoctor(dataDir);

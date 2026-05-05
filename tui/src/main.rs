@@ -30,6 +30,7 @@ const ROOT_COMMANDS: &[&str] = &[
     "/download",
     "/analyze",
     "/research",
+    "/idea",
     "/list",
     "/status",
     "/collect",
@@ -259,7 +260,7 @@ impl App {
     fn run_line(&self, line: &str) -> String {
         let args = self.command_args(line);
         if args.is_empty() {
-            return "slash commands only: try /start, /find, /download NVDA, /analyze NVDA, /research NVDA, /next, or /exit"
+            return "slash commands only: try /start, /idea, /find, /download NVDA, /analyze NVDA, /research NVDA, /next, or /exit"
                 .to_string();
         }
         let output = Command::new(&self.node)
@@ -276,7 +277,7 @@ impl App {
                 text.push_str(&String::from_utf8_lossy(&output.stderr));
                 let cleaned = strip_ansi(&text).trim().to_string();
                 if output.status.code() == Some(2) && cleaned.contains("unknown command:") {
-                    "unknown slash command: try /start, /find, /download NVDA, /analyze NVDA, /research NVDA, /next, or /exit"
+                    "unknown slash command: try /start, /idea, /find, /download NVDA, /analyze NVDA, /research NVDA, /next, or /exit"
                         .to_string()
                 } else {
                     cleaned
@@ -325,8 +326,8 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "beginner /start · /next · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
-        "flow     /find → /download NVDA → /analyze NVDA → /research NVDA → /next".to_string(),
+        "beginner /start · /next · /idea · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
+        "flow     /idea new \"NVDA momentum\" → /idea add-symbol <ID> NVDA → /download NVDA → /analyze NVDA".to_string(),
         "advanced /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL>".to_string(),
         "tools    /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
@@ -351,6 +352,11 @@ fn command_candidates(
         "/download" => download_candidates(parts, trailing_space),
         "/analyze" => &[],
         "/research" => research_candidates(parts, trailing_space),
+        "/idea" => one_level_candidates(
+            parts,
+            trailing_space,
+            &["new", "list", "show", "add-symbol", "add-hypothesis", "status"],
+        ),
         "/list" => &[],
         "/discover" => discover_candidates(parts, trailing_space),
         "/sources" => one_level_candidates(
@@ -1032,6 +1038,7 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/download".to_string()));
         assert!(completion_matches("", "quant").contains(&"/analyze".to_string()));
         assert!(completion_matches("", "quant").contains(&"/research".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/idea".to_string()));
         assert!(completion_matches("", "quant").contains(&"/list".to_string()));
         assert!(completion_matches("", "quant").contains(&"/sources".to_string()));
         assert!(completion_matches("", "quant").contains(&"/symbol".to_string()));
@@ -1048,6 +1055,17 @@ mod tests {
         assert_eq!(
             completion_matches("/collect plan ", "quant"),
             vec!["--watchlist".to_string()]
+        );
+        assert_eq!(
+            completion_matches("/idea ", "quant"),
+            vec![
+                "new".to_string(),
+                "list".to_string(),
+                "show".to_string(),
+                "add-symbol".to_string(),
+                "add-hypothesis".to_string(),
+                "status".to_string()
+            ]
         );
         assert_eq!(
             completion_matches("/collect plan --watchlist ", "quant"),
@@ -1284,6 +1302,7 @@ mod tests {
         assert!(text.contains("/download <SYMBOL>"));
         assert!(text.contains("/analyze <SYMBOL>"));
         assert!(text.contains("/research <SYMBOL>"));
+        assert!(text.contains("/idea"));
         assert!(text.contains("Tab completes"));
         assert!(text.contains("/data refresh <SYMBOL>"));
     }

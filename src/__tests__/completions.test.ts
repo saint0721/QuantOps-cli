@@ -6,6 +6,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/status'));
   assert.ok(completionCandidates('', 'quant').includes('doctor'));
   assert.ok(completionCandidates('', 'quant').includes('research'));
+  assert.ok(completionCandidates('', 'quant').includes('idea'));
   assert.ok(completionCandidates('', 'quant').includes('collect'));
   assert.ok(completionCandidates('', 'quant').includes('/collect'));
   assert.ok(completionCandidates('', 'quant').includes('data'));
@@ -20,6 +21,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/download'));
   assert.ok(completionCandidates('', 'quant').includes('/analyze'));
   assert.ok(completionCandidates('', 'quant').includes('/research'));
+  assert.ok(completionCandidates('', 'quant').includes('/idea'));
   assert.ok(completionCandidates('', 'quant').includes('/list'));
   assert.ok(completionCandidates('', 'quant').includes('/discover'));
   assert.ok(completionCandidates('', 'quant').includes('/sources'));
@@ -34,6 +36,8 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/collect plan ', 'quant'), ['--watchlist']);
   assert.deepEqual(completionCandidates('/collect plan --watchlist ', 'quant'), []);
   assert.deepEqual(completionCandidates('/collect quote AAPL ', 'quant'), []);
+  assert.deepEqual(completionCandidates('/idea ', 'quant'), ['new', 'list', 'show', 'add-symbol', 'add-hypothesis', 'status']);
+  assert.deepEqual(completionCandidates('/idea status idea-20260505T031000-nvda ', 'quant'), []);
   assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));

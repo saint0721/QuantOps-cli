@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { marketDatasetPath } from '../data.ts';
+import { listIdeas } from '../idea.ts';
 import { runOnce, welcomeCard } from '../cli.ts';
 import { appendJsonl } from '../storage.ts';
 
@@ -54,4 +55,25 @@ test('data info and validate route through local market datasets', async () => {
   assert.match(info.output, /Market data info: AAPL/);
   assert.equal(validation.code, 0);
   assert.match(validation.output, /validation passed/);
+});
+
+test('idea command records research hypotheses and links next data commands', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-idea-'));
+
+  const created = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'new', 'NVDA', 'earnings', 'momentum']));
+  const idea = listIdeas(dir)[0]!;
+  const symbol = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'add-symbol', idea.id, 'nvda']));
+  const hypothesis = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'add-hypothesis', idea.id, 'Earnings surprise momentum persists']));
+  const status = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'status', idea.id]));
+
+  assert.equal(created.code, 0);
+  assert.match(created.output, /created idea/);
+  assert.equal(symbol.code, 0);
+  assert.match(symbol.output, /NVDA/);
+  assert.equal(hypothesis.code, 0);
+  assert.match(hypothesis.output, /hypotheses: 1/);
+  assert.equal(status.code, 0);
+  assert.match(status.output, /Idea: NVDA earnings momentum/);
+  assert.match(status.output, /data download NVDA --period 1y/);
+  assert.match(status.output, /research NVDA --topic "NVDA earnings momentum"/);
 });
