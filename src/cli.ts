@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { classify, historyRows } from './analysis.ts';
 import { auditAll } from './audit.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
@@ -1541,7 +1543,18 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   return runOnce(argv);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+function isCliEntrypoint(): boolean {
+  const invoked = process.argv[1];
+  if (!invoked) return false;
+  const modulePath = fileURLToPath(import.meta.url);
+  try {
+    return realpathSync(invoked) === realpathSync(modulePath);
+  } catch {
+    return invoked === modulePath || import.meta.url === `file://${invoked}`;
+  }
+}
+
+if (isCliEntrypoint()) {
   const code = await main();
   process.exitCode = code;
 }
