@@ -10,10 +10,14 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/status'));
   assert.ok(completionCandidates('', 'quant').includes('doctor'));
   assert.ok(completionCandidates('', 'quant').includes('research'));
+  assert.ok(completionCandidates('', 'quant').includes('codex-guide'));
+  assert.ok(completionCandidates('', 'quant').includes('event'));
+  assert.ok(completionCandidates('', 'quant').includes('compare'));
   assert.ok(completionCandidates('', 'quant').includes('idea'));
   assert.ok(completionCandidates('', 'quant').includes('lab'));
   assert.ok(completionCandidates('', 'quant').includes('skills'));
   assert.ok(completionCandidates('', 'quant').includes('tools'));
+  assert.ok(completionCandidates('', 'quant').includes('mcp'));
   assert.ok(completionCandidates('', 'quant').includes('agent'));
   assert.ok(completionCandidates('', 'quant').includes('collect'));
   assert.ok(completionCandidates('', 'quant').includes('/collect'));
@@ -56,6 +60,8 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/lab ', 'quant'), ['workflow', 'discuss', 'verify', 'backtest']);
   assert.deepEqual(completionCandidates('/skills ', 'quant'), []);
   assert.deepEqual(completionCandidates('/tools ', 'quant'), ['list', 'run']);
+  assert.ok(completionCandidates('runtime ', 'quant').includes('info'));
+  assert.deepEqual(completionCandidates('event ', 'quant'), ['define', 'study', 'windows']);
   assert.ok(completionCandidates('/tools run ', 'quant').includes('stats.run'));
   assert.ok(completionCandidates('/agent ', 'quant').includes('--provider'));
   assert.ok(completionCandidates('/agent ', 'quant').includes('ko'));

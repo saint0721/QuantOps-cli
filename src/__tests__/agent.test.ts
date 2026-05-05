@@ -15,6 +15,27 @@ function writeYahooClose(base: string, day: number, close: number) {
   });
 }
 
+function yahooChart(rows: Array<[string, number]>): string {
+  return JSON.stringify({
+    chart: {
+      result: [{
+        timestamp: rows.map(([date]) => Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000)),
+        indicators: {
+          quote: [{
+            open: rows.map(([, close]) => close),
+            high: rows.map(([, close]) => close + 1),
+            low: rows.map(([, close]) => close - 1),
+            close: rows.map(([, close]) => close),
+            volume: rows.map((_, index) => 1000 + index),
+          }],
+          adjclose: [{ adjclose: rows.map(([, close]) => close) }],
+        },
+      }],
+      error: null,
+    },
+  });
+}
+
 test('agent extracts symbols and records a .quant session while running safe tools', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-agent-data-'));
   const sessionRoot = mkdtempSync(join(tmpdir(), 'tq-agent-session-'));
@@ -88,6 +109,47 @@ test('agent carries prior conversation replies instead of restarting command gui
   assert.equal(events.some((event) => event.type === 'agent.reply'), true);
   assert.doesNotMatch(second.report, /바로 이어서 이렇게 물어볼 수 있어요/);
   assert.doesNotMatch(second.report, /다음 안전 명령/);
+});
+
+test('agent turns explicit Korean data requests into bounded tool execution', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-agent-download-data-'));
+  const sessionRoot = mkdtempSync(join(tmpdir(), 'tq-agent-download-session-'));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    text: async () => yahooChart([
+      ['2026-01-02', 100],
+      ['2026-03-31', 120],
+      ['2026-05-05', 130],
+    ]),
+  })) as typeof fetch;
+
+  try {
+    const run = await runAgent('TSM 분석하게 26년도 1분기와 2분기 그러니까 2분기 실적 발표까지 데이터 가져와봐', {
+      base: dir,
+      sessionRoot,
+      sessionId: 'agent-download',
+      now: '2026-05-05T00:00:00Z',
+    });
+
+    const download = run.steps.find((step) => step.tool === 'data.download');
+    assert.equal(run.language, 'ko');
+    assert.equal(download?.ok, true);
+    assert.equal(download?.output.ticker, 'TSM');
+    assert.equal(download?.output.start, '20260101');
+    assert.equal(download?.output.end, '20260505');
+    assert.ok(run.steps.some((step) => step.tool === 'stats.run'));
+    assert.ok(run.steps.some((step) => step.tool === 'research.run'));
+    assert.match(run.report, /현재 날짜\(2026-05-05\)보다 뒤/);
+    assert.match(run.report, /실적 발표일은 외부 캘린더 조회가 필요/);
+    assert.match(run.report, /실제로 실행한 확인 결과/);
+    assert.match(run.report, /데이터 다운로드: TSM 2026-01-01~2026-05-05/);
+    assert.doesNotMatch(run.report, /기간은 목적별로 나누면 좋아요/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 
