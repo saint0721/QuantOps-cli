@@ -117,6 +117,10 @@ quant collect plan AAPL
 quant collect quote AAPL
 quant collect watchlist
 quant data download AAPL
+quant data info AAPL
+quant data validate AAPL
+quant data refresh AAPL
+quant data watchlist refresh
 quant stats AAPL
 quant research AAPL
 quant quote fetch AAPL
@@ -133,7 +137,7 @@ quant tmux start
 quant order preview --symbol AAPL --side buy --qty 1 --price 100
 ```
 
-Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics, and `research <SYMBOL>` builds an educational external-factor report under `data/research/`.
+Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, `data info <SYMBOL>` shows saved dataset coverage/freshness, `data validate <SYMBOL>` checks local OHLCV quality/readiness, `data refresh <SYMBOL>` incrementally updates an existing dataset, `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics, and `research <SYMBOL>` builds an educational external-factor report under `data/research/`.
 
 The active TypeScript runtime now runs normal market download, list, stats, and audit commands directly. The retained Python package remains a reference implementation instead of the default data-analysis execution path.
 
@@ -208,6 +212,10 @@ TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls 
 
 Market data defaults:
 - `quant data download AAPL --period 1y` uses Yahoo Finance's chart endpoint by default.
+- `quant data info AAPL` shows saved source, interval, row count, date coverage, freshness age, and next refresh command.
+- `quant data validate AAPL` checks local rows for duplicate dates, invalid OHLCV values, stale data, and short histories.
+- `quant data refresh AAPL` refreshes from the next day after the latest saved row through today; if no saved dataset exists, it falls back to the provider's default range.
+- `quant data watchlist refresh` refreshes every ticker in `data/watchlist.json`.
 - `quant data download AAPL --source stooq --period 1y` uses Stooq when `STOOQ_API_KEY` is available or Stooq allows CSV access.
 - `quant stats AAPL` reads the default Yahoo dataset unless you pass another `--source`.
 

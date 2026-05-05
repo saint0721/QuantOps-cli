@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { downloadHistory, downloadWatchlist, listDatasets, marketDatasetPath, normalizeDate, normalizeStooqSymbol, parseStooqCsv, parseYahooChart, stooqUrl, yahooUrl } from '../data.ts';
-import { readJsonl, writeWatchlist } from '../storage.ts';
+import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, marketDatasetPath, normalizeDate, normalizeStooqSymbol, parseStooqCsv, parseYahooChart, refreshHistory, refreshWatchlist, safeDatasetName, stooqUrl, validateData, yahooUrl } from '../data.ts';
+import { appendJsonl, readJsonl, writeWatchlist } from '../storage.ts';
 
 const CSV = [
   'Date,Open,High,Low,Close,Volume',
@@ -33,10 +33,16 @@ const YAHOO = JSON.stringify({
 
 test('stooq helpers normalize dates, symbols, and URLs', () => {
   assert.equal(normalizeDate('2026-01-02'), '20260102');
+  assert.throws(() => normalizeDate('2026-02-31'), /invalid calendar date/);
   assert.equal(normalizeStooqSymbol('aapl'), 'aapl.us');
   assert.equal(normalizeStooqSymbol('^spx'), '^spx');
   assert.match(stooqUrl({ symbol: 'AAPL', start: '2026-01-02', end: '2026-01-03' }), /s=aapl\.us/);
   assert.match(stooqUrl({ symbol: 'AAPL', start: '2026-01-02', end: '2026-01-03' }), /d1=20260102/);
+});
+
+test('dataset names strip path separators from provider input', () => {
+  assert.equal(safeDatasetName('../AAPL/evil', '1/d'), 'aapl_evil_1_d');
+  assert.doesNotMatch(marketDatasetPath('/tmp/tq', 'yahoo', '../AAPL/evil', 'd'), /\.\./);
 });
 
 test('yahoo helpers build chart URLs and parse OHLCV JSON', () => {
@@ -94,4 +100,62 @@ test('downloadWatchlist summarizes per-symbol downloads', async () => {
   assert.equal(result.ok, true);
   assert.equal(result.downloaded, 2);
   assert.equal(listDatasets(dir).length, 2);
+});
+
+test('dataInfo summarizes saved market datasets with age and next command', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-data-info-'));
+  await downloadHistory({ symbol: 'AAPL', source: 'yahoo', start: '2024-01-02', end: '2024-01-03' }, { base: dir, fetcher: () => YAHOO });
+
+  const info = dataInfo(dir, 'AAPL', { now: '2024-01-05' });
+
+  assert.equal(info.ok, true);
+  assert.equal(info.count, 1);
+  const dataset = (info.datasets as any[])[0];
+  assert.equal(dataset.provider_symbol, 'AAPL');
+  assert.equal(dataset.latest_age_days, 2);
+  assert.match(dataset.next_command, /data refresh AAPL --source yahoo/);
+
+  const broad = dataInfo(dir, 'A', { now: '2024-01-05' });
+  assert.equal(broad.ok, false);
+});
+
+test('validateData flags duplicate invalid stale rows', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-data-validate-'));
+  const path = marketDatasetPath(dir, 'yahoo', 'AAPL', 'd');
+  appendJsonl(path, { ticker: 'AAPL', provider_symbol: 'AAPL', source: 'yahoo', interval: 'd', date: '2024-01-03', payload: { close: 111, volume: 10 } });
+  appendJsonl(path, { ticker: 'AAPL', provider_symbol: 'AAPL', source: 'yahoo', interval: 'd', date: '2024-01-02', payload: { close: 'bad', volume: 'bad' } });
+  appendJsonl(path, { ticker: 'AAPL', provider_symbol: 'AAPL', source: 'yahoo', interval: 'd', date: '2024-01-02', payload: { close: 112, volume: 12 } });
+
+  const result = validateData(dir, 'AAPL', { now: '2024-01-20', maxStaleDays: 7 });
+  const codes = (result.issues as any[]).map((issue) => issue.code);
+
+  assert.equal(result.ok, false);
+  assert.ok(codes.includes('unsorted_rows'));
+  assert.ok(codes.includes('invalid_close'));
+  assert.ok(codes.includes('invalid_volume'));
+  assert.ok(codes.includes('duplicate_date'));
+  assert.ok(codes.includes('stale_dataset'));
+});
+
+test('refreshHistory uses the next day after latest saved row', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-data-refresh-'));
+  await downloadHistory({ symbol: 'AAPL', source: 'yahoo', start: '2024-01-02', end: '2024-01-03' }, { base: dir, fetcher: () => YAHOO });
+
+  const result = await refreshHistory({ symbol: 'AAPL', source: 'yahoo' }, { base: dir, today: '2024-01-10', fetcher: () => YAHOO });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.previous_latest_date, '2024-01-03');
+  assert.equal(result.refresh_start, '2024-01-04');
+  assert.equal(result.refresh_end, '2024-01-10');
+});
+
+test('refreshWatchlist summarizes refreshed tickers', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-watchlist-refresh-'));
+  writeWatchlist(['aapl', 'msft'], dir);
+
+  const result = await refreshWatchlist({ base: dir, source: 'yahoo', today: '2024-01-10', fetcher: () => YAHOO });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.refreshed, 2);
+  assert.equal((result.results as any[]).length, 2);
 });
