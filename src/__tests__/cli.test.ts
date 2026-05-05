@@ -255,6 +255,39 @@ test('codex runtime commands expose agent-first machine contracts', async () => 
   assert.match(event.output, /event study TSM/);
 });
 
+test('help explains the Codex-first rtk harness flow', async () => {
+  const help = await captureConsole(() => runOnce(['--no-tmux', '--help']));
+
+  assert.equal(help.code, 0);
+  assert.match(help.output, /Codex-first quant research harness/);
+  assert.match(help.output, /Codex calls rtk commands with --json/);
+  assert.match(help.output, /rtk runtime info --json/);
+  assert.match(help.output, /Trading mutations are disabled/);
+});
+
+test('doctor treats broker checks as optional and reports launcher setup', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-doctor-'));
+  const previous = process.env.QUANT_TOSSCTL;
+  process.env.QUANT_TOSSCTL = join(dir, 'missing-tossctl');
+  try {
+    const doctor = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'doctor']));
+    const payload = JSON.parse(doctor.output);
+
+    assert.equal(doctor.code, 0);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.interface, 'shell-cli-json');
+    assert.equal(payload.human_surface, 'Codex conversation');
+    assert.equal(payload.broker.optional, true);
+    assert.equal(payload.broker.tossctl_version_ok, false);
+    assert.equal(payload.launcher.preferred, 'rtk');
+    assert.equal(payload.launcher.setup_command, 'node ./src/cli.ts setup bin');
+    assert.ok(Array.isArray(payload.warnings));
+  } finally {
+    if (previous === undefined) delete process.env.QUANT_TOSSCTL;
+    else process.env.QUANT_TOSSCTL = previous;
+  }
+});
+
 test('compare command uses the runtime stats path for multiple local datasets', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-compare-'));
   for (const symbol of ['AAPL', 'MSFT']) {

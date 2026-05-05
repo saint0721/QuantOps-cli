@@ -20,9 +20,21 @@ export function runToss(args: string[]): TossResult {
   };
 }
 
+function runTossRaw(args: string[]): TossResult {
+  const command = [tossctlPath(), ...args];
+  const completed = spawnSync(command[0]!, command.slice(1), { encoding: 'utf8' });
+  return {
+    ok: completed.status === 0,
+    returncode: completed.status ?? 1,
+    stdout: completed.stdout ?? '',
+    stderr: completed.stderr ?? String(completed.error?.message ?? ''),
+    command,
+  };
+}
+
 export const quote = (ticker: string) => runToss(['quote', 'get', ticker]);
 export const accountSummary = () => runToss(['account', 'summary']);
 export const portfolioPositions = () => runToss(['portfolio', 'positions']);
 export const authStatus = () => runToss(['auth', 'status']);
-export const version = () => runToss(['--version']);
+export const version = () => runTossRaw(['version']);
 export const orderPreview = (flags: string[]) => runToss(['order', 'preview', ...flags]);

@@ -9,6 +9,8 @@ Use QuantOps as a local execution harness from a Codex tmux/session:
 ```bash
 rtk codex-guide --json
 rtk runtime info --json
+rtk --help
+rtk doctor
 rtk symbol search TSMC --json
 rtk data info TSM --json
 rtk data download TSM --start 2026-01-01 --end 2026-05-05 --json
@@ -101,18 +103,19 @@ Inside the managed tmux runtime, `exit`, `quit`, or `:q` closes the whole
 QuantOps session, including the HUD pane.
 
 Then type. Press `Tab` to autocomplete commands, nested subcommands, slash modes,
-and tmux options such as `tmux start --session`:
+and tmux options such as `tmux start --session`. This surface is mainly for
+debugging and dashboards; the recommended research flow is still Codex calling
+copy-friendly `rtk ... --json` commands:
 
 ```text
 QuantOps quant ❯ /help
 QuantOps quant ❯ codex-guide
 QuantOps quant ❯ runtime info --json
 QuantOps quant ❯ doctor
-QuantOps quant ❯ collect plan AAPL
-QuantOps quant ❯ collect quote AAPL
-QuantOps quant ❯ history AAPL
-QuantOps quant ❯ classify AAPL
-QuantOps quant ❯ portfolio
+QuantOps quant ❯ data download TSM --period 5y --json
+QuantOps quant ❯ data validate TSM --json
+QuantOps quant ❯ stats TSM --json
+QuantOps quant ❯ compare TSM SOXX NVDA --json
 QuantOps quant ❯ NVDA 실적 모멘텀을 검증하고 싶어
 QuantOps quant ❯ /skills
 QuantOps quant ❯ /tools
@@ -130,33 +133,33 @@ QuantOps codex ❯ /quant
 QuantOps quant ❯ exit
 ```
 
-## Guided learning flow
+## Guided research flow
 
-Inside interactive mode, these slash commands explain what to do next instead of only listing syntax:
+For agent-first use, ask Codex what you want to investigate and let it call the
+runtime. The CLI exposes both a concise help surface and machine-readable
+contracts:
 
-```text
-QuantOps quant ❯ /start
-QuantOps quant ❯ /status
-QuantOps quant ❯ /next
-QuantOps quant ❯ /watchlist add AAPL
-QuantOps quant ❯ /watchlist list
-QuantOps quant ❯ /watchlist fetch
-QuantOps quant ❯ /learn momentum
+```bash
+rtk --help
+rtk codex-guide --json
+rtk runtime info --json
+rtk tools list --json
 ```
 
-Recommended beginner loop:
+Recommended beginner loop through Codex:
 
-1. `/start` to see the workflow.
-2. `/watchlist add AAPL` to choose one symbol.
-3. `collect quote AAPL` several times over time.
-4. `/status` to check whether enough samples exist.
-5. `classify AAPL` once at least 3 samples are saved.
+1. Ask Codex to turn the idea into symbols and hypotheses.
+2. Codex calls `rtk symbol search ... --json` and `rtk idea ...`.
+3. Codex calls `rtk data download/info/validate ... --json`.
+4. Codex calls `rtk stats`, `rtk compare`, `rtk research`, and `rtk event study`.
+5. Codex calls `rtk backtest run ... --json` only after the data and hypothesis are clear.
 
 ## Subcommand mode
 
 ```bash
 rtk codex-guide
 rtk runtime info --json
+rtk --help
 rtk doctor
 rtk collect plan AAPL
 rtk collect quote AAPL
@@ -224,7 +227,12 @@ QUANTOPS_EVENT_ENGINE=rust-cargo rtk event study TSM --event-date 2026-01-15 --b
 QUANTOPS_VALIDATE_ENGINE=rust-cargo rtk data validate TSM --json
 ```
 
-`rtk doctor` reports the Rust helper paths, cargo availability, and build hints under `rust_stats`, `rust_backtest`, `rust_event`, and `rust_validate`. This keeps the stable Codex contract in `rtk ... --json` while moving isolated compute-heavy kernels to Rust incrementally.
+`rtk doctor` reports the launcher setup, Node/runtime contract, tmux availability,
+Rust helper paths, cargo availability, and build hints under `rust_stats`,
+`rust_backtest`, `rust_event`, and `rust_validate`. Broker/tossctl diagnostics
+are reported as optional integration status and do not block the research
+harness. This keeps the stable Codex contract in `rtk ... --json` while moving
+isolated compute-heavy kernels to Rust incrementally.
 
 Safety defaults:
 - no web UI
