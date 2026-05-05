@@ -28,6 +28,7 @@ import { SOURCES, discoverMarket, searchSymbolsLive, sourceById, symbolInfo, typ
 import { nextRecommendation } from './next.ts';
 import { periodToDateRange } from './period.ts';
 import { marketStats } from './marketAnalysis.ts';
+import { marketStatsRuntime, rustStatsStatus } from './rustStats.ts';
 import { formatResearchReport, runResearch, type ResearchCodexResult } from './research.ts';
 import { codexRuntimeGuide, formatCodexRuntimeGuide } from './guide.ts';
 import { defineEvent, parseEventWindows, runEventStudy } from './events.ts';
@@ -393,6 +394,7 @@ function commandDoctor(dataDir: string): number {
     tmux_path: tmuxPath(),
     tmux_available: Boolean(tmuxPath()),
     tmux_install_hint: tmuxPath() ? 'ok' : tmuxInstallHint(),
+    rust_stats: rustStatsStatus(),
   });
   return ver.ok ? 0 : 1;
 }
@@ -665,7 +667,7 @@ function commandStats(dataDir: string, symbol?: string, tail: string[] = []): nu
   if (!symbol) { warn('usage: stats <SYMBOL>'); return 2; }
   try {
     const { request } = dataOptionsFromTail(tail);
-    const result = marketStats(symbol, { base: dataDir, source: request.source, interval: request.interval, providerSymbol: request.providerSymbol });
+    const result = marketStatsRuntime(symbol, { base: dataDir, source: request.source, interval: request.interval, providerSymbol: request.providerSymbol });
     printJson(result);
     return result.ok ? 0 : 1;
   } catch (error) {

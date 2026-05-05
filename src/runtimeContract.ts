@@ -17,6 +17,11 @@ export function runtimeInfoPayload(dataDir: string): JsonObject {
       quantops_role: guide.role,
       mcp: 'optional integration layer after CLI JSON contracts are stable',
       tui: 'de-emphasized; dashboard/debug/report browser only',
+      engines: {
+        cli_contract: 'TypeScript dispatcher',
+        fast_kernels: 'Rust helpers when built or explicitly requested',
+        quant_analysis_reference: 'Python compatibility module for quant-analysis experiments',
+      },
       trading_mutations: 'disabled by default',
     },
     recommended_start: guide.minimal_commands,
