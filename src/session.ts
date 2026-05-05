@@ -19,7 +19,7 @@ export type QuantSessionEvent = {
 };
 
 function defaultSessionRoot(): string {
-  return process.env.TOSSQUANT_SESSION_DIR || '.quant';
+  return process.env.QUANTOPS_SESSION_DIR || '.quant';
 }
 
 export function redactSessionText(value: string): string {
@@ -41,7 +41,7 @@ function slugify(value: string): string {
 }
 
 export function defaultSessionId(now = utcNow()): string {
-  const envId = process.env.TOSSQUANT_SESSION || process.env.CODEX_SESSION_ID || process.env.OMX_SESSION_ID || process.env.OMX_SESSION;
+  const envId = process.env.QUANTOPS_SESSION || process.env.CODEX_SESSION_ID || process.env.OMX_SESSION_ID || process.env.OMX_SESSION;
   if (envId) return slugify(envId);
   return `session-${now.replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z').replace(/Z$/, '').slice(0, 15)}`;
 }
@@ -109,7 +109,7 @@ export function sessionHandoff(sessionOrId: QuantSession | string, root = defaul
     : sessionOrId;
   const events = sessionEvents(session, root).slice(-20);
   return [
-    `TossQuant session handoff: ${session.title}`,
+    `QuantOps session handoff: ${session.title}`,
     `id: ${session.id}`,
     `updated_at: ${session.updated_at}`,
     '',

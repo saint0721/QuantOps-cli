@@ -359,7 +359,7 @@ async function fetchYahooDiscover(category: string, limit: number, fetcher: type
   const url = yahooUrl(category, limit);
   if (!url) throw new Error(`Yahoo live discovery does not support category: ${category}`);
   const response = await fetcher(url, {
-    headers: { 'User-Agent': 'TossQuant-cli/0.1' },
+    headers: { 'User-Agent': 'QuantOps-cli/0.1' },
     signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`Yahoo discovery HTTP ${response.status}`);
@@ -418,7 +418,7 @@ export async function discoverMarket(options: DiscoverOptions = {}): Promise<Dis
 
 async function fetchYahooSymbolSearch(query: string, limit: number, fetcher: typeof fetch): Promise<SymbolInfo[]> {
   const response = await fetcher(yahooSearchUrl(query, limit), {
-    headers: { 'User-Agent': 'TossQuant-cli/0.1' },
+    headers: { 'User-Agent': 'QuantOps-cli/0.1' },
     signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`Yahoo symbol search HTTP ${response.status}`);

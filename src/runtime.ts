@@ -6,7 +6,7 @@ import { dataDir, quoteHistoryPath, readJsonl, readWatchlist, utcNow } from './s
 import { tossctlPath } from './toss.ts';
 
 export type RuntimeSnapshot = {
-  app: 'TossQuant'; version: string; branch: string; pid: number; tmux: boolean; mode: string; last_action: string;
+  app: 'QuantOps'; version: string; branch: string; pid: number; tmux: boolean; mode: string; last_action: string;
   watchlist_count: number; watchlist: string[]; quote_files: number; quote_samples: number; quote_counts: Record<string, number>;
   latest_quotes: Record<string, string | null>; classify_ready: string[]; needs_more: string[]; codex: 'ready' | 'missing'; tossctl: string; updated_at: string;
 };
@@ -64,7 +64,7 @@ export function buildRuntimeSnapshot({ mode = 'quant', lastAction = 'ready', bas
   const latest: Record<string, string | null> = {};
   for (const ticker of Object.keys(summary.counts)) latest[ticker] = latestQuoteTimestamp(ticker, base);
   return {
-    app: 'TossQuant', version: VERSION, branch: gitBranch(cwd), pid: process.pid, tmux: Boolean(process.env.TMUX),
+    app: 'QuantOps', version: VERSION, branch: gitBranch(cwd), pid: process.pid, tmux: Boolean(process.env.TMUX),
     mode, last_action: lastAction, watchlist_count: summary.watchlist.length, watchlist: summary.watchlist,
     quote_files: Object.keys(summary.counts).length, quote_samples: Object.values(summary.counts).reduce((a, b) => a + b, 0),
     quote_counts: summary.counts, latest_quotes: latest, classify_ready: summary.ready, needs_more: summary.needs_more,
@@ -91,5 +91,5 @@ export function recordRuntime(opts: { mode?: string; lastAction?: string; base?:
 }
 
 export function renderRuntimeLine(snapshot: RuntimeSnapshot): string {
-  return `[TossQuant ${snapshot.version}] ${snapshot.branch} | mode:${snapshot.mode} | watchlist:${snapshot.watchlist_count} | quotes:${snapshot.quote_files}/${snapshot.quote_samples} samples | classify-ready:${snapshot.classify_ready.length} | codex:${snapshot.codex}`;
+  return `[QuantOps ${snapshot.version}] ${snapshot.branch} | mode:${snapshot.mode} | watchlist:${snapshot.watchlist_count} | quotes:${snapshot.quote_files}/${snapshot.quote_samples} samples | classify-ready:${snapshot.classify_ready.length} | codex:${snapshot.codex}`;
 }

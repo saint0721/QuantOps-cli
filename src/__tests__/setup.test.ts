@@ -5,12 +5,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { installLocalBins } from '../setup.ts';
 
-test('setup bin installs quant and tossquant symlinks', () => {
+test('setup bin installs quant and quantops symlinks', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-bin-'));
   const result = installLocalBins({ dir });
   assert.equal(result.ok, true);
   assert.equal(result.links.length, 2);
   assert.ok(existsSync(join(dir, 'quant')));
   assert.ok(readlinkSync(join(dir, 'quant')).endsWith('/src/cli.ts'));
-  assert.ok(existsSync(join(dir, 'tossquant')));
+  assert.ok(existsSync(join(dir, 'quantops')));
 });

@@ -33,7 +33,7 @@ import { formatResearchReport, runResearch, type ResearchCodexResult } from './r
 
 export { periodToDateRange } from './period.ts';
 
-const APP = 'TossQuant';
+const APP = 'QuantOps';
 const VERSION = '0.1.0';
 const GREEN = '\u001b[92m';
 const CYAN = '\u001b[96m';
@@ -606,7 +606,7 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
   try {
     const rest = [...tail];
     const noSave = rest.includes('--no-save');
-    const useCodex = rest.includes('--codex') || process.env.TOSSQUANT_RESEARCH_CODEX === '1';
+    const useCodex = rest.includes('--codex') || process.env.QUANTOPS_RESEARCH_CODEX === '1';
     for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-save') rest.splice(i, 1);
     for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-codex' || rest[i] === '--codex') rest.splice(i, 1);
     const explicitSource = rest.includes('--source');
@@ -635,7 +635,7 @@ function commandLab(dataDir: string, action = 'workflow', tail: string[] = []): 
   const stages = new Set(['discuss', 'verify', 'backtest']);
   try {
     const promptOnly = tail.includes('--prompt');
-    const useCodex = tail.includes('--codex') || process.env.TOSSQUANT_LAB_CODEX === '1';
+    const useCodex = tail.includes('--codex') || process.env.QUANTOPS_LAB_CODEX === '1';
     const noSave = tail.includes('--no-save') || promptOnly;
     const args = tail.filter((item) => item !== '--prompt' && item !== '--no-save' && item !== '--no-codex' && item !== '--codex');
     const ref = args[0];
@@ -1012,14 +1012,14 @@ function skillSummaryRow(skill: QuantSkill): string[] {
 function commandSkills(): number {
   const skills = listQuantSkills();
   printText([
-    'TossQuant local skills',
+    'QuantOps local skills',
     '',
-    skills.length ? table(['skill', 'description', 'path'], skills.map(skillSummaryRow)) : 'No TossQuant skills found under quant-skills/ or $TOSSQUANT_SKILLS_DIR.',
+    skills.length ? table(['skill', 'description', 'path'], skills.map(skillSummaryRow)) : 'No QuantOps skills found under quant-skills/ or $QUANTOPS_SKILLS_DIR.',
     '',
     'Use inside quant:',
     '  /skills',
-    '  $tossquant-idea-coach --lang ko',
-    '  $tossquant-research-lab latest --lang ko',
+    '  $quantops-idea-coach --lang ko',
+    '  $quantops-research-lab latest --lang ko',
   ].join('\n'));
   return 0;
 }
@@ -1298,14 +1298,14 @@ export function welcomeCard(): string {
   return [
     `${CYAN}${APP}${RESET} ${VERSION} · TypeScript runtime · trading mutations disabled`,
     '',
-    'project     TossQuant-cli — terminal-first quant runtime around tossctl',
+    'project     QuantOps-cli — agentic quant research and execution workflows',
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
     'beginner    /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list',
     'flow        /idea new "NVDA momentum"  →  /idea add-symbol latest NVDA  →  /lab workflow latest',
     'advanced    /tools · /agent ko · /agent "NVDA momentum" · /backtest run latest · /strategy list · /discover · /data info · /stats <SYMBOL>',
-    'codex       /skills · /tools · /agent · $tossquant-idea-coach · /ask <question> · /codex · /quant · /exit',
+    'codex       /skills · /tools · /agent · $quantops-idea-coach · /ask <question> · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
     '',
   ].join('\n');
@@ -1329,7 +1329,7 @@ async function runInteractive(dataDir: string): Promise<number> {
       return true;
     }
     if (['exit', '/quit', 'quit', '/:q', ':q'].includes(line)) {
-      warn('Use /exit to close TossQuant and its managed tmux session.');
+      warn('Use /exit to close QuantOps and its managed tmux session.');
       lastAction = 'exit-help';
       return false;
     }
@@ -1457,13 +1457,13 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
       return 1;
     }
   }
-  if (cmd === 'brief') return runCodexPrompt('Create a concise TossQuant session brief from local redacted data. Do not give buy/sell/hold advice.');
+  if (cmd === 'brief') return runCodexPrompt('Create a concise QuantOps session brief from local redacted data. Do not give buy/sell/hold advice.');
   if (!opts.quietUnknown) warn(`unknown command: ${cmd}`);
   return 2;
 }
 
 export function shouldAutoStartTmux(noTmux: boolean): boolean {
-  return !noTmux && !process.env.TOSSQUANT_NO_TMUX && !process.env.TMUX && input.isTTY && output.isTTY && Boolean(tmuxPath());
+  return !noTmux && !process.env.QUANTOPS_NO_TMUX && !process.env.TMUX && input.isTTY && output.isTTY && Boolean(tmuxPath());
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {

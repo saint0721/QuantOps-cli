@@ -12,8 +12,8 @@ from .storage import quote_history_path, read_watchlist, redact
 
 SAFETY_INSTRUCTIONS = """Safety rules:
 - Do not recommend direct buy/sell/hold decisions.
-- Recommend TossQuant commands, research steps, and data-quality checks only.
-- Only recommend currently supported TossQuant commands listed in this prompt; describe unavailable future ideas without command syntax.
+- Recommend QuantOps commands, research steps, and data-quality checks only.
+- Only recommend currently supported QuantOps commands listed in this prompt; describe unavailable future ideas without command syntax.
 - Do not request, infer, or print API keys, tokens, account identifiers, or credentials.
 - Treat this as educational analysis, not financial advice.
 - Do not suggest real order execution; order-related discussion must remain preview-only.
@@ -114,7 +114,7 @@ def _quote_summary_for_ticker(ticker: str, base: str | Path | None = None) -> di
 
 
 def build_local_context(base: str | Path | None = "data", ticker: str | None = None) -> dict[str, Any]:
-    """Build a bounded, redacted local TossQuant context for Codex prompts."""
+    """Build a bounded, redacted local QuantOps context for Codex prompts."""
     watchlist = read_watchlist(base)
     requested = ticker.upper() if ticker else None
     tickers = sorted({*(watchlist or []), *([requested] if requested else [])})
@@ -134,9 +134,9 @@ def build_local_context(base: str | Path | None = "data", ticker: str | None = N
 def build_task_prompt(task_name: str, instructions: str, context: dict[str, Any]) -> str:
     return "\n\n".join(
         [
-            f"TossQuant task: {task_name}",
+            f"QuantOps task: {task_name}",
             SAFETY_INSTRUCTIONS.strip(),
-            "Currently supported TossQuant commands:",
+            "Currently supported QuantOps commands:",
             "\n".join(f"- {command}" for command in SUPPORTED_COMMANDS),
             "Local redacted context:",
             json.dumps(redact(context), ensure_ascii=False, indent=2, sort_keys=True),

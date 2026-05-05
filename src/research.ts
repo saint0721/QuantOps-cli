@@ -121,7 +121,7 @@ function buildDeterministicSummary(context: ResearchLocalContext, codex?: Resear
     `- Which dated company, macro, product, filing, or earnings events overlap ${context.ticker}'s largest up/down sessions?`,
     '- Are multiple independent sources consistent, or is the event link speculative?',
     '',
-    'Next TossQuant commands',
+    'Next QuantOps commands',
     `- stats ${context.ticker}`,
     `- audit ${context.ticker}`,
     `- data download ${context.ticker} --period 1y`,
@@ -158,7 +158,7 @@ export function buildResearchContext(symbol: string, options: ResearchOptions = 
 export function buildResearchPrompt(context: ResearchLocalContext): string {
   const safeContext = redact(context as unknown as JsonValue);
   return [
-    `You are helping a beginner research ${context.ticker} price movement using public web/event context plus local TossQuant data.`,
+    `You are helping a beginner research ${context.ticker} price movement using public web/event context plus local QuantOps data.`,
     `Research focus/topic: ${context.topic}.`,
     '',
     'Use web/current public information if available. Summarize recent news, earnings, filings, product/company events, sector/macro events, or other public context that may loosely line up with the saved price movement.',
@@ -177,7 +177,7 @@ export function buildResearchPrompt(context: ResearchLocalContext): string {
     '4. Loose context links between events and price movement',
     '5. Uncertainty / missing-data warnings',
     '6. Follow-up research questions',
-    '7. Next TossQuant commands',
+    '7. Next QuantOps commands',
     '',
     'Redacted local context JSON:',
     JSON.stringify(safeContext, null, 2),
@@ -192,7 +192,7 @@ export function runResearch(symbol: string, options: ResearchOptions = {}, codex
     const next = `data download ${ticker} --period 1y`;
     const report = [
       `No saved market dataset found for ${ticker}.`,
-      `Run ${next} before external research so TossQuant can line up events with local price movement.`,
+      `Run ${next} before external research so QuantOps can line up events with local price movement.`,
     ].join('\n');
     return { ok: false, ticker, created_at: createdAt, missing_data: true, message: 'missing local market data', next_command: next, report };
   }

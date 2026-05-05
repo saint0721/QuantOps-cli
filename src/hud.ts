@@ -3,14 +3,14 @@ import { spawnSync } from 'node:child_process';
 import { buildRuntimeSnapshot, readRuntimeSnapshot, recordRuntime, renderRuntimeLine, writeRuntimeSnapshot } from './runtime.ts';
 import { hudColor } from './ui/hud.ts';
 
-export const DEFAULT_SESSION = 'tossquant';
+export const DEFAULT_SESSION = 'quantops';
 
 export function sessionHash(source: string): string {
   return createHash('sha256').update(source).digest('hex').slice(0, 8);
 }
 
 export function defaultTmuxSession(env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string {
-  const source = env.TOSSQUANT_SESSION || env.CODEX_SESSION_ID || env.OMX_SESSION_ID || env.OMX_SESSION || env.TMUX_PANE || cwd;
+  const source = env.QUANTOPS_SESSION || env.CODEX_SESSION_ID || env.OMX_SESSION_ID || env.OMX_SESSION || env.TMUX_PANE || cwd;
   return `${DEFAULT_SESSION}-${sessionHash(source)}`;
 }
 
@@ -22,13 +22,13 @@ export function tmuxInstallHint(): string { return 'install tmux with your OS pa
 export function inTmux(): boolean { return Boolean(process.env.TMUX); }
 export function shellCommand(parts: string[]): string { return parts.map((part) => `'${part.replaceAll("'", "'\\''")}'`).join(' '); }
 export function managedTmuxSession(env: NodeJS.ProcessEnv = process.env): string | null {
-  return env.TOSSQUANT_TMUX_MANAGED === '1' && env.TOSSQUANT_TMUX_SESSION ? env.TOSSQUANT_TMUX_SESSION : null;
+  return env.QUANTOPS_TMUX_MANAGED === '1' && env.QUANTOPS_TMUX_SESSION ? env.QUANTOPS_TMUX_SESSION : null;
 }
 export function hudWatchCommand(base = 'data', interval = 1): string {
   return shellCommand([process.execPath, new URL('./cli.ts', import.meta.url).pathname, '--data-dir', base, 'hud', '--watch', '--interval', String(interval)]);
 }
 export function interactiveCommand(base = 'data', session?: string): string {
-  const envPrefix = session ? ['env', 'TOSSQUANT_TMUX_MANAGED=1', `TOSSQUANT_TMUX_SESSION=${session}`] : [];
+  const envPrefix = session ? ['env', 'QUANTOPS_TMUX_MANAGED=1', `QUANTOPS_TMUX_SESSION=${session}`] : [];
   return shellCommand([...envPrefix, process.execPath, new URL('./cli.ts', import.meta.url).pathname, '--no-tmux', '--data-dir', base]);
 }
 
@@ -51,11 +51,11 @@ function applyTmuxRuntimeOptions(tmux: string, session: string): void {
 
 export function shutdownManagedTmuxRuntime(env: NodeJS.ProcessEnv = process.env): { code: number; message: string; skipped: boolean } {
   const session = managedTmuxSession(env);
-  if (!session) return { code: 0, message: 'not a TossQuant-managed tmux runtime', skipped: true };
+  if (!session) return { code: 0, message: 'not a QuantOps-managed tmux runtime', skipped: true };
   const tmux = tmuxPath();
   if (!tmux) return { code: 127, message: `tmux not found in PATH; ${tmuxInstallHint()}`, skipped: true };
   const result = spawnSync(tmux, ['kill-session', '-t', session], { encoding: 'utf8' });
-  return { code: result.status ?? 0, message: (result.stderr || result.stdout || `closed TossQuant tmux session ${session}`).trim(), skipped: false };
+  return { code: result.status ?? 0, message: (result.stderr || result.stdout || `closed QuantOps tmux session ${session}`).trim(), skipped: false };
 }
 
 export function printHudOnce(base = 'data', mode = 'quant', lastAction = 'ready'): string {
@@ -76,7 +76,7 @@ export async function watchHud(base = 'data', interval = 1): Promise<never> {
 export function launchTmuxHud(base = 'data', height = 3, interval = 1): { code: number; message: string } {
   const tmux = tmuxPath();
   if (!tmux) return { code: 127, message: `tmux not found in PATH; ${tmuxInstallHint()}` };
-  if (!inTmux()) return { code: 2, message: 'not inside a tmux session; run tossquant with no arguments or start tmux first' };
+  if (!inTmux()) return { code: 2, message: 'not inside a tmux session; run quantops with no arguments or start tmux first' };
   const result = spawnSync(tmux, ['split-window', '-v', '-l', String(Math.max(1, height)), hudWatchCommand(base, interval)], { encoding: 'utf8' });
   return { code: result.status ?? 1, message: (result.stderr || result.stdout || 'tmux HUD launched').trim() };
 }
@@ -84,14 +84,14 @@ export function launchTmuxHud(base = 'data', height = 3, interval = 1): { code: 
 export function launchTmuxRuntime(base = 'data', session = DEFAULT_SESSION, height = 3, interval = 1, cwd = process.cwd()): { code: number; message: string } {
   const tmux = tmuxPath();
   if (!tmux) return { code: 127, message: `tmux not found in PATH; ${tmuxInstallHint()}` };
-  if (inTmux()) return { code: 2, message: 'already inside tmux; use /hud tmux to add the TossQuant HUD pane' };
+  if (inTmux()) return { code: 2, message: 'already inside tmux; use /hud tmux to add the QuantOps HUD pane' };
   const create = spawnSync(tmux, ['new-session', '-d', '-s', session, '-n', 'main', '-c', cwd, interactiveCommand(base, session)], { encoding: 'utf8' });
   if (create.status !== 0) {
     const exists = spawnSync(tmux, ['has-session', '-t', session], { encoding: 'utf8' });
     if (exists.status === 0) {
       applyTmuxRuntimeOptions(tmux, session);
       const attachExisting = spawnSync(tmux, ['attach-session', '-t', session], { encoding: 'utf8', stdio: 'inherit' });
-      return { code: attachExisting.status ?? 0, message: 'attached existing TossQuant tmux session' };
+      return { code: attachExisting.status ?? 0, message: 'attached existing QuantOps tmux session' };
     }
     return { code: create.status ?? 1, message: (create.stderr || create.stdout || 'failed to create tmux session').trim() };
   }
@@ -103,5 +103,5 @@ export function launchTmuxRuntime(base = 'data', session = DEFAULT_SESSION, heig
   spawnSync(tmux, ['select-pane', '-t', `${target}.0`], { encoding: 'utf8' });
   spawnSync(tmux, ['select-window', '-t', target], { encoding: 'utf8' });
   const attach = spawnSync(tmux, ['attach-session', '-t', session], { encoding: 'utf8', stdio: 'inherit' });
-  return { code: attach.status ?? 0, message: 'TossQuant tmux runtime closed' };
+  return { code: attach.status ?? 0, message: 'QuantOps tmux runtime closed' };
 }

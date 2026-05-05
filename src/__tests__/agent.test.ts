@@ -64,9 +64,27 @@ test('agent keeps a conversational local reply when no tools are needed', async 
   assert.deepEqual(run.steps, []);
   assert.match(run.report, /에이전트 답변/);
   assert.match(run.report, /agent-chat 대화/);
-  assert.match(run.report, /최근 이어받은 맥락/);
+  assert.match(run.report, /최근 이어받은 대화/);
   assert.match(run.report, /lab\.discuss/);
   assert.doesNotMatch(run.report, /제공자 요약/);
+  assert.doesNotMatch(run.report, /도구 실행\n- 없음/);
+  assert.doesNotMatch(run.report, /idea new "<your strategy idea>"/);
+});
+
+test('agent carries prior conversation replies instead of restarting command guidance', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-agent-cont-data-'));
+  const sessionRoot = mkdtempSync(join(tmpdir(), 'tq-agent-cont-session-'));
+
+  const first = await runAgent('명령어 말고 전략 아이디어를 같이 논의하고 싶어', { base: dir, sessionRoot, sessionId: 'agent-chat', language: 'ko', now: '2026-05-05T00:00:00Z' });
+  const second = await runAgent('아까 말한 흐름에서 반례는 뭐야?', { base: dir, sessionRoot, sessionId: 'agent-chat', language: 'ko', now: '2026-05-05T00:01:00Z' });
+  const events = sessionEvents(second.session, sessionRoot);
+
+  assert.match(first.report, /명령어 가이드가 아니라 agent-chat 대화/);
+  assert.match(second.report, /최근 이어받은 대화/);
+  assert.match(second.report, /이전 에이전트 답변/);
+  assert.equal(events.some((event) => event.type === 'agent.reply'), true);
+  assert.doesNotMatch(second.report, /바로 이어서 이렇게 물어볼 수 있어요/);
+  assert.doesNotMatch(second.report, /다음 안전 명령/);
 });
 
 

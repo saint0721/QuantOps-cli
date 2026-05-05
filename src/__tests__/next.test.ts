@@ -7,7 +7,7 @@ import { latestDiscoverySymbol, nextRecommendation, savedMarketSymbols } from '.
 import { createIdea, addIdeaSymbol } from '../idea.ts';
 
 test('next recommendation prefers saved market data before discovery hints', async () => {
-  const tmp = await mkdtemp(join(tmpdir(), 'tossquant-next-'));
+  const tmp = await mkdtemp(join(tmpdir(), 'quantops-next-'));
   await mkdir(join(tmp, 'market', 'stooq'), { recursive: true });
   await writeFile(join(tmp, 'market', 'stooq', 'nvda.jsonl'), JSON.stringify({ ticker: 'nvda' }) + '\n', 'utf8');
   await mkdir(join(tmp, 'discovery', 'local'), { recursive: true });
@@ -19,7 +19,7 @@ test('next recommendation prefers saved market data before discovery hints', asy
 });
 
 test('next recommendation prioritizes saved idea workflow readiness', async () => {
-  const tmp = await mkdtemp(join(tmpdir(), 'tossquant-next-idea-'));
+  const tmp = await mkdtemp(join(tmpdir(), 'quantops-next-idea-'));
   createIdea(tmp, 'NVDA earnings momentum', { now: '2026-05-05T00:00:00Z' });
 
   assert.match(nextRecommendation(tmp), /next  \/idea add-symbol latest <SYMBOL>/);
@@ -30,7 +30,7 @@ test('next recommendation prioritizes saved idea workflow readiness', async () =
 });
 
 test('next recommendation falls through to find when no local state exists', async () => {
-  const tmp = await mkdtemp(join(tmpdir(), 'tossquant-next-empty-'));
+  const tmp = await mkdtemp(join(tmpdir(), 'quantops-next-empty-'));
 
   assert.match(nextRecommendation(tmp), /next  \/find/);
 });

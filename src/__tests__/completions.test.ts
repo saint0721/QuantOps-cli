@@ -127,17 +127,17 @@ test('codex mode limits completion to slash controls', () => {
   assert.equal(candidates.includes('quote'), false);
 });
 
-test('skill invocation completion suggests TossQuant local skills', () => {
+test('skill invocation completion suggests QuantOps local skills', () => {
   const skillsRoot = mkdtempSync(join(tmpdir(), 'tq-complete-skills-'));
-  const dir = join(skillsRoot, 'tossquant-idea-coach');
+  const dir = join(skillsRoot, 'quantops-idea-coach');
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'SKILL.md'), '---\nname: tossquant-idea-coach\ndescription: "Idea coach"\n---\n', 'utf8');
-  const previous = process.env.TOSSQUANT_SKILLS_DIR;
-  process.env.TOSSQUANT_SKILLS_DIR = skillsRoot;
+  writeFileSync(join(dir, 'SKILL.md'), '---\nname: quantops-idea-coach\ndescription: "Idea coach"\n---\n', 'utf8');
+  const previous = process.env.QUANTOPS_SKILLS_DIR;
+  process.env.QUANTOPS_SKILLS_DIR = skillsRoot;
   try {
-    assert.deepEqual(completeLine('$toss', 'quant')[0], ['$tossquant-idea-coach']);
+    assert.deepEqual(completeLine('$quant', 'quant')[0], ['$quantops-idea-coach']);
   } finally {
-    if (previous === undefined) delete process.env.TOSSQUANT_SKILLS_DIR;
-    else process.env.TOSSQUANT_SKILLS_DIR = previous;
+    if (previous === undefined) delete process.env.QUANTOPS_SKILLS_DIR;
+    else process.env.QUANTOPS_SKILLS_DIR = previous;
   }
 });

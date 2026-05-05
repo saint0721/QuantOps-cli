@@ -11,14 +11,14 @@ function writeSkill(root: string, name: string, description: string) {
   writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: "${description}"\n---\n\n# ${name}\n`, 'utf8');
 }
 
-test('TossQuant local skills are discovered from TOSSQUANT_SKILLS_DIR with invocation candidates', () => {
+test('QuantOps local skills are discovered from QUANTOPS_SKILLS_DIR with invocation candidates', () => {
   const skillsRoot = mkdtempSync(join(tmpdir(), 'tq-local-skills-'));
-  writeSkill(skillsRoot, 'tossquant-idea-coach', 'Beginner idea coaching');
-  writeSkill(skillsRoot, 'tossquant-research-lab', 'Research lab workflow');
+  writeSkill(skillsRoot, 'quantops-idea-coach', 'Beginner idea coaching');
+  writeSkill(skillsRoot, 'quantops-research-lab', 'Research lab workflow');
 
-  const skills = listQuantSkills({ TOSSQUANT_SKILLS_DIR: skillsRoot });
+  const skills = listQuantSkills({ QUANTOPS_SKILLS_DIR: skillsRoot });
 
-  assert.deepEqual(skills.map((skill) => skill.name), ['tossquant-idea-coach', 'tossquant-research-lab']);
+  assert.deepEqual(skills.map((skill) => skill.name), ['quantops-idea-coach', 'quantops-research-lab']);
   assert.match(skills[0]!.description, /Beginner/);
-  assert.deepEqual(quantSkillInvocationCandidates({ TOSSQUANT_SKILLS_DIR: skillsRoot }), ['$tossquant-idea-coach', '$tossquant-research-lab']);
+  assert.deepEqual(quantSkillInvocationCandidates({ QUANTOPS_SKILLS_DIR: skillsRoot }), ['$quantops-idea-coach', '$quantops-research-lab']);
 });

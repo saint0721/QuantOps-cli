@@ -59,7 +59,7 @@ export function buildLabPrompt(status: IdeaStatusReport, stage: LabStage, focus 
     discuss: [
       'Act as a quant research discussion swarm lead.',
       'Turn the idea into concrete research questions, missing evidence, search terms, and a safe investigation sequence.',
-      'Recommend which TossQuant commands should be run next and what each command is expected to prove or disprove.',
+      'Recommend which QuantOps commands should be run next and what each command is expected to prove or disprove.',
     ],
     verify: [
       'Act as a skeptical quant verifier swarm lead.',
@@ -68,12 +68,12 @@ export function buildLabPrompt(status: IdeaStatusReport, stage: LabStage, focus 
     ],
     backtest: [
       'Act as a backtest implementation swarm lead.',
-      'Write a coding brief for a future deterministic backtest module using the local TossQuant data model.',
+      'Write a coding brief for a future deterministic backtest module using the local QuantOps data model.',
       'Include inputs, strategy rules to parameterize, metrics, leakage checks, fixtures, and tests. Do not write live trading code.',
     ],
   };
   return [
-    `You are helping TossQuant-cli run the "${STAGE_LABELS[stage]}" stage for a saved quant idea.`,
+    `You are helping QuantOps-cli run the "${STAGE_LABELS[stage]}" stage for a saved quant idea.`,
     '',
     'Safety rules:',
     ...safetyRules(),
@@ -87,9 +87,9 @@ export function buildLabPrompt(status: IdeaStatusReport, stage: LabStage, focus 
     '2. Missing evidence / blockers',
     '3. Agent-swarm task split',
     '4. Verification criteria',
-    '5. Next TossQuant commands',
+    '5. Next QuantOps commands',
     '',
-    'Redacted TossQuant idea context JSON:',
+    'Redacted QuantOps idea context JSON:',
     JSON.stringify(context, null, 2),
   ].join('\n');
 }
@@ -179,7 +179,7 @@ function deterministicReport(status: IdeaStatusReport, stage: LabStage, focus: s
         ? discussionOutput(status, focus).join('\n')
         : `- Codex discussion was not run${codex?.error ? `: ${codex.error}` : ''}. Use --prompt to copy the exact prompt, or add --codex to ask the local Codex CLI when available.`),
     '',
-    'Next TossQuant commands',
+    'Next QuantOps commands',
     ...[...new Set(stageNext[stage])].map((cmd) => `- ${cmd}`),
   ].join('\n');
 }

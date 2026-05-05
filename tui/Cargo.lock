@@ -353,6 +353,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "quantops-tui"
+version = "0.1.0"
+dependencies = [
+ "crossterm 0.29.0",
+ "ratatui",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,14 +538,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tossquant-tui"
-version = "0.1.0"
-dependencies = [
- "crossterm 0.29.0",
- "ratatui",
 ]
 
 [[package]]

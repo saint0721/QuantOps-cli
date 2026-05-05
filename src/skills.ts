@@ -36,8 +36,8 @@ function repoRoot(): string {
 }
 
 function skillRoots(env: NodeJS.ProcessEnv = process.env): string[] {
-  if (env.TOSSQUANT_SKILLS_DIR?.trim()) {
-    return env.TOSSQUANT_SKILLS_DIR.split(delimiter).map((item) => item.trim()).filter(Boolean);
+  if (env.QUANTOPS_SKILLS_DIR?.trim()) {
+    return env.QUANTOPS_SKILLS_DIR.split(delimiter).map((item) => item.trim()).filter(Boolean);
   }
   return [join(repoRoot(), 'quant-skills')];
 }
@@ -58,7 +58,7 @@ export function listQuantSkills(env: NodeJS.ProcessEnv = process.env): QuantSkil
           seen.add(skill.name);
         }
       } catch {
-        // Invalid skills should not break the TossQuant CLI skills list.
+        // Invalid skills should not break the QuantOps CLI skills list.
       }
     }
   }

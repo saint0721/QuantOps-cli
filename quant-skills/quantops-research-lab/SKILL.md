@@ -1,15 +1,15 @@
 ---
-name: tossquant-research-lab
-description: "Use when turning a saved TossQuant idea into a structured quant research workflow with data readiness checks, external-factor research, skeptical verification, Korean/English reporting, and backtest planning. Trigger for TossQuant idea, research, lab, hypothesis, strategy validation, or backtest workflow requests."
+name: quantops-research-lab
+description: "Use when turning a saved QuantOps idea into a structured quant research workflow with data readiness checks, external-factor research, skeptical verification, Korean/English reporting, and backtest planning. Trigger for QuantOps idea, research, lab, hypothesis, strategy validation, or backtest workflow requests."
 ---
 
-# TossQuant Research Lab
+# QuantOps Research Lab
 
-Use this skill to guide a saved TossQuant idea through a safe research workflow:
+Use this skill to guide a saved QuantOps idea through a safe research workflow:
 
 `idea → data readiness → research → discussion → verification → backtest brief → next action`
 
-This skill orchestrates TossQuant CLI commands and explains their results. It does **not** provide investment advice, live trading signals, or order mutation.
+This skill orchestrates QuantOps CLI commands and explains their results. It does **not** provide investment advice, live trading signals, or order mutation.
 
 ## Language policy
 
@@ -43,7 +43,7 @@ Always enforce these boundaries:
 
 ## Command preference
 
-When acting inside the TossQuant-cli repository, prefer repo-local command routing where available:
+When acting inside the QuantOps-cli repository, prefer repo-local command routing where available:
 
 - Prefer `rtk <command ...>` if `rtk` is available.
 - Otherwise use `quant <command ...>` for user-facing examples.
@@ -215,19 +215,19 @@ For bilingual, use Korean headings with short English labels in parentheses:
 Korean:
 
 ```text
-$tossquant-research-lab latest --lang ko
+$quantops-research-lab latest --lang ko
 ```
 
 English:
 
 ```text
-$tossquant-research-lab latest --lang en
+$quantops-research-lab latest --lang en
 ```
 
 Bilingual:
 
 ```text
-$tossquant-research-lab NVDA --lang bilingual
+$quantops-research-lab NVDA --lang bilingual
 ```
 
 ## Stop conditions

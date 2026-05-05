@@ -165,7 +165,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'idea.create',
-    description: 'Create a local TossQuant idea record.',
+    description: 'Create a local QuantOps idea record.',
     input_schema: schema({ title: { type: 'string' }, symbol: { type: 'string' }, hypothesis: { type: 'string' } }, ['title']),
     read_only: false,
     local_writes: true,
@@ -181,7 +181,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'idea.add-symbol',
-    description: 'Attach a symbol to a saved TossQuant idea.',
+    description: 'Attach a symbol to a saved QuantOps idea.',
     input_schema: schema({ idea: { type: 'string' }, symbol: { type: 'string' } }, ['idea', 'symbol']),
     read_only: false,
     local_writes: true,
@@ -221,7 +221,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'strategy.list',
-    description: 'List deterministic backtest strategies available in TossQuant.',
+    description: 'List deterministic backtest strategies available in QuantOps.',
     input_schema: schema({}),
     read_only: true,
     local_writes: false,

@@ -231,7 +231,7 @@ impl App {
         if matches!(line.as_str(), "exit" | "/quit" | "quit" | "/:q" | ":q") {
             self.append_exchange(
                 &line,
-                "Use /exit to close TossQuant and its managed tmux session.",
+                "Use /exit to close QuantOps and its managed tmux session.",
             );
             return false;
         }
@@ -278,7 +278,7 @@ impl App {
             self.transcript.push(String::new());
         }
         self.transcript
-            .push(format!("TossQuant {} ❯ {command}", self.mode));
+            .push(format!("QuantOps {} ❯ {command}", self.mode));
     }
 
     fn append_output(&mut self, output: &str) {
@@ -381,21 +381,22 @@ impl App {
 
 fn welcome_lines(mode: &str) -> Vec<String> {
     vec![
-        " _____              ____                  _   ".to_string(),
-        "|_   _|__  ___ ___ / ___| _   _  __ _ _ __ | |_ ".to_string(),
-        "  | |/ _ \\/ __/ __| |  _| | | |/ _` | '_ \\| __|".to_string(),
-        "  | | (_) \\__ \\__ \\ |_| | |_| | (_| | | | | |_ ".to_string(),
-        "  |_|\\___/|___/___/\\____|\\__,_|\\__,_|_| |_|\\__|".to_string(),
+        "  ___                  _    ___             ".to_string(),
+        " / _ \\ _   _  __ _ _ __ | |_ / _ \\ _ __  ___ ".to_string(),
+        "| | | | | | |/ _` | '_ \\| __| | | | '_ \\/ __|".to_string(),
+        "| |_| | |_| | (_| | | | | |_| |_| | |_) \\__ \\".to_string(),
+        " \\__\\_\\\\__,_|\\__,_|_| |_|\\__|\\___/| .__/|___/".to_string(),
+        "                                  |_|        ".to_string(),
         "".to_string(),
-        format!("TossQuant@{mode}"),
-        "project  TossQuant-cli — terminal-first quant runtime around tossctl".to_string(),
+        format!("QuantOps@{mode}"),
+        "project  QuantOps-cli — agentic quant research and execution workflows".to_string(),
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
         "beginner /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list".to_string(),
         "flow     /idea new \"NVDA momentum\" → /idea add-symbol latest NVDA → /lab workflow latest".to_string(),
         "advanced /backtest run latest · /strategy list · /lab verify latest · /discover · /data info · /stats <SYMBOL>".to_string(),
-        "tools    /skills · /tools · /agent ko · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
+        "tools    /skills · /tools · /agent ko · $quantops-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
         "try      /start".to_string(),
@@ -614,7 +615,7 @@ fn lab_candidates(parts: &[&str], trailing_space: bool, data_dir: Option<&str>) 
 }
 
 fn quant_skills_dir() -> PathBuf {
-    env::var("TOSSQUANT_SKILLS_DIR")
+    env::var("QUANTOPS_SKILLS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             env::current_dir()
@@ -958,7 +959,7 @@ fn main() -> io::Result<()> {
     let mut entry = PathBuf::from("src/cli.ts");
     let mut data_dir = "data".to_string();
     let mut node = "node".to_string();
-    let mut mouse_capture = env::var("TOSSQUANT_TUI_MOUSE")
+    let mut mouse_capture = env::var("QUANTOPS_TUI_MOUSE")
         .map(|value| !matches!(value.as_str(), "0" | "false" | "off" | "no"))
         .unwrap_or(true);
     let mut args = env::args().skip(1);
@@ -1140,10 +1141,10 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
 }
 
 fn shutdown_managed_tmux_runtime() {
-    if env::var("TOSSQUANT_TMUX_MANAGED").ok().as_deref() != Some("1") {
+    if env::var("QUANTOPS_TMUX_MANAGED").ok().as_deref() != Some("1") {
         return;
     }
-    let Ok(session) = env::var("TOSSQUANT_TMUX_SESSION") else {
+    let Ok(session) = env::var("QUANTOPS_TMUX_SESSION") else {
         return;
     };
     if session.trim().is_empty() {
@@ -1393,8 +1394,8 @@ mod tests {
             vec!["research", "NVDA", "--topic", "NVDA earnings momentum"]
         );
         assert_eq!(
-            app.command_args("$tossquant-idea-coach --lang ko"),
-            vec!["ask", "$tossquant-idea-coach --lang ko"]
+            app.command_args("$quantops-idea-coach --lang ko"),
+            vec!["ask", "$quantops-idea-coach --lang ko"]
         );
         assert_eq!(app.command_args("collect plan AAPL"), Vec::<String>::new());
     }
@@ -1706,13 +1707,13 @@ mod tests {
             "tq-tui-skills-complete-{}",
             std::process::id()
         ));
-        let skill = root.join("tossquant-idea-coach");
+        let skill = root.join("quantops-idea-coach");
         fs::create_dir_all(&skill).unwrap();
-        fs::write(skill.join("SKILL.md"), "---\nname: tossquant-idea-coach\n---\n").unwrap();
+        fs::write(skill.join("SKILL.md"), "---\nname: quantops-idea-coach\n---\n").unwrap();
 
         let matches = skill_invocation_candidates_in(&root);
 
-        assert_eq!(matches, vec!["$tossquant-idea-coach".to_string()]);
+        assert_eq!(matches, vec!["$quantops-idea-coach".to_string()]);
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1755,7 +1756,7 @@ mod tests {
 
     #[test]
     fn command_transcript_line_uses_colored_command_span() {
-        let line = transcript_line("TossQuant quant ❯ /status");
+        let line = transcript_line("QuantOps quant ❯ /status");
 
         assert!(line.spans.len() >= 2);
         assert_eq!(line.spans[1].content.as_ref(), "/status");
@@ -1838,7 +1839,7 @@ mod tests {
         assert!(app.transcript.len() > original_len);
         assert!(app
             .transcript
-            .contains(&"TossQuant quant ❯ /data list".to_string()));
+            .contains(&"QuantOps quant ❯ /data list".to_string()));
         assert!(app.transcript.contains(&"{\"ok\":true}".to_string()));
     }
 
@@ -1846,7 +1847,7 @@ mod tests {
     fn welcome_explains_project_commands_flow_and_keys() {
         let lines = welcome_lines("quant");
         let text = lines.join("\n");
-        assert!(text.contains("TossQuant-cli"));
+        assert!(text.contains("QuantOps-cli"));
         assert!(text.contains("/start"));
         assert!(text.contains("/find"));
         assert!(text.contains("/download <SYMBOL>"));

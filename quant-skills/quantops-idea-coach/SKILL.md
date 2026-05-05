@@ -1,15 +1,15 @@
 ---
-name: tossquant-idea-coach
-description: "Use when a beginner wants help choosing, shaping, or registering a TossQuant idea or strategy hypothesis; when the user is unsure what to analyze, how to form a quant idea, which symbols/data to use, or which TossQuant CLI commands to run next. Produces Korean/English command-ready guidance without investment advice."
+name: quantops-idea-coach
+description: "Use when a beginner wants help choosing, shaping, or registering a QuantOps idea or strategy hypothesis; when the user is unsure what to analyze, how to form a quant idea, which symbols/data to use, or which QuantOps CLI commands to run next. Produces Korean/English command-ready guidance without investment advice."
 ---
 
-# TossQuant Idea Coach
+# QuantOps Idea Coach
 
-Use this skill before `tossquant-research-lab` when the user does not yet know what idea, hypothesis, symbol universe, data plan, or CLI commands to use.
+Use this skill before `quantops-research-lab` when the user does not yet know what idea, hypothesis, symbol universe, data plan, or CLI commands to use.
 
 Goal:
 
-`user curiosity → beginner interview → idea candidates → chosen hypothesis → TossQuant commands → next research workflow`
+`user curiosity → beginner interview → idea candidates → chosen hypothesis → QuantOps commands → next research workflow`
 
 This skill is a coach for forming research ideas. It must not produce buy/sell/hold advice, live trading signals, or order instructions.
 
@@ -83,7 +83,7 @@ Suggest 3 to 5 research ideas. Each idea must include:
 - hypothesis text
 - candidate symbols/universe
 - required data
-- first TossQuant commands
+- first QuantOps commands
 - key falsification question
 - risk/limitation
 
@@ -98,7 +98,7 @@ Preferred beginner templates:
 - Volume spike follow-through
 - Macro/event context around index ETFs
 
-### 4. Convert a chosen idea into TossQuant commands
+### 4. Convert a chosen idea into QuantOps commands
 
 When the user chooses an idea, produce copy-paste commands:
 
@@ -197,7 +197,7 @@ Use Korean headings with English in parentheses:
 When an idea has been registered and has at least one hypothesis, hand off to:
 
 ```text
-$tossquant-research-lab latest --lang ko
+$quantops-research-lab latest --lang ko
 ```
 
 or tell the user to run:
@@ -213,5 +213,5 @@ Stop and clarify when:
 - the user asks for direct buy/sell/hold advice,
 - the user asks to place or automate real trades,
 - the requested universe requires unavailable/private data,
-- the idea cannot be tested with current TossQuant data commands,
+- the idea cannot be tested with current QuantOps data commands,
 - the user wants an implementation PR instead of coaching.

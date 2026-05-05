@@ -12,7 +12,7 @@ from .runtime import build_runtime_snapshot, read_runtime_snapshot, record_runti
 
 RESET = "\033[0m"
 HUD_COLOR = "\033[2m\033[94m"
-DEFAULT_TMUX_SESSION = "tossquant"
+DEFAULT_TMUX_SESSION = "quantops"
 
 
 def color(text: str, ansi: str) -> str:
@@ -58,7 +58,7 @@ def hud_watch_command(*, base: str | Path | None = "data", interval: float = 1.0
         [
             sys.executable,
             "-m",
-            "tossquant_cli.cli",
+            "quantops_cli.cli",
             "--data-dir",
             str(base or "data"),
             "hud",
@@ -70,7 +70,7 @@ def hud_watch_command(*, base: str | Path | None = "data", interval: float = 1.0
 
 
 def interactive_command() -> str:
-    return shell_command([sys.executable, "-m", "tossquant_cli.cli", "--no-tmux"])
+    return shell_command([sys.executable, "-m", "quantops_cli.cli", "--no-tmux"])
 
 
 def launch_tmux_hud(*, base: str | Path | None = "data", height: int = 3, interval: float = 1.0, cwd: str | Path | None = None) -> tuple[int, str]:
@@ -78,7 +78,7 @@ def launch_tmux_hud(*, base: str | Path | None = "data", height: int = 3, interv
     if not tmux:
         return 127, f"tmux not found in PATH; {tmux_install_hint()}"
     if not in_tmux():
-        return 2, "not inside a tmux session; run tossquant with no arguments or start tmux first"
+        return 2, "not inside a tmux session; run quantops with no arguments or start tmux first"
 
     height = max(1, int(height))
     command = hud_watch_command(base=base, interval=interval)
@@ -103,7 +103,7 @@ def launch_tmux_runtime(
     if not tmux:
         return 127, f"tmux not found in PATH; {tmux_install_hint()}"
     if in_tmux():
-        return 2, "already inside tmux; use /hud tmux to add the TossQuant HUD pane"
+        return 2, "already inside tmux; use /hud tmux to add the QuantOps HUD pane"
 
     cwd_path = Path(cwd or Path.cwd())
     height = max(1, int(height))
@@ -121,7 +121,7 @@ def launch_tmux_runtime(
         existing = subprocess.run([tmux, "has-session", "-t", session], text=True, capture_output=True, check=False)
         if existing.returncode == 0:
             attach = subprocess.run([tmux, "attach-session", "-t", session], text=True, capture_output=True, check=False)
-            return int(attach.returncode), "attached existing TossQuant tmux session"
+            return int(attach.returncode), "attached existing QuantOps tmux session"
         return int(create.returncode), (create.stderr or create.stdout or "failed to create tmux session").strip()
 
     split = subprocess.run(
@@ -135,4 +135,4 @@ def launch_tmux_runtime(
 
     subprocess.run([tmux, "select-pane", "-t", f"{target}.0"], text=True, capture_output=True, check=False)
     attach = subprocess.run([tmux, "attach-session", "-t", session], text=True, capture_output=True, check=False)
-    return int(attach.returncode), "TossQuant tmux runtime closed"
+    return int(attach.returncode), "QuantOps tmux runtime closed"

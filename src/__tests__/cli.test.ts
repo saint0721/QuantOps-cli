@@ -10,7 +10,7 @@ import { appendJsonl } from '../storage.ts';
 
 test('welcome keeps neofetch summary without runtime HUD line', () => {
   const welcome = welcomeCard();
-  assert.match(welcome, /TossQuant-cli/);
+  assert.match(welcome, /QuantOps-cli/);
   assert.match(welcome, /beginner/);
   assert.match(welcome, /\/find/);
   assert.match(welcome, /\/download <SYMBOL>/);
@@ -150,23 +150,23 @@ test('backtest command runs a selected strategy for latest idea symbol', async (
   assert.match(backtest.output, /"fast":5/);
 });
 
-test('skills command lists TossQuant local skills with dollar invocation hints', async () => {
+test('skills command lists QuantOps local skills with dollar invocation hints', async () => {
   const skillsRoot = mkdtempSync(join(tmpdir(), 'tq-cli-skills-'));
-  const skillDir = join(skillsRoot, 'tossquant-idea-coach');
+  const skillDir = join(skillsRoot, 'quantops-idea-coach');
   mkdirSync(skillDir, { recursive: true });
-  writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: tossquant-idea-coach\ndescription: "Beginner idea coach"\n---\n', 'utf8');
-  const previous = process.env.TOSSQUANT_SKILLS_DIR;
-  process.env.TOSSQUANT_SKILLS_DIR = skillsRoot;
+  writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: quantops-idea-coach\ndescription: "Beginner idea coach"\n---\n', 'utf8');
+  const previous = process.env.QUANTOPS_SKILLS_DIR;
+  process.env.QUANTOPS_SKILLS_DIR = skillsRoot;
   try {
     const result = await captureConsole(() => runOnce(['--no-tmux', 'skills']));
 
     assert.equal(result.code, 0);
-    assert.match(result.output, /TossQuant local skills/);
-    assert.match(result.output, /tossquant-idea-coach/);
-    assert.match(result.output, /\$tossquant-idea-coach --lang ko/);
+    assert.match(result.output, /QuantOps local skills/);
+    assert.match(result.output, /quantops-idea-coach/);
+    assert.match(result.output, /\$quantops-idea-coach --lang ko/);
   } finally {
-    if (previous === undefined) delete process.env.TOSSQUANT_SKILLS_DIR;
-    else process.env.TOSSQUANT_SKILLS_DIR = previous;
+    if (previous === undefined) delete process.env.QUANTOPS_SKILLS_DIR;
+    else process.env.QUANTOPS_SKILLS_DIR = previous;
   }
 });
 

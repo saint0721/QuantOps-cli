@@ -1,23 +1,23 @@
-# TossQuant
+# QuantOps
 
-TypeScript-first terminal quant runtime around `tossctl` read-only data. The previous Python CLI remains in `tossquant_cli/` as a reference implementation while the active `quant` and `tossquant` launchers point at `src/cli.ts`.
+Agentic quant operations CLI for turning ideas into data checks, external research, skeptical verification, backtests, and future guarded execution workflows. The active `quant` and `quantops` launchers point at `src/cli.ts`; a Python reference implementation remains available through the `quantops_cli` compatibility module.
 
 ## TypeScript runtime
 
-TossQuant now runs on Node.js/TypeScript. It intentionally uses Node 24+ native
+QuantOps now runs on Node.js/TypeScript. It intentionally uses Node 24+ native
 TypeScript execution, so there are no npm runtime dependencies yet.
 
 ```bash
 node --version   # requires >= 24
 npm test
-node ./src/cli.ts setup bin   # installs ~/.local/bin/quant and ~/.local/bin/tossquant
+node ./src/cli.ts setup bin   # installs ~/.local/bin/quant and ~/.local/bin/quantops
 quant                       # starts the tmux-backed runtime when tmux is available
 ```
 
-The legacy Python prototype is still available for comparison:
+The Python reference prototype is still available for comparison:
 
 ```bash
-python3 -m tossquant_cli --no-tmux
+python3 -m quantops_cli --no-tmux
 ```
 
 
@@ -33,66 +33,66 @@ It creates symlinks in `~/.local/bin`:
 
 ```text
 ~/.local/bin/quant -> <repo>/src/cli.ts
-~/.local/bin/tossquant -> <repo>/src/cli.ts
+~/.local/bin/quantops -> <repo>/src/cli.ts
 ```
 
 After that, `quant` is enough. If `tmux` is installed and you are in an
-interactive terminal, it automatically starts the TossQuant tmux runtime with the
-live HUD pane. Use `quant --no-tmux` or `TOSSQUANT_NO_TMUX=1 quant` for plain mode.
+interactive terminal, it automatically starts the QuantOps tmux runtime with the
+live HUD pane. Use `quant --no-tmux` or `QUANTOPS_NO_TMUX=1 quant` for plain mode.
 
 ## Interactive mode
 
 ```bash
 quant
 # or
-quant
+quantops
 ```
 
-When `tmux` is installed and TossQuant is started from an interactive terminal,
-it opens a `tossquant-<hash>` tmux session automatically. The hash is derived
-from `TOSSQUANT_SESSION`, `CODEX_SESSION_ID`, `OMX_SESSION_ID`, `OMX_SESSION`,
+When `tmux` is installed and QuantOps is started from an interactive terminal,
+it opens a `quantops-<hash>` tmux session automatically. The hash is derived
+from `QUANTOPS_SESSION`, `CODEX_SESSION_ID`, `OMX_SESSION_ID`, `OMX_SESSION`,
 `TMUX_PANE`, or the project path, in that order. The top pane is the command
 chat, and the bottom pane is a live HUD like:
 
 ```text
-[TossQuant] main | mode:quant | watchlist:5 | quotes:5/10 samples | classify-ready:0 | codex:ready | last:ready | updated:2026-05-04T02:12:19Z
+[QuantOps] main | mode:quant | watchlist:5 | quotes:5/10 samples | classify-ready:0 | codex:ready | last:ready | updated:2026-05-04T02:12:19Z
 ```
 
-Use `TOSSQUANT_NO_TMUX=1 quant` or `quant --no-tmux`
+Use `QUANTOPS_NO_TMUX=1 quant` or `quant --no-tmux`
 to start the plain non-tmux interactive shell. If your terminal mouse selection
-is captured by the Rust TUI, start it with `TOSSQUANT_TUI_MOUSE=off quant` or
+is captured by the Rust TUI, start it with `QUANTOPS_TUI_MOUSE=off quant` or
 use copy-friendly subcommands such as `quant idea status latest --plain`.
 Inside the managed tmux runtime, `exit`, `quit`, or `:q` closes the whole
-TossQuant session, including the HUD pane.
+QuantOps session, including the HUD pane.
 
 Then type. Press `Tab` to autocomplete commands, nested subcommands, slash modes,
 and tmux options such as `tmux start --session`:
 
 ```text
-TossQuant quant ❯ /help
-TossQuant quant ❯ doctor
-TossQuant quant ❯ collect plan AAPL
-TossQuant quant ❯ collect quote AAPL
-TossQuant quant ❯ history AAPL
-TossQuant quant ❯ classify AAPL
-TossQuant quant ❯ portfolio
-TossQuant quant ❯ /ask what should I study next?
-TossQuant quant ❯ /skills
-TossQuant quant ❯ /tools
-TossQuant quant ❯ /agent ko
-TossQuant quant ❯ /agent NVDA earnings momentum research
-TossQuant quant ❯ $tossquant-idea-coach --lang ko
-TossQuant quant ❯ /brief
-TossQuant quant ❯ /research AAPL
-TossQuant quant ❯ /audit
-TossQuant quant ❯ /research AAPL --topic momentum
-TossQuant quant ❯ /hud
-TossQuant quant ❯ /hud tmux
-TossQuant quant ❯ /runtime line
-TossQuant quant ❯ /codex
-TossQuant codex ❯ explain my AAPL history file
-TossQuant codex ❯ /quant
-TossQuant quant ❯ exit
+QuantOps quant ❯ /help
+QuantOps quant ❯ doctor
+QuantOps quant ❯ collect plan AAPL
+QuantOps quant ❯ collect quote AAPL
+QuantOps quant ❯ history AAPL
+QuantOps quant ❯ classify AAPL
+QuantOps quant ❯ portfolio
+QuantOps quant ❯ /ask what should I study next?
+QuantOps quant ❯ /skills
+QuantOps quant ❯ /tools
+QuantOps quant ❯ /agent ko
+QuantOps quant ❯ /agent NVDA earnings momentum research
+QuantOps quant ❯ $quantops-idea-coach --lang ko
+QuantOps quant ❯ /brief
+QuantOps quant ❯ /research AAPL
+QuantOps quant ❯ /audit
+QuantOps quant ❯ /research AAPL --topic momentum
+QuantOps quant ❯ /hud
+QuantOps quant ❯ /hud tmux
+QuantOps quant ❯ /runtime line
+QuantOps quant ❯ /codex
+QuantOps codex ❯ explain my AAPL history file
+QuantOps codex ❯ /quant
+QuantOps quant ❯ exit
 ```
 
 ## Guided learning flow
@@ -100,13 +100,13 @@ TossQuant quant ❯ exit
 Inside interactive mode, these slash commands explain what to do next instead of only listing syntax:
 
 ```text
-TossQuant quant ❯ /start
-TossQuant quant ❯ /status
-TossQuant quant ❯ /next
-TossQuant quant ❯ /watchlist add AAPL
-TossQuant quant ❯ /watchlist list
-TossQuant quant ❯ /watchlist fetch
-TossQuant quant ❯ /learn momentum
+QuantOps quant ❯ /start
+QuantOps quant ❯ /status
+QuantOps quant ❯ /next
+QuantOps quant ❯ /watchlist add AAPL
+QuantOps quant ❯ /watchlist list
+QuantOps quant ❯ /watchlist fetch
+QuantOps quant ❯ /learn momentum
 ```
 
 Recommended beginner loop:
@@ -169,7 +169,7 @@ Safety defaults:
 
 ## Configuration
 
-TossQuant is safe to publish as a public repository when secrets stay outside git.
+QuantOps is safe to publish as a public repository when secrets stay outside git.
 Copy `.env.example` to your shell/profile or secret manager and export only the
 values you need:
 
@@ -188,7 +188,7 @@ commits.
 
 ## Runtime and tmux HUD
 
-TossQuant now writes a lightweight runtime snapshot to `data/runtime/state.json`.
+QuantOps now writes a lightweight runtime snapshot to `data/runtime/state.json`.
 It includes mode, last action, git branch, watchlist size, quote sample counts,
 classify readiness, Codex availability, and update time. This is the first
 step toward a small local runtime rather than only one-shot commands.
@@ -210,7 +210,7 @@ quant runtime snapshot   # JSON runtime state
 quant hud                # colored HUD once
 quant hud --watch        # repainting HUD loop
 quant hud --tmux         # split a bottom tmux pane inside tmux
-quant tmux start         # create/attach full TossQuant tmux runtime
+quant tmux start         # create/attach full QuantOps tmux runtime
 quant tmux start --session tq-research
 ```
 
@@ -219,26 +219,26 @@ bottom tmux HUD pane when you are already inside a tmux session.
 
 ## Codex bridge
 
-TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls Codex when you explicitly ask:
+QuantOps is not an always-on chatbot. It starts in `quant` mode and only calls Codex when you explicitly ask:
 
 - `/ask <question>` runs one Codex request.
-- `/codex` changes the prompt to `tossquant/codex>`; normal text is sent to Codex.
-- `/quant` returns to normal TossQuant commands.
-- `/skills` lists TossQuant-only local skills found under `quant-skills/` or `$TOSSQUANT_SKILLS_DIR`.
-- `/tools` lists the safe TossQuant tool registry exposed to agents and MCP clients.
+- `/codex` changes the prompt to `quantops/codex>`; normal text is sent to Codex.
+- `/quant` returns to normal QuantOps commands.
+- `/skills` lists QuantOps-only local skills found under `quant-skills/` or `$QUANTOPS_SKILLS_DIR`.
+- `/tools` lists the safe QuantOps tool registry exposed to agents and MCP clients.
 - `/agent ko|en|auto` sets the default local agent report language.
 - `/agent <request>` runs a beginner-friendly local tool loop, continues the shared `.quant` `agent-chat` session by default, and can optionally ask a provider with `--provider codex|claude`. Use `--download` before allowing network/local data-download writes.
 - `/session handoff` prints the recent `.quant/` session summary so Codex/Claude can continue the conversation without raw credentials.
-- `$skill-name ...` invokes a TossQuant local skill from interactive quant/TUI; Tab completion suggests quant-only skills such as `$tossquant-idea-coach`.
-- `/brief` or `/today` asks Codex for a local-data session brief and next TossQuant commands.
+- `$skill-name ...` invokes a QuantOps local skill from interactive quant/TUI; Tab completion suggests quant-only skills such as `$quantops-idea-coach`.
+- `/brief` or `/today` asks Codex for a local-data session brief and next QuantOps commands.
 - `/research <TICKER>` combines local OHLCV/stat/audit context with a Codex/web event-summary prompt, saves a redacted report under `data/research/`, and avoids buy/sell/hold advice or single-score conclusions.
 - `/audit [TICKER]` runs deterministic local data-quality checks; add `explain` or `--explain` to ask Codex to explain the findings.
 - `/research <SYMBOL> [--topic <TEXT>] [--codex]` builds a redacted local market/stats/audit context, optionally asks Codex for external-factor research, and saves the report under `data/research/`. It is research-only: no buy/sell/hold advice and no single score.
 - `/hud` shows a compact status line with current mode, watchlist count, quote samples, Codex availability, and last action.
 
 Market data defaults:
-- `quant idea new "NVDA earnings momentum"` creates a local ResearchOps record before you collect evidence.
-- `quant idea status latest` shows whether each linked symbol has market data, validation status, saved research, and next TossQuant commands. You can also use a unique id prefix, title text, or a linked symbol instead of the full id.
+- `quant idea new "NVDA earnings momentum"` creates a local QuantOps idea record before you collect evidence.
+- `quant idea status latest` shows whether each linked symbol has market data, validation status, saved research, and next QuantOps commands. You can also use a unique id prefix, title text, or a linked symbol instead of the full id.
 - `quant idea status latest --plain` prints a copy-friendly version for Codex/Claude discussions.
 - `quant lab workflow latest` shows the discuss → verify → backtest workflow for the saved idea.
 - `quant lab discuss latest <what you want to discuss>` starts a focused local discussion without quotes in the interactive prompt, records it in the shared `agent-chat` session, and suggests the next `/agent ...` follow-up; add `--codex` to ask Codex when available.
@@ -256,7 +256,7 @@ Market data defaults:
 
 ## LLM tool/workbench mode
 
-TossQuant exposes a curated tool registry instead of letting LLMs run arbitrary shell commands:
+QuantOps exposes a curated tool registry instead of letting LLMs run arbitrary shell commands:
 
 ```bash
 quant tools list --json
@@ -274,12 +274,12 @@ quant mcp
 The registry currently includes safe research/data tools such as `data.info`, `data.download`, `data.validate`, `stats.run`, `research.run`, `idea.create`, `idea.add-symbol`, `lab.workflow`, `lab.stage`, `strategy.list`, and `backtest.run`. It intentionally does not expose order placement, account mutation, or raw broker commands. `.quant/` stores session handoff state while `data/` remains the market-data store. `quant mcp` serves the same registry over stdio MCP (`initialize`, `tools/list`, `tools/call`) for external Codex/Claude-style clients.
 
 Codex is launched as `codex exec --sandbox read-only --cd <project> ...` so the first integration is intentionally read-only.
-TossQuant filters Codex CLI transcript noise such as hook lines and sandbox warnings, then renders the model response in a colored Codex window.
-When invoking a skill from a regular shell instead of the interactive prompt, quote the `$...` token (for example `quant '$tossquant-idea-coach --lang ko'`) so your shell does not expand it as an environment variable.
+QuantOps filters Codex CLI transcript noise such as hook lines and sandbox warnings, then renders the model response in a colored Codex window.
+When invoking a skill from a regular shell instead of the interactive prompt, quote the `$...` token (for example `quant '$quantops-idea-coach --lang ko'`) so your shell does not expand it as an environment variable.
 
 Codex safety boundaries:
 - Codex receives summarized/redacted local context, not raw credentials.
-- Codex should recommend research steps and supported TossQuant commands only.
+- Codex should recommend research steps and supported QuantOps commands only.
 - Codex must not give direct buy/sell/hold instructions.
 - Research reports use uncertainty wording, avoid single buy/sell scores, and separate local facts from external context.
-- Trading remains preview-only; TossQuant has no real order mutation command.
+- Trading remains preview-only; QuantOps has no real order mutation command.

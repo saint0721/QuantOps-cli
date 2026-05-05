@@ -19,7 +19,7 @@ test('discover buckets expose app-like market exploration candidates', () => {
 });
 
 test('discoverMarket can fetch live-style Yahoo screeners and cache results', async () => {
-  const tmp = await mkdtemp(join(tmpdir(), 'tossquant-discover-'));
+  const tmp = await mkdtemp(join(tmpdir(), 'quantops-discover-'));
   const fetcher = async () => ({
     ok: true,
     status: 200,
@@ -69,7 +69,7 @@ test('symbol search and info cover ETF names and tags', () => {
 });
 
 test('live symbol search finds Yahoo symbols beyond the local curated set', async () => {
-  const tmp = await mkdtemp(join(tmpdir(), 'tossquant-symbols-'));
+  const tmp = await mkdtemp(join(tmpdir(), 'quantops-symbols-'));
   const fetcher = async () => ({
     ok: true,
     status: 200,

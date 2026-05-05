@@ -12,7 +12,7 @@ from .analysis import history_rows
 from .storage import data_dir, quote_history_path, read_jsonl, read_watchlist, utc_now
 from . import toss
 
-APP_NAME = "TossQuant"
+APP_NAME = "QuantOps"
 
 
 def runtime_dir(base: str | Path | None = "data") -> Path:
@@ -145,7 +145,7 @@ def render_runtime_line(snapshot: dict[str, Any]) -> str:
     last_action = snapshot.get("last_action") or "ready"
     updated_at = snapshot.get("updated_at") or "unknown"
     return (
-        f"[TossQuant] {branch} | mode:{mode} | watchlist:{watchlist} | "
+        f"[QuantOps] {branch} | mode:{mode} | watchlist:{watchlist} | "
         f"quotes:{quote_files}/{quote_samples} samples | classify-ready:{ready} | "
         f"codex:{codex} | last:{last_action} | updated:{updated_at}"
     )

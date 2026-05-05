@@ -9,7 +9,7 @@ test('mcp server exposes registry tools and calls them through the safe wrapper'
     { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'data.info', arguments: { symbol: 'AAPL' } } },
   ]);
 
-  assert.equal(replies[0]?.result?.serverInfo?.name, 'tossquant-cli');
+  assert.equal(replies[0]?.result?.serverInfo?.name, 'quantops-cli');
   assert.ok((replies[1]?.result?.tools as any[]).some((tool) => tool.name === 'stats.run'));
   assert.equal((replies[2]?.result?.content as any[])[0].type, 'text');
 });

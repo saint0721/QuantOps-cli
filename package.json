@@ -1,16 +1,16 @@
 {
-  "name": "tossquant-cli",
+  "name": "quantops-cli",
   "version": "0.1.0",
-  "description": "TypeScript-first terminal quant runtime around tossctl read-only data",
+  "description": "Agentic quant research, validation, backtesting, and execution workflow CLI",
   "type": "module",
   "bin": {
-    "tossquant": "./src/cli.ts",
+    "quantops": "./src/cli.ts",
     "quant": "./src/cli.ts"
   },
   "scripts": {
     "start": "node ./src/cli.ts",
     "test": "node --test src/__tests__/*.test.ts",
-    "smoke": "node ./src/cli.ts --no-tmux --data-dir /tmp/tossquant-ts-smoke runtime line"
+    "smoke": "node ./src/cli.ts --no-tmux --data-dir /tmp/quantops-ts-smoke runtime line"
   },
   "engines": {
     "node": ">=24.0.0"
