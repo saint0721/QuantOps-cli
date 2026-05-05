@@ -44,6 +44,7 @@ export const ROOT_COMPLETIONS = ['start', 'next', 'download', 'research', 'idea'
 export const SLASH_COMPLETIONS = ['/start', '/next', '/download', '/research', '/idea', '/lab', '/tools', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/backtest', '/strategy', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
+const INTERACTIVE_HIDDEN_SLASH = new Set(['/agent']);
 
 function discoverCompletionCandidates(parts: string[]): string[] {
   if (parts.length <= 2) return DISCOVER_CATEGORIES;
@@ -1365,6 +1366,12 @@ async function runInteractive(dataDir: string): Promise<number> {
       return false;
     }
     const commandParts = line.slice(1).split(/\s+/);
+    const slashRoot = `/${commandParts[0] ?? ''}`;
+    if (!SLASH_COMPLETIONS.includes(slashRoot) && !INTERACTIVE_HIDDEN_SLASH.has(slashRoot)) {
+      await commandAgent(dataDir, [`사용자가 알 수 없는 slash 입력을 했습니다: ${line}. 의도를 해석해서 다음 행동을 자연어로 안내해줘.`]);
+      lastAction = 'agent-chat';
+      return false;
+    }
     const code = await runOnce(['--data-dir', dataDir, ...commandParts], { quietUnknown: true });
     lastAction = commandParts.slice(0, 2).join(' ');
     if (code === 2) warn('unknown slash command: try /start, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or just type a natural-language chat message.');

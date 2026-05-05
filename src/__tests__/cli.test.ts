@@ -213,11 +213,12 @@ test('tools and agent commands expose LLM execution surfaces', async () => {
   assert.equal(lang.code, 0);
   assert.match(lang.output, /current: ko/);
   assert.equal(agent.code, 0);
-  assert.match(agent.output, /세션: cli-test/);
-  assert.match(agent.output, /data.download/);
+  assert.match(agent.output, /필요한 로컬 상태만 조용히 확인/);
+  assert.match(agent.output, /NVDA 로컬 가격 데이터/);
+  assert.doesNotMatch(agent.output, /data.download/);
   assert.equal(continued.code, 0);
-  assert.match(continued.output, /세션: agent-chat/);
-  assert.match(continued.output, /에이전트 답변/);
+  assert.match(continued.output, /agent-chat 대화/);
+  assert.doesNotMatch(continued.output, /세션: agent-chat/);
 });
 
 test('provider and session commands report local integration state', async () => {

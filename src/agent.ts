@@ -29,10 +29,17 @@ export type AgentRun = {
 };
 
 const COMMON_WORDS = new Set(['THE', 'AND', 'FOR', 'WITH', 'FROM', 'THIS', 'THAT', 'WHAT', 'WHY', 'HOW', 'WHEN', 'DATA', 'NEWS', 'IDEA', 'LAB', 'ETF', 'USA', 'API', 'CLI', 'LLM', 'AI']);
+const COMPANY_SYMBOL_ALIASES: Array<[RegExp, string]> = [
+  [/\bTSMC\b|Taiwan\s+Semiconductor/i, 'TSM'],
+  [/삼성전자|Samsung\s+Electronics/i, '005930.KS'],
+];
 
 export function extractSymbols(text: string): string[] {
+  const aliases = COMPANY_SYMBOL_ALIASES
+    .filter(([pattern]) => pattern.test(text))
+    .map(([, symbol]) => symbol);
   const candidates = text.match(/\b[A-Z][A-Z0-9.\-]{1,9}\b/g) ?? [];
-  return [...new Set(candidates.filter((item) => !COMMON_WORDS.has(item)))].slice(0, 5);
+  return [...new Set([...aliases, ...candidates.filter((item) => !COMMON_WORDS.has(item) && item !== 'TSMC')])].slice(0, 5);
 }
 
 function wantsIdea(text: string): boolean {
@@ -123,17 +130,30 @@ function summarizeRecentEvents(session: QuantSession, language: 'ko' | 'en'): st
 }
 
 function localAgentResponse(run: Omit<AgentRun, 'provider_response' | 'report'>): string {
-  const recent = summarizeRecentEvents(run.session, run.language);
-  const toolSummary = run.steps.length
-    ? run.steps.map((step) => `- ${step.tool}: ${step.ok ? (run.language === 'ko' ? '완료' : 'ok') : (run.language === 'ko' ? '차단됨' : 'blocked')}`)
-    : [];
   const asksNext = /next|what now|뭐해|다음|이제|어떻게/i.test(run.request);
   const asksCounterEvidence = /반례|반증|falsif|counter|disprove/i.test(run.request);
   const asksDiscussion = /논의|대화|discuss|talk/i.test(run.request);
   const asksIdea = /아이디어|가설|idea|hypothesis/i.test(run.request);
-  const usefulCommands = nextSafeCommands({ ...run, ok: true, provider_response: undefined, report: '' }).slice(0, 3);
+  const asksData = /데이터|download|다운|가져오|받|수집|history|price/i.test(run.request);
+  const hasWorkflow = run.steps.some((step) => step.tool === 'lab.workflow' && step.ok);
+  const hasStrategyList = run.steps.some((step) => step.tool === 'strategy.list' && step.ok);
+  const hasMissingData = run.steps.some((step) => !step.ok && typeof step.output.next_command === 'string' && String(step.output.next_command).includes('data download'));
 
   if (run.language === 'ko') {
+    const contextNotes = [
+      ...(run.symbols.length && hasMissingData
+        ? [`${run.symbols.join(', ')} 로컬 가격 데이터는 아직 준비되지 않았어요. 자동 다운로드는 사용자가 원할 때만 실행하는 쪽이 안전합니다.`]
+        : []),
+      ...(run.symbols.length && asksData
+        ? ['기간은 목적별로 나누면 좋아요: 빠른 이벤트 검증은 1년, 기본 백테스트는 5년 일봉, 장기 사이클 비교는 10년 이상을 추천합니다. 처음이면 5년 일봉부터 시작하세요.']
+        : []),
+      ...(hasWorkflow
+        ? ['workflow latest는 최근 아이디어를 `논의(discuss) → 반례/검증(verify) → 백테스트 설계(backtest)` 순서로 밀어주는 흐름입니다.']
+        : []),
+      ...(hasStrategyList
+        ? ['현재 기본 전략 템플릿은 이동평균 교차, 모멘텀, 평균회귀, 단순 보유 비교처럼 “검증 기준선”으로 쓰는 용도입니다.']
+        : []),
+    ];
     const guidance = asksCounterEvidence
       ? [
         '반례부터 보면 이렇게 잡을 수 있어요:',
@@ -154,19 +174,31 @@ function localAgentResponse(run: Omit<AgentRun, 'provider_response' | 'report'>)
         : [];
     return [
       run.steps.length
-        ? '좋아. 로컬 도구 결과를 바탕으로 대화를 이어갈게.'
+        ? '좋아요. 필요한 로컬 상태만 조용히 확인하고, 사람이 읽을 수 있게 정리할게요.'
         : '응. 이 요청은 명령어 가이드가 아니라 agent-chat 대화로 이어서 받을게.',
       '',
-      ...(recent.length ? ['최근 이어받은 대화', ...recent, ''] : []),
-      ...(toolSummary.length ? ['이번에 확인한 것', ...toolSummary, ''] : []),
+      ...(contextNotes.length ? [...contextNotes, ''] : []),
       ...(guidance.length ? [...guidance, ''] : []),
       asksNext
         ? '지금은 새 명령을 많이 따라가기보다, 먼저 “무엇을 검증할지”를 한 문장 가설로 좁히는 게 좋아요. 이어서 자연어로 목표나 걱정되는 부분을 말해주면 그 흐름에 맞춰 필요한 명령만 제안할게.'
         : '계속 자연어로 말해도 됩니다. 필요한 순간에만 데이터 확인, 리서치, 백테스트 같은 실제 명령으로 좁혀서 제안할게.',
-      ...(usefulCommands.length ? ['', '지금 당장 유용한 명령', ...usefulCommands] : []),
     ].join('\n');
   }
 
+  const contextNotes = [
+    ...(run.symbols.length && hasMissingData
+      ? [`Local price data for ${run.symbols.join(', ')} is not ready yet. Automatic downloads stay off unless you explicitly allow them.`]
+      : []),
+    ...(run.symbols.length && asksData
+      ? ['For periods: use 1y for event checks, 5y daily as the default first backtest window, and 10y+ for long-cycle comparisons. Start with 5y daily if unsure.']
+      : []),
+    ...(hasWorkflow
+      ? ['`workflow latest` means: discuss the idea, verify/falsify it, then turn it into a backtest plan.']
+      : []),
+    ...(hasStrategyList
+      ? ['The built-in strategy templates are baseline checks: moving-average cross, momentum, mean reversion, and buy-hold.']
+      : []),
+  ];
   const guidance = asksCounterEvidence
     ? [
       'Useful counter-evidence to check:',
@@ -187,16 +219,14 @@ function localAgentResponse(run: Omit<AgentRun, 'provider_response' | 'report'>)
       : [];
   return [
     run.steps.length
-      ? 'Got it. I will continue the conversation from the local tool results.'
+      ? 'Got it. I checked only the local state needed and will keep the answer readable.'
       : 'Got it. I will continue this as an agent-chat conversation, not as a command checklist.',
     '',
-    ...(recent.length ? ['Recent carried conversation', ...recent, ''] : []),
-    ...(toolSummary.length ? ['What I checked this turn', ...toolSummary, ''] : []),
+    ...(contextNotes.length ? [...contextNotes, ''] : []),
     ...(guidance.length ? [...guidance, ''] : []),
     asksNext
       ? 'Before adding more commands, narrow what you want to verify into one testable hypothesis. Keep speaking naturally and I will suggest only the next useful command when it is needed.'
       : 'You can keep speaking naturally. I will translate the discussion into data, research, or backtest commands only when useful.',
-    ...(usefulCommands.length ? ['', 'Useful command now', ...usefulCommands] : []),
   ].join('\n');
 }
 
@@ -221,51 +251,19 @@ function safeProviderPrompt(run: Omit<AgentRun, 'provider_response' | 'report'>)
 }
 
 function formatAgentReport(run: AgentRun): string {
-  const commands = nextSafeCommands(run);
+  const reply = run.provider_response?.ok && run.provider_response.text?.trim()
+    ? redactSessionText(run.provider_response.text.trim())
+    : redactSessionText(run.local_response);
   if (run.language === 'ko') {
     const lines = [
-      `에이전트 실행: ${run.request}`,
-      `세션: ${run.session.id}`,
-      `제공자: ${run.provider}`,
-      `언어: ko`,
-      `감지된 종목: ${run.symbols.join(', ') || '없음'}`,
-      ...(run.steps.length ? [
-        '',
-        '도구 실행',
-        ...run.steps.map((step, index) => `${index + 1}. ${step.tool}: ${step.ok ? '완료' : '차단됨'}`),
-      ] : []),
-      ...(run.steps.length ? ['', '로컬 도구 출력', ...run.steps.map(toolObservation)] : []),
-      ...(run.skipped.length ? ['', '건너뜀 / 권한 필요', ...run.skipped.map((item) => `- ${String(item.tool)}: ${String(item.reason)}`)] : []),
-      '',
-      '에이전트 답변',
-      run.provider_response?.ok && run.provider_response.text?.trim()
-        ? redactSessionText(run.provider_response.text.trim())
-        : redactSessionText(run.local_response),
+      reply,
       ...(run.provider_response?.error ? ['', '제공자 상태', `- ${redactSessionText(run.provider_response.error)}`] : []),
-      ...(commands.length ? ['', '다음 안전 명령', ...commands] : []),
     ];
     return lines.join('\n');
   }
   const lines = [
-    `Agent run: ${run.request}`,
-    `session: ${run.session.id}`,
-    `provider: ${run.provider}`,
-    `language: en`,
-    `symbols: ${run.symbols.join(', ') || 'none detected'}`,
-    ...(run.steps.length ? [
-      '',
-      'Tool steps',
-      ...run.steps.map((step, index) => `${index + 1}. ${step.tool}: ${step.ok ? 'ok' : 'blocked'}`),
-    ] : []),
-    ...(run.steps.length ? ['', 'Local tool output', ...run.steps.map(toolObservation)] : []),
-    ...(run.skipped.length ? ['', 'Skipped / needs permission', ...run.skipped.map((item) => `- ${String(item.tool)}: ${String(item.reason)}`)] : []),
-    '',
-    'Agent reply',
-    run.provider_response?.ok && run.provider_response.text?.trim()
-      ? redactSessionText(run.provider_response.text.trim())
-      : redactSessionText(run.local_response),
+    reply,
     ...(run.provider_response?.error ? ['', 'Provider status', `- ${redactSessionText(run.provider_response.error)}`] : []),
-    ...(commands.length ? ['', 'Next safe commands', ...commands] : []),
   ];
   return lines.join('\n');
 }

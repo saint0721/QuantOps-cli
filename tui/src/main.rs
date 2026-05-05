@@ -361,6 +361,10 @@ impl App {
             return split_args(&format!("runtime{rest}"));
         }
         if let Some(command) = line.strip_prefix('/') {
+            let root = line.split_whitespace().next().unwrap_or("");
+            if !ROOT_COMMANDS.contains(&root) && root != "/agent" {
+                return vec!["agent".to_string(), line.to_string()];
+            }
             return split_args(command);
         }
         if line.starts_with('$') {
@@ -392,7 +396,7 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "flow     자연어 채팅 → agent tool 실행/제안 → /idea 또는 /lab 저장 → /backtest".to_string(),
         "advanced /backtest run latest · /strategy list · /lab verify latest · /discover · /data info · /stats <SYMBOL>".to_string(),
         "tools    /skills · /tools · $quantops-idea-coach · /hud · /codex · /quant · /exit".to_string(),
-        "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
+        "keys     Tab completes · ↑/↓ history · mouse drag copies text · set QUANTOPS_TUI_MOUSE=1 for app scroll".to_string(),
         "".to_string(),
         "try      /start".to_string(),
     ]
@@ -945,7 +949,7 @@ fn main() -> io::Result<()> {
     let mut node = "node".to_string();
     let mut mouse_capture = env::var("QUANTOPS_TUI_MOUSE")
         .map(|value| !matches!(value.as_str(), "0" | "false" | "off" | "no"))
-        .unwrap_or(true);
+        .unwrap_or(false);
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -1382,6 +1386,14 @@ mod tests {
             vec!["codex-prompt", "$quantops-idea-coach --lang ko"]
         );
         assert_eq!(app.command_args("collect plan AAPL"), vec!["agent", "collect plan AAPL"]);
+        assert_eq!(
+            app.command_args("TSM 데이터를 가져오고 싶은데 언제부터가 좋아?"),
+            vec!["agent", "TSM 데이터를 가져오고 싶은데 언제부터가 좋아?"]
+        );
+        assert_eq!(
+            app.command_args("/find TSM"),
+            vec!["agent", "/find TSM"]
+        );
     }
 
     #[test]
