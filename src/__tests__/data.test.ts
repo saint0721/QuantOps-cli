@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, marketDatasetPath, normalizeDate, normalizeStooqSymbol, parseStooqCsv, parseYahooChart, refreshHistory, refreshWatchlist, safeDatasetName, stooqUrl, validateData, yahooUrl } from '../data.ts';
+import { validateDataRuntime } from '../rustValidate.ts';
 import { appendJsonl, readJsonl, writeWatchlist } from '../storage.ts';
 
 const CSV = [
@@ -135,6 +136,22 @@ test('validateData flags duplicate invalid stale rows', () => {
   assert.ok(codes.includes('invalid_volume'));
   assert.ok(codes.includes('duplicate_date'));
   assert.ok(codes.includes('stale_dataset'));
+});
+
+test('validateDataRuntime keeps a TypeScript fallback contract', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-data-validate-runtime-'));
+  const path = marketDatasetPath(dir, 'yahoo', 'AAPL', 'd');
+  appendJsonl(path, { ticker: 'AAPL', provider_symbol: 'AAPL', source: 'yahoo', interval: 'd', date: '2024-01-02', payload: { close: 111, volume: 10 } });
+
+  const previous = process.env.QUANTOPS_VALIDATE_ENGINE;
+  process.env.QUANTOPS_VALIDATE_ENGINE = 'typescript';
+  const result = validateDataRuntime(dir, 'AAPL', { now: '2024-01-03', maxStaleDays: 7 });
+  if (previous === undefined) delete process.env.QUANTOPS_VALIDATE_ENGINE;
+  else process.env.QUANTOPS_VALIDATE_ENGINE = previous;
+
+  assert.equal(result.ok, true);
+  assert.equal(result.engine, 'typescript');
+  assert.equal((result.datasets as any[])[0].latest_age_days, 1);
 });
 
 test('refreshHistory uses the next day after latest saved row', async () => {

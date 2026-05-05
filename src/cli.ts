@@ -6,7 +6,7 @@ import { classify, historyRows } from './analysis.ts';
 import { auditAll } from './audit.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
 import { filteredCodexOutput } from './codex.ts';
-import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist, validateData } from './data.ts';
+import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist } from './data.ts';
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
 import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
 import { buildRustHelpers, installLocalBins, pathHint } from './setup.ts';
@@ -22,6 +22,7 @@ import { ensureQuantSession, listQuantSessions, recordSessionEvent, sessionHando
 import { formatAgentLanguagePreference, normalizeAgentLanguage, readAgentPreferences, writeAgentLanguage } from './preferences.ts';
 import { formatBacktestResult, formatStrategyList, listBacktestStrategies } from './backtest.ts';
 import { runBacktestRuntime, rustBacktestStatus } from './rustBacktest.ts';
+import { validateDataRuntime, rustValidateStatus } from './rustValidate.ts';
 import { runMcpServer } from './mcp.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 import { table } from './ui/table.ts';
@@ -399,6 +400,7 @@ function commandDoctor(dataDir: string): number {
     rust_stats: rustStatsStatus(),
     rust_backtest: rustBacktestStatus(),
     rust_event: rustEventStatus(),
+    rust_validate: rustValidateStatus(),
   });
   return ver.ok ? 0 : 1;
 }
@@ -822,7 +824,7 @@ async function commandData(dataDir: string, sub?: string, tail: string[] = []): 
       for (let i = validateArgs.length - 1; i >= 0; i -= 1) if (validateArgs[i] === '--json') validateArgs.splice(i, 1);
       const maxStaleDays = takeNumberOption(validateArgs, '--max-stale-days');
       const symbol = validateArgs.find((item) => !item.startsWith('--'));
-      const result = validateData(dataDir, symbol, { maxStaleDays });
+      const result = validateDataRuntime(dataDir, symbol, { maxStaleDays });
       printText(jsonOut ? JSON.stringify(result, null, 2) : formatDataOutput(sub, JSON.stringify(result)));
       return result.ok ? 0 : 1;
     }

@@ -1,8 +1,9 @@
-import { downloadHistory, dataInfo, validateData, type DownloadRequest } from './data.ts';
+import { downloadHistory, dataInfo, type DownloadRequest } from './data.ts';
 import { marketStatsRuntime } from './rustStats.ts';
 import { runResearch, formatResearchReport } from './research.ts';
 import { defineEvent, parseEventWindows } from './events.ts';
 import { runEventStudyRuntime } from './rustEvent.ts';
+import { validateDataRuntime } from './rustValidate.ts';
 import { createIdea, addIdeaSymbol, addIdeaHypothesis, ideaStatus } from './idea.ts';
 import { formatLabWorkflow, runLabStage, formatLabRun, type LabStage } from './lab.ts';
 import { formatBacktestResult, formatStrategyList, listBacktestStrategies } from './backtest.ts';
@@ -131,7 +132,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     rtk_command: rtkCommandForTool('data.validate'),
     async run(input, context) {
       const max = Number(input.max_stale_days);
-      const output = validateData(context.base, stringArg(input, 'symbol') || undefined, { maxStaleDays: Number.isFinite(max) ? max : undefined });
+      const output = validateDataRuntime(context.base, stringArg(input, 'symbol') || undefined, { maxStaleDays: Number.isFinite(max) ? max : undefined });
       return result('data.validate', output, undefined, input);
     },
   },

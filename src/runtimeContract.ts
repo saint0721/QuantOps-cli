@@ -19,7 +19,7 @@ export function runtimeInfoPayload(dataDir: string): JsonObject {
       tui: 'de-emphasized; dashboard/debug/report browser only',
       engines: {
         cli_contract: 'TypeScript dispatcher',
-        fast_kernels: 'Rust stats/backtest/event helpers when built or explicitly requested',
+        fast_kernels: 'Rust stats/backtest/event/data-validate helpers when built or explicitly requested',
         quant_analysis_reference: 'Python compatibility module for quant-analysis experiments',
       },
       trading_mutations: 'disabled by default',
