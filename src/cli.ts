@@ -10,7 +10,7 @@ import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHist
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
 import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
 import { installLocalBins, pathHint } from './setup.ts';
-import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
+import { buildRuntimeSnapshot, recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist, type JsonObject } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './lab.ts';
@@ -29,6 +29,8 @@ import { nextRecommendation } from './next.ts';
 import { periodToDateRange } from './period.ts';
 import { marketStats } from './marketAnalysis.ts';
 import { formatResearchReport, runResearch, type ResearchCodexResult } from './research.ts';
+import { codexRuntimeGuide, formatCodexRuntimeGuide } from './guide.ts';
+import { defineEvent, parseEventWindows, runEventStudy } from './events.ts';
 
 export { periodToDateRange } from './period.ts';
 
@@ -40,7 +42,7 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'next', 'download', 'research', 'idea', 'lab', 'tools', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const ROOT_COMPLETIONS = ['start', 'codex-guide', 'next', 'download', 'research', 'event', 'compare', 'idea', 'lab', 'tools', 'mcp', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
 export const SLASH_COMPLETIONS = ['/start', '/next', '/download', '/research', '/idea', '/lab', '/tools', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/backtest', '/strategy', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
@@ -69,7 +71,9 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
   const command = first?.startsWith('/') ? first.slice(1) : first;
   if (command === 'watchlist') return ['add', 'fetch', 'list', 'remove'];
   if (command === 'hud') return first?.startsWith('/') ? ['tmux'] : ['--tmux', '--watch'];
-  if (command === 'runtime') return ['line', 'snapshot'];
+  if (command === 'runtime') return ['line', 'snapshot', 'info'];
+  if (command === 'event') return parts.length <= 2 ? ['define', 'study', 'windows'] : ['--json', '--event-date', '--benchmark', '--window', '--type', '--target-symbol', '--source-symbol', '--topic', '--thesis'];
+  if (command === 'compare') return parts.length <= 2 ? [] : ['--source', '--interval', '--provider-symbol', '--json'];
   if (command === 'collect') {
     if (parts[1] === 'plan') return parts.length <= 3 ? ['--watchlist'] : [];
     return parts.length <= 2 ? ['plan', 'quote', 'watchlist'] : [];
@@ -616,9 +620,10 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
   if (!symbol) { warn('usage: research <SYMBOL> [--topic <TEXT>] [--source yahoo|stooq] [--provider-symbol <ID>]'); return 2; }
   try {
     const rest = [...tail];
+    const json = rest.includes('--json');
     const noSave = rest.includes('--no-save');
     const useCodex = rest.includes('--codex') || process.env.QUANTOPS_RESEARCH_CODEX === '1';
-    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-save') rest.splice(i, 1);
+    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-save' || rest[i] === '--json') rest.splice(i, 1);
     for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-codex' || rest[i] === '--codex') rest.splice(i, 1);
     const explicitSource = rest.includes('--source');
     const explicitInterval = rest.includes('--interval');
@@ -641,7 +646,7 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
       missing_data: Boolean(result.missing_data),
       saved_to: result.saved_to ?? '',
     });
-    printText([
+    printText(json ? JSON.stringify(result, null, 2) : [
       formatResearchReport(result),
       '',
       chatContinuationHint(`${symbol.toUpperCase()} 리서치 결과에서 반례, 외부 요인, 다음 검증 포인트를 자연어로 이어서 물어보세요.`),
@@ -702,6 +707,146 @@ function commandStats(dataDir: string, symbol?: string, tail: string[] = []): nu
     printJson({ ok: false, symbol: symbol.toUpperCase(), error: error instanceof Error ? error.message : String(error) });
     return 1;
   }
+}
+
+function commandCompare(dataDir: string, symbols: string[] = []): number {
+  const rest = [...symbols];
+  const json = rest.includes('--json');
+  for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--json') rest.splice(i, 1);
+  const explicitSource = rest.includes('--source');
+  const explicitInterval = rest.includes('--interval');
+  const explicitProvider = rest.includes('--provider-symbol');
+  const { request, rest: expanded } = dataOptionsFromTail(rest);
+  const targets = expanded.filter((item) => !item.startsWith('--'));
+  if (targets.length < 2) { warn('usage: compare <SYMBOL> <PEER_OR_BENCHMARK...> [--json]'); return 2; }
+  const results = targets.map((symbol) => marketStats(symbol, {
+    base: dataDir,
+    source: explicitSource ? request.source : 'yahoo',
+    interval: explicitInterval ? request.interval : 'd',
+    providerSymbol: explicitProvider && targets.length === 1 ? request.providerSymbol : undefined,
+  }));
+  const payload = {
+    ok: results.every((item) => item.ok !== false),
+    command: 'compare',
+    symbols: targets.map((symbol) => symbol.toUpperCase()),
+    results,
+    note: 'Compare uses saved local datasets; download/validate missing symbols before interpreting relative performance.',
+  };
+  printText(json ? JSON.stringify(payload, null, 2) : table(
+    ['symbol', 'ok', 'rows', 'start', 'end', 'total_return', 'volatility', 'regime'],
+    results.map((item) => [
+      String(item.ticker ?? '-'),
+      item.ok === false ? 'no' : 'yes',
+      String(item.rows ?? '-'),
+      String(item.start_date ?? '-'),
+      String(item.end_date ?? '-'),
+      item.total_return === null || item.total_return === undefined ? '-' : Number(item.total_return).toFixed(4),
+      item.volatility === null || item.volatility === undefined ? '-' : Number(item.volatility).toFixed(4),
+      String(item.regime ?? '-'),
+    ]),
+  ));
+  return payload.ok ? 0 : 1;
+}
+
+function takeRepeatedOption(args: string[], flag: string): string[] {
+  const values: string[] = [];
+  for (let i = 0; i < args.length;) {
+    if (args[i] === flag) {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) throw new Error(`${flag} requires a value`);
+      values.push(value);
+      args.splice(i, 2);
+      continue;
+    }
+    i += 1;
+  }
+  return values;
+}
+
+function commandEvent(dataDir: string, action = 'windows', tail: string[] = []): number {
+  try {
+    const rest = [...tail];
+    const json = rest.includes('--json');
+    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--json') rest.splice(i, 1);
+    const windowValues = takeRepeatedOption(rest, '--window');
+    const windows = parseEventWindows(windowValues);
+    if (action === 'windows') {
+      const payload = { ok: true, command: 'event.windows', windows };
+      printText(json ? JSON.stringify(payload, null, 2) : table(['label', 'from', 'to'], windows.map((window) => [window.label, String(window.from), String(window.to)])));
+      return 0;
+    }
+    if (action === 'define') {
+      const type = takeOption(rest, '--type');
+      const targetSymbol = takeOption(rest, '--target-symbol');
+      const sourceSymbol = takeOption(rest, '--source-symbol');
+      const benchmark = takeOption(rest, '--benchmark');
+      const topic = takeOption(rest, '--topic') || rest.filter((item) => !item.startsWith('--')).join(' ') || undefined;
+      const thesis = takeOption(rest, '--thesis');
+      const payload = defineEvent({ type, targetSymbol, sourceSymbol, benchmark, topic, thesis, windows });
+      printText(JSON.stringify(payload, null, 2));
+      return 0;
+    }
+    if (action === 'study') {
+      const symbol = rest.find((item) => !item.startsWith('--'));
+      if (!symbol) { warn('usage: event study <SYMBOL> --event-date YYYY-MM-DD [--benchmark SYMBOL] [--window FROM,TO] [--json]'); return 2; }
+      const eventDate = takeOption(rest, '--event-date');
+      const benchmark = takeOption(rest, '--benchmark');
+      const explicitSource = rest.includes('--source');
+      const explicitInterval = rest.includes('--interval');
+      const explicitProvider = rest.includes('--provider-symbol');
+      const { request } = dataOptionsFromTail(rest);
+      const payload = runEventStudy(symbol, {
+        base: dataDir,
+        eventDate,
+        benchmark,
+        windows,
+        source: explicitSource ? request.source : 'yahoo',
+        interval: explicitInterval ? request.interval : 'd',
+        providerSymbol: explicitProvider ? request.providerSymbol : undefined,
+      });
+      printText(json ? JSON.stringify(payload, null, 2) : JSON.stringify(payload, null, 2));
+      return payload.ok ? 0 : 1;
+    }
+  } catch (error) {
+    printJson({ ok: false, command: `event.${action}`, error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
+  warn('usage: event [windows|define|study] [--json]');
+  return 2;
+}
+
+function commandRuntimeInfo(dataDir: string, json = false): number {
+  const snapshot = buildRuntimeSnapshot({ base: dataDir, lastAction: 'runtime.info' });
+  const guide = codexRuntimeGuide();
+  const payload = {
+    ok: true,
+    command: 'runtime.info',
+    runtime: snapshot,
+    contract: {
+      primary_interface: 'shell-cli-json',
+      human_primary_surface: 'Codex conversation',
+      quantops_role: guide.role,
+      mcp: 'optional integration layer after CLI JSON contracts are stable',
+      tui: 'de-emphasized; dashboard/debug/report browser only',
+      trading_mutations: 'disabled by default',
+    },
+    recommended_start: guide.minimal_commands,
+  };
+  printText(json ? JSON.stringify(payload, null, 2) : [
+    renderRuntimeLine(snapshot),
+    '',
+    'Agent runtime contract',
+    '- Primary interface: shell CLI with --json',
+    '- Human talks to Codex; Codex calls quantops commands',
+    '- MCP is optional later; TUI is not the primary UX',
+  ].join('\n'));
+  return 0;
+}
+
+function commandCodexGuide(tail: string[] = []): number {
+  const json = tail.includes('--json');
+  printText(json ? JSON.stringify(codexRuntimeGuide(), null, 2) : formatCodexRuntimeGuide());
+  return 0;
 }
 
 async function commandData(dataDir: string, sub?: string, tail: string[] = []): Promise<number> {
@@ -806,23 +951,24 @@ function commandSources(kind = 'list'): number {
 
 function commandStart(): number {
   printText([
-    'Start here — 채팅 먼저, 명령은 필요할 때만',
+    'Start here — Codex-first QuantOps runtime',
     '',
     table(
       ['step', 'command', 'why'],
       [
-        ['1', '그냥 질문 입력', '사람은 /agent 없이 자연어로 대화'],
-        ['2', 'NVDA 실적 모멘텀을 검증하고 싶어', '에이전트가 필요한 tool을 고름'],
-        ['3', '/tools', '에이전트가 쓸 수 있는 CLI/tool 표면 확인'],
-        ['4', '/idea new "NVDA momentum"', '필요하면 아이디어를 명시적으로 저장'],
-        ['5', '/lab workflow latest', '논의/검증/백테스트 작업 흐름 시작'],
-        ['6', '/backtest run latest --strategy ma-cross', '전략을 직접 백테스트'],
-        ['7', '/next', '현재 상태에서 다음 행동 추천'],
+        ['1', 'codex-guide', 'Codex가 QuantOps를 어떻게 호출해야 하는지 확인'],
+        ['2', 'runtime info --json', '현재 런타임/계약/추천 시작 명령 확인'],
+        ['3', 'symbol search TSMC --json', '자연어 이름을 ticker 후보로 변환'],
+        ['4', 'data info/download/validate --json', '로컬 OHLCV 준비와 품질 확인'],
+        ['5', 'stats / compare / research --json', '분석 재료와 리서치 컨텍스트 생성'],
+        ['6', 'event define/study --json', '뉴스를 이벤트로 구조화하고 가격 반응 확인'],
+        ['7', 'backtest run --json', '전략 가설 검증'],
       ],
     ),
     '',
-    '기본 흐름: 자연어 채팅 → agent tool 실행/제안 → /idea 또는 /lab 저장 → /backtest 검증',
-    '고급/에이전트용 명령: /tools, /idea, /lab, /backtest, /strategy, /discover, /data download, /stats, /sources, /runtime',
+    '기본 흐름: User talks to Codex → Codex calls quantops CLI with --json → QuantOps returns artifacts/context.',
+    '주력 명령: codex-guide, runtime info, symbol, data, stats, compare, research, event, backtest, session',
+    '내린 기능: QuantOps 자체 chat/TUI, /agent 중심 UX, MCP-first 흐름',
   ].join('\n'));
   return 0;
 }
@@ -928,19 +1074,21 @@ function symbolFromBacktestTarget(dataDir: string, target: string): string {
   return target.toUpperCase();
 }
 
-function commandStrategy(action = 'list'): number {
+function commandStrategy(action = 'list', tail: string[] = []): number {
+  const json = tail.includes('--json');
   if (action === 'list') {
-    printText(formatStrategyList());
+    printText(json ? JSON.stringify({ ok: true, command: 'strategy.list', strategies: listBacktestStrategies() }, null, 2) : formatStrategyList());
     return 0;
   }
-  warn('usage: strategy list');
+  warn('usage: strategy list [--json]');
   return 2;
 }
 
 function commandBacktest(dataDir: string, action = 'run', tail: string[] = []): number {
   try {
     if (action === 'list' || action === 'strategies') {
-      printText(formatStrategyList());
+      const json = tail.includes('--json');
+      printText(json ? JSON.stringify({ ok: true, command: 'backtest.strategies', strategies: listBacktestStrategies() }, null, 2) : formatStrategyList());
       return 0;
     }
     if (action !== 'run') {
@@ -1406,14 +1554,17 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   const [cmd, sub, ...tail] = rest;
   if (!cmd) return 2;
   if (cmd === 'start') return commandStart();
+  if (cmd === 'codex-guide') return commandCodexGuide([sub, ...tail].filter(Boolean));
   if (cmd === 'next') return commandNext(dataDir);
   if (cmd === 'download') return commandData(dataDir, 'download', downloadAliasArgs(sub, tail));
   if (cmd === 'analyze') return commandStats(dataDir, sub, tail);
   if (cmd === 'research') return commandResearch(dataDir, sub, tail);
+  if (cmd === 'event') return commandEvent(dataDir, sub ?? 'windows', tail);
+  if (cmd === 'compare') return commandCompare(dataDir, [sub, ...tail].filter(Boolean));
   if (cmd === 'idea') return commandIdea(dataDir, sub ?? 'list', tail);
   if (cmd === 'lab') return commandLab(dataDir, sub ?? 'workflow', tail);
   if (cmd === 'backtest') return commandBacktest(dataDir, sub ?? 'run', tail);
-  if (cmd === 'strategy') return commandStrategy(sub ?? 'list');
+  if (cmd === 'strategy') return commandStrategy(sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
   if (cmd === 'tools') return commandTools(dataDir, sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
   if (cmd === 'agent') return commandAgent(dataDir, [sub, ...tail].filter(Boolean));
   if (cmd === 'provider' || cmd === 'providers') return commandProviders(sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
@@ -1441,6 +1592,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd?.startsWith('$')) return runCodexPrompt([cmd, sub, ...tail].filter(Boolean).join(' '));
   if (cmd === 'runtime' && sub === 'snapshot') { printJson(recordRuntime({ base: dataDir, lastAction: 'snapshot' })); return 0; }
   if (cmd === 'runtime' && sub === 'line') { console.log(runtimeLine(dataDir)); return 0; }
+  if (cmd === 'runtime' && (sub === 'info' || !sub || sub.startsWith('--'))) return commandRuntimeInfo(dataDir, [sub, ...tail].filter(Boolean).includes('--json'));
   if (cmd === 'mcp') { await runMcpServer({ base: dataDir }); return 0; }
   if (cmd === 'hud' && rest.includes('--watch')) { void watchHud(dataDir, Number(rest[rest.indexOf('--interval') + 1] ?? 1)); return 0; }
   if (cmd === 'hud' && rest.includes('--tmux')) { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); return r.code; }

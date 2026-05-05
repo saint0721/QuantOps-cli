@@ -1,6 +1,34 @@
 # QuantOps
 
-Agentic quant operations CLI for turning ideas into data checks, external research, skeptical verification, backtests, and future guarded execution workflows. The active `quant` and `quantops` launchers point at `src/cli.ts`; a Python reference implementation remains available through the `quantops_cli` compatibility module.
+Agent-native quant research runtime for Codex/Claude-style agents. QuantOps is no longer positioned as a standalone chat/TUI-first app: the intended workflow is **user talks to Codex → Codex calls `quantops` shell commands with `--json` → QuantOps returns deterministic data, research, backtest, and artifact context**. The active `quant` and `quantops` launchers point at `src/cli.ts`; Python remains available for quant-analysis/reference work through the `quantops_cli` compatibility module.
+
+## Codex runtime contract
+
+Use QuantOps as a local execution harness from a Codex tmux/session:
+
+```bash
+quantops codex-guide --json
+quantops runtime info --json
+quantops symbol search TSMC --json
+quantops data info TSM --json
+quantops data download TSM --start 2026-01-01 --end 2026-05-05 --json
+quantops data validate TSM --json
+quantops stats TSM --json
+quantops compare TSM SOXX NVDA ASML --json
+quantops research TSM --topic "earnings momentum" --json
+quantops event define --type competitor_negative --source-symbol 005930.KS --target-symbol TSM --benchmark SOXX --json
+quantops event study TSM --event-date 2026-04-18 --benchmark SOXX --json
+quantops backtest strategies --json
+quantops backtest run TSM --strategy ma-cross --json
+```
+
+Runtime decisions:
+
+- Primary interface: shell CLI with stable `--json` outputs.
+- Primary human UX: Codex conversation, not QuantOps-local chat.
+- QuantOps role: data download, validation, stats, research context, event study, backtest, persistence.
+- De-emphasized: `/agent` as the main UX, QuantOps fake chat loops, TUI-first product direction, MCP-first work before CLI JSON contracts are stable.
+- Safety: no buy/sell/hold advice, no single trade score, and no live trading mutation by default.
 
 ## TypeScript runtime
 
@@ -48,6 +76,8 @@ quant
 quantops
 ```
 
+Interactive mode is now a secondary debugging/dashboard surface. For normal research, discuss with Codex in your tmux/session and let Codex call `quantops ... --json`.
+
 When `tmux` is installed and QuantOps is started from an interactive terminal,
 it opens a `quantops-<hash>` tmux session automatically. The hash is derived
 from `QUANTOPS_SESSION`, `CODEX_SESSION_ID`, `OMX_SESSION_ID`, `OMX_SESSION`,
@@ -72,6 +102,8 @@ and tmux options such as `tmux start --session`:
 
 ```text
 QuantOps quant ❯ /help
+QuantOps quant ❯ codex-guide
+QuantOps quant ❯ runtime info --json
 QuantOps quant ❯ doctor
 QuantOps quant ❯ collect plan AAPL
 QuantOps quant ❯ collect quote AAPL
@@ -81,8 +113,6 @@ QuantOps quant ❯ portfolio
 QuantOps quant ❯ NVDA 실적 모멘텀을 검증하고 싶어
 QuantOps quant ❯ /skills
 QuantOps quant ❯ /tools
-QuantOps quant ❯ agent ko
-QuantOps quant ❯ agent NVDA earnings momentum research
 QuantOps quant ❯ $quantops-idea-coach --lang ko
 QuantOps quant ❯ /brief
 QuantOps quant ❯ /research AAPL
@@ -122,6 +152,8 @@ Recommended beginner loop:
 ## Subcommand mode
 
 ```bash
+quant codex-guide
+quant runtime info --json
 quant doctor
 quant collect plan AAPL
 quant collect quote AAPL
@@ -145,6 +177,9 @@ quant data refresh AAPL
 quant data watchlist refresh
 quant stats AAPL
 quant research AAPL
+quant compare AAPL SPY QQQ
+quant event define --type earnings --target-symbol AAPL
+quant event study AAPL --event-date 2026-01-15 --benchmark SPY
 quant quote fetch AAPL
 quant quote history AAPL
 quant classify AAPL

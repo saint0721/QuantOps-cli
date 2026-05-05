@@ -24,15 +24,19 @@ use ratatui::Terminal;
 const TOSS_BLUE: Color = Color::Rgb(0, 100, 255);
 const CHAT_BG: Color = Color::Rgb(238, 238, 238);
 const PROMPT_LABEL: &str = " ❯ ";
-const INPUT_PLACEHOLDER: &str = "자연어로 입력하세요. 예: NVDA 실적 모멘텀 검증";
+const INPUT_PLACEHOLDER: &str = "Codex에서 논의하고, 여기서는 quantops CLI/JSON을 확인하세요";
 const ROOT_COMMANDS: &[&str] = &[
     "/start",
+    "/codex-guide",
     "/next",
     "/download",
     "/research",
+    "/event",
+    "/compare",
     "/idea",
     "/lab",
     "/tools",
+    "/mcp",
     "/provider",
     "/session",
     "/skills",
@@ -387,18 +391,17 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "                                  |_|        ".to_string(),
         "".to_string(),
         format!("QuantOps@{mode}"),
-        "project  QuantOps-cli — agentic quant research and execution workflows".to_string(),
-        "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
+        "project  QuantOps-cli — Codex-first quant research runtime".to_string(),
+        "runtime  TypeScript CLI + optional Rust dashboard/TUI + tmux HUD".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "chat     그냥 입력: NVDA 실적 모멘텀을 검증하고 싶어".to_string(),
-        "beginner /start · /next · /idea · /lab · /skills · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list".to_string(),
-        "flow     자연어 채팅 → agent tool 실행/제안 → /idea 또는 /lab 저장 → /backtest".to_string(),
-        "advanced /backtest run latest · /strategy list · /lab verify latest · /discover · /data info · /stats <SYMBOL>".to_string(),
-        "tools    /skills · /tools · $quantops-idea-coach · /hud · /codex · /quant · /exit".to_string(),
+        "contract codex-guide · runtime info --json · all core commands prefer --json".to_string(),
+        "flow     User talks to Codex → Codex calls quantops CLI → QuantOps returns artifacts/context".to_string(),
+        "core     /symbol · /data · /stats · /compare · /research · /event · /backtest".to_string(),
+        "tools    /skills · /tools · /hud · /runtime · /codex · /quant · /exit".to_string(),
         "keys     Tab completes · ↑/↓ history · mouse drag copies text · set QUANTOPS_TUI_MOUSE=1 for app scroll".to_string(),
         "".to_string(),
-        "try      /start".to_string(),
+        "try      /codex-guide".to_string(),
     ]
 }
 
@@ -460,6 +463,7 @@ fn command_candidates(
         "/research" => research_candidates(parts, trailing_space),
         "/skills" => &[],
         "/tools" => &["list", "run"],
+        "/codex-guide" => &["--json"],
         "/agent" => agent_candidates(parts, trailing_space),
         "/provider" => &["list", "--json"],
         "/session" => &["current", "list", "handoff", "--json"],
@@ -488,7 +492,9 @@ fn command_candidates(
         "/watchlist" => {
             one_level_candidates(parts, trailing_space, &["add", "fetch", "list", "remove"])
         }
-        "/runtime" => one_level_candidates(parts, trailing_space, &["line", "snapshot"]),
+        "/runtime" => one_level_candidates(parts, trailing_space, &["line", "snapshot", "info"]),
+        "/event" => one_level_candidates(parts, trailing_space, &["define", "study", "windows"]),
+        "/compare" => &["--json"],
         "/hud" => one_level_candidates(parts, trailing_space, &["tmux"]),
         "/portfolio" => one_level_candidates(parts, trailing_space, &["snapshot"]),
         "/order" => one_level_candidates(parts, trailing_space, &["preview"]),
@@ -1442,6 +1448,9 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/idea".to_string()));
         assert!(completion_matches("", "quant").contains(&"/lab".to_string()));
         assert!(completion_matches("", "quant").contains(&"/tools".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/codex-guide".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/event".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/compare".to_string()));
         assert!(!completion_matches("", "quant").contains(&"/agent".to_string()));
         assert!(completion_matches("", "quant").contains(&"/skills".to_string()));
         assert!(completion_matches("", "quant").contains(&"/list".to_string()));
@@ -1453,7 +1462,7 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/research".to_string()));
         assert_eq!(
             completion_matches("/co", "quant"),
-            vec!["/collect".to_string(), "/codex".to_string()]
+            vec!["/codex-guide".to_string(), "/compare".to_string(), "/collect".to_string(), "/codex".to_string()]
         );
         assert_eq!(
             completion_matches("/collect p", "quant"),
@@ -1802,7 +1811,7 @@ mod tests {
         let app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
 
         assert!(app.input.is_empty());
-        assert_eq!(INPUT_PLACEHOLDER, "자연어로 입력하세요. 예: NVDA 실적 모멘텀 검증");
+        assert_eq!(INPUT_PLACEHOLDER, "Codex에서 논의하고, 여기서는 quantops CLI/JSON을 확인하세요");
         assert_eq!(input_cursor_column(&app.input, app.cursor), 0);
     }
 
@@ -1825,15 +1834,13 @@ mod tests {
         let lines = welcome_lines("quant");
         let text = lines.join("\n");
         assert!(text.contains("QuantOps-cli"));
-        assert!(text.contains("/start"));
-        assert!(text.contains("그냥 입력"));
+        assert!(text.contains("codex-guide"));
+        assert!(text.contains("Codex → Codex calls quantops CLI"));
         assert!(!text.contains("/find"));
-        assert!(text.contains("/download <SYMBOL>"));
-        assert!(text.contains("/stats <SYMBOL>"));
-        assert!(text.contains("/backtest run latest"));
-        assert!(text.contains("/research <SYMBOL>"));
-        assert!(text.contains("/idea"));
+        assert!(text.contains("/stats"));
+        assert!(text.contains("/backtest"));
+        assert!(text.contains("/research"));
+        assert!(text.contains("/event"));
         assert!(text.contains("Tab completes"));
-        assert!(text.contains("/strategy list"));
     }
 }

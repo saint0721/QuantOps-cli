@@ -231,6 +231,28 @@ test('provider and session commands report local integration state', async () =>
   assert.match(session.output, /readme-test/);
 });
 
+test('codex runtime commands expose agent-first machine contracts', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-runtime-contract-'));
+
+  const guide = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'codex-guide', '--json']));
+  const runtime = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'runtime', 'info', '--json']));
+  const strategies = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'backtest', 'strategies', '--json']));
+  const event = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'event', 'define', '--type', 'competitor_negative', '--target-symbol', 'TSM', '--source-symbol', '005930.KS', '--benchmark', 'SOXX', '--json']));
+
+  assert.equal(guide.code, 0);
+  assert.match(guide.output, /agent-native quant research runtime/);
+  assert.match(guide.output, /shell-cli-json/);
+  assert.equal(runtime.code, 0);
+  assert.match(runtime.output, /runtime.info/);
+  assert.match(runtime.output, /Codex conversation/);
+  assert.equal(strategies.code, 0);
+  assert.match(strategies.output, /backtest.strategies/);
+  assert.match(strategies.output, /ma-cross/);
+  assert.equal(event.code, 0);
+  assert.match(event.output, /competitor_negative/);
+  assert.match(event.output, /event study TSM/);
+});
+
 
 test('tools command redacts unknown tool names in CLI output', async () => {
   const result = await captureConsole(() => runOnce(['--no-tmux', 'tools', 'run', 'unknown?apikey=super-secret&session_id=sess-123', '--json']));

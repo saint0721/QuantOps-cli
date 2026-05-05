@@ -47,7 +47,7 @@ function wantsIdea(text: string): boolean {
 }
 
 function wantsResearch(text: string): boolean {
-  return /research|news|event|earnings|momentum|검증|뉴스|리서치|실적|모멘텀/i.test(text);
+  return /research|news|event|earnings|momentum|검증|뉴스|리서치|실적|모멘텀|외부\s*요인|악재|호재/i.test(text);
 }
 
 function wantsLabWorkflow(text: string): boolean {
@@ -60,6 +60,82 @@ function wantsStrategy(text: string): boolean {
 
 function wantsBacktest(text: string): boolean {
   return /backtest|백테스트|검증 실행/i.test(text);
+}
+
+function wantsDownload(text: string): boolean {
+  return /download|fetch|collect|get\s+(?:the\s+)?data|history|price\s+data|데이터|다운|가져오|받아|받|수집/i.test(text);
+}
+
+function wantsAnalysis(text: string): boolean {
+  return /analy[sz]e|analysis|stats?|inspect|확인|분석|살펴|봐줘|봐|검토/i.test(text);
+}
+
+type AgentDateRange = {
+  start: string;
+  end: string;
+  label: string;
+  note?: string;
+};
+
+function dateString(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function todayFromNow(now?: string): Date {
+  const parsed = now ? new Date(now) : new Date();
+  if (Number.isNaN(parsed.getTime())) return new Date();
+  return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()));
+}
+
+function quarterStart(year: number, quarter: number): string {
+  return `${year}-${String((quarter - 1) * 3 + 1).padStart(2, '0')}-01`;
+}
+
+function quarterEnd(year: number, quarter: number): string {
+  const end = new Date(Date.UTC(year, quarter * 3, 0));
+  return dateString(end);
+}
+
+function yearFromText(text: string, now?: string): number | undefined {
+  const explicit = text.match(/\b(20\d{2})\s*(?:년|년도)?\b/);
+  if (explicit) return Number(explicit[1]);
+  const short = text.match(/\b(\d{2})\s*(?:년|년도)\b/);
+  if (short) return 2000 + Number(short[1]);
+  if (/(?:^|\s)(?:q[1-4]|[1-4]\s*분기)/i.test(text)) return todayFromNow(now).getUTCFullYear();
+  return undefined;
+}
+
+function quartersFromText(text: string): number[] {
+  const quarters = [
+    ...[...text.matchAll(/([1-4])\s*분기/g)].map((match) => Number(match[1])),
+    ...[...text.matchAll(/\bq([1-4])\b/gi)].map((match) => Number(match[1])),
+  ].filter((quarter) => quarter >= 1 && quarter <= 4);
+  return [...new Set(quarters)];
+}
+
+function extractDateRange(text: string, now?: string): AgentDateRange | undefined {
+  const year = yearFromText(text, now);
+  const quarters = quartersFromText(text);
+  if (!year || !quarters.length) return undefined;
+
+  const firstQuarter = Math.min(...quarters);
+  const lastQuarter = Math.max(...quarters);
+  const requestedEnd = quarterEnd(year, lastQuarter);
+  const today = dateString(todayFromNow(now));
+  const end = requestedEnd > today ? today : requestedEnd;
+  const throughEarnings = /실적\s*발표\s*까지|earnings\s+(?:announcement|release)|through\s+earnings/i.test(text);
+  const futureNote = requestedEnd > today
+    ? `요청한 ${year}년 ${lastQuarter}분기 종료일(${requestedEnd})은 현재 날짜(${today})보다 뒤라서 내려받을 수 있는 마지막 날짜를 ${today}로 제한했어요.`
+    : undefined;
+  const earningsNote = throughEarnings
+    ? '정확한 실적 발표일은 외부 캘린더 조회가 필요해서, 현재 로컬 도구 실행은 분기 범위/현재일까지의 가격 데이터로 제한했어요.'
+    : undefined;
+  return {
+    start: quarterStart(year, firstQuarter),
+    end,
+    label: `${year} Q${firstQuarter}${firstQuarter === lastQuarter ? '' : `-Q${lastQuarter}`}`,
+    note: [futureNote, earningsNote].filter(Boolean).join(' '),
+  };
 }
 
 function resolveLanguage(request: string, language: AgentLanguage | undefined): 'ko' | 'en' {
@@ -135,18 +211,51 @@ function localAgentResponse(run: Omit<AgentRun, 'provider_response' | 'report'>)
   const asksDiscussion = /논의|대화|discuss|talk/i.test(run.request);
   const asksIdea = /아이디어|가설|idea|hypothesis/i.test(run.request);
   const asksData = /데이터|download|다운|가져오|받|수집|history|price/i.test(run.request);
+  const asksAnalysis = wantsAnalysis(run.request);
   const hasWorkflow = run.steps.some((step) => step.tool === 'lab.workflow' && step.ok);
   const hasStrategyList = run.steps.some((step) => step.tool === 'strategy.list' && step.ok);
   const hasMissingData = run.steps.some((step) => !step.ok && typeof step.output.next_command === 'string' && String(step.output.next_command).includes('data download'));
+  const calendarNotes = run.skipped
+    .filter((item) => item.tool === 'calendar.resolve' && typeof item.reason === 'string')
+    .map((item) => String(item.reason));
+  const downloaded = run.steps.filter((step) => step.tool === 'data.download');
+  const stats = run.steps.filter((step) => step.tool === 'stats.run');
+  const research = run.steps.filter((step) => step.tool === 'research.run');
+
+  const toolSummaryKo = [
+    ...downloaded.map((step) => step.ok
+      ? `데이터 다운로드: ${String(step.output.ticker ?? '-')} ${compactMaybeDate(step.output.start)}~${compactMaybeDate(step.output.end)} · rows ${String(step.output.rows ?? '-')}, new ${String(step.output.new_rows ?? '-')}`
+      : `데이터 다운로드 실패: ${String(step.output.error ?? 'unknown error')}`),
+    ...stats.map((step) => step.ok
+      ? `기초 분석: ${String(step.output.ticker ?? step.output.symbol ?? '-')} 통계 계산 완료`
+      : `기초 분석 보류: 저장 데이터가 더 필요합니다`),
+    ...research.map((step) => step.ok
+      ? `리서치 초안: ${String(step.output.ticker ?? step.output.symbol ?? '-')} 외부요인 체크리스트 생성`
+      : `리서치 보류: ${String(step.output.error ?? '데이터 준비가 더 필요합니다')}`),
+  ];
+
+  const toolSummaryEn = [
+    ...downloaded.map((step) => step.ok
+      ? `Data download: ${String(step.output.ticker ?? '-')} ${compactMaybeDate(step.output.start)}~${compactMaybeDate(step.output.end)} · rows ${String(step.output.rows ?? '-')}, new ${String(step.output.new_rows ?? '-')}`
+      : `Data download failed: ${String(step.output.error ?? 'unknown error')}`),
+    ...stats.map((step) => step.ok
+      ? `Stats: ${String(step.output.ticker ?? step.output.symbol ?? '-')} computed`
+      : `Stats held: saved data is needed first`),
+    ...research.map((step) => step.ok
+      ? `Research draft: ${String(step.output.ticker ?? step.output.symbol ?? '-')} external-factor checklist created`
+      : `Research held: ${String(step.output.error ?? 'more data is needed first')}`),
+  ];
 
   if (run.language === 'ko') {
     const contextNotes = [
       ...(run.symbols.length && hasMissingData
         ? [`${run.symbols.join(', ')} 로컬 가격 데이터는 아직 준비되지 않았어요. 자동 다운로드는 사용자가 원할 때만 실행하는 쪽이 안전합니다.`]
         : []),
-      ...(run.symbols.length && asksData
+      ...(run.symbols.length && asksData && !toolSummaryKo.length
         ? ['기간은 목적별로 나누면 좋아요: 빠른 이벤트 검증은 1년, 기본 백테스트는 5년 일봉, 장기 사이클 비교는 10년 이상을 추천합니다. 처음이면 5년 일봉부터 시작하세요.']
         : []),
+      ...calendarNotes,
+      ...(toolSummaryKo.length ? ['실제로 실행한 확인 결과:', ...toolSummaryKo.map((line) => `- ${line}`)] : []),
       ...(hasWorkflow
         ? ['workflow latest는 최근 아이디어를 `논의(discuss) → 반례/검증(verify) → 백테스트 설계(backtest)` 순서로 밀어주는 흐름입니다.']
         : []),
@@ -181,7 +290,9 @@ function localAgentResponse(run: Omit<AgentRun, 'provider_response' | 'report'>)
       ...(guidance.length ? [...guidance, ''] : []),
       asksNext
         ? '지금은 새 명령을 많이 따라가기보다, 먼저 “무엇을 검증할지”를 한 문장 가설로 좁히는 게 좋아요. 이어서 자연어로 목표나 걱정되는 부분을 말해주면 그 흐름에 맞춰 필요한 명령만 제안할게.'
-        : '계속 자연어로 말해도 됩니다. 필요한 순간에만 데이터 확인, 리서치, 백테스트 같은 실제 명령으로 좁혀서 제안할게.',
+        : asksAnalysis && run.symbols.length
+          ? '이어서 “이 결과에서 반례를 찾아줘” 또는 “이 기간으로 백테스트 설계해줘”처럼 말하면 같은 대화 흐름에서 다음 도구 실행으로 이어갈게.'
+          : '계속 자연어로 말해도 됩니다. 필요한 순간에만 데이터 확인, 리서치, 백테스트 같은 실제 명령으로 좁혀서 제안할게.',
     ].join('\n');
   }
 
@@ -189,9 +300,11 @@ function localAgentResponse(run: Omit<AgentRun, 'provider_response' | 'report'>)
     ...(run.symbols.length && hasMissingData
       ? [`Local price data for ${run.symbols.join(', ')} is not ready yet. Automatic downloads stay off unless you explicitly allow them.`]
       : []),
-    ...(run.symbols.length && asksData
+    ...(run.symbols.length && asksData && !toolSummaryEn.length
       ? ['For periods: use 1y for event checks, 5y daily as the default first backtest window, and 10y+ for long-cycle comparisons. Start with 5y daily if unsure.']
       : []),
+    ...calendarNotes,
+    ...(toolSummaryEn.length ? ['Actual checks run:', ...toolSummaryEn.map((line) => `- ${line}`)] : []),
     ...(hasWorkflow
       ? ['`workflow latest` means: discuss the idea, verify/falsify it, then turn it into a backtest plan.']
       : []),
@@ -226,8 +339,15 @@ function localAgentResponse(run: Omit<AgentRun, 'provider_response' | 'report'>)
     ...(guidance.length ? [...guidance, ''] : []),
     asksNext
       ? 'Before adding more commands, narrow what you want to verify into one testable hypothesis. Keep speaking naturally and I will suggest only the next useful command when it is needed.'
-      : 'You can keep speaking naturally. I will translate the discussion into data, research, or backtest commands only when useful.',
+      : asksAnalysis && run.symbols.length
+        ? 'Keep going naturally: ask for counter-evidence or a backtest design and I will continue through the same tool loop.'
+        : 'You can keep speaking naturally. I will translate the discussion into data, research, or backtest commands only when useful.',
   ].join('\n');
+}
+
+function compactMaybeDate(value: unknown): string {
+  const text = String(value ?? '-');
+  return /^\d{8}$/.test(text) ? `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6)}` : text;
 }
 
 function safeProviderPrompt(run: Omit<AgentRun, 'provider_response' | 'report'>): string {
@@ -277,8 +397,14 @@ export async function runAgent(request: string, options: AgentOptions = {}): Pro
   const session = ensureQuantSession({ id: options.sessionId, title: requestPreview.slice(0, 80), root: options.sessionRoot, now: options.now });
   recordSessionEvent(session, { at: options.now, type: 'user.request', summary: requestPreview, payload: { provider, language, allow_downloads: Boolean(options.allowDownloads) } });
   const symbols = extractSymbols(requestPreview);
+  const dateRange = extractDateRange(cleaned, options.now);
+  const shouldDownload = options.allowDownloads || wantsDownload(cleaned);
   const steps: ToolResult[] = [];
   const skipped: JsonObject[] = [];
+
+  if (dateRange?.note) {
+    skipped.push({ tool: 'calendar.resolve', reason: dateRange.note, range: { start: dateRange.start, end: dateRange.end, label: dateRange.label } });
+  }
 
   if (wantsIdea(cleaned)) {
     const idea = await runTool('idea.create', { title: requestPreview, ...(symbols[0] ? { symbol: symbols[0] } : {}) }, { base: options.base });
@@ -296,8 +422,8 @@ export async function runAgent(request: string, options: AgentOptions = {}): Pro
   for (const symbol of symbols) {
     const info = await runTool('data.info', { symbol }, { base: options.base });
     steps.push(info);
-    if (!info.ok && options.allowDownloads) {
-      steps.push(await runTool('data.download', { symbol, source: 'yahoo' }, { base: options.base }));
+    if (!info.ok && shouldDownload) {
+      steps.push(await runTool('data.download', { symbol, source: 'yahoo', ...(dateRange ? { start: dateRange.start, end: dateRange.end } : {}) }, { base: options.base }));
     } else if (!info.ok) {
       skipped.push({ tool: 'data.download', symbol, reason: 'not run without --download because it writes local files and may use the network' });
     }
