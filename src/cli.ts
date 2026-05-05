@@ -32,7 +32,8 @@ import { marketStats } from './marketAnalysis.ts';
 import { marketStatsRuntime, rustStatsStatus } from './rustStats.ts';
 import { formatResearchReport, runResearch, type ResearchCodexResult } from './research.ts';
 import { codexRuntimeGuide, formatCodexRuntimeGuide } from './guide.ts';
-import { defineEvent, parseEventWindows, runEventStudy } from './events.ts';
+import { defineEvent, parseEventWindows } from './events.ts';
+import { runEventStudyRuntime, rustEventStatus } from './rustEvent.ts';
 import { compareSymbols, formatCompareResult } from './compare.ts';
 import { runtimeInfoPayload, formatRuntimeInfo } from './runtimeContract.ts';
 import { dataOptionsFromTail, numberOption, takeOption, takeRepeatedOption } from './cliArgs.ts';
@@ -397,6 +398,7 @@ function commandDoctor(dataDir: string): number {
     tmux_install_hint: tmuxPath() ? 'ok' : tmuxInstallHint(),
     rust_stats: rustStatsStatus(),
     rust_backtest: rustBacktestStatus(),
+    rust_event: rustEventStatus(),
   });
   return ver.ok ? 0 : 1;
 }
@@ -730,7 +732,7 @@ function commandEvent(dataDir: string, action = 'windows', tail: string[] = []):
       const explicitInterval = rest.includes('--interval');
       const explicitProvider = rest.includes('--provider-symbol');
       const { request } = dataOptionsFromTail(rest);
-      const payload = runEventStudy(symbol, {
+      const payload = runEventStudyRuntime(symbol, {
         base: dataDir,
         eventDate,
         benchmark,
