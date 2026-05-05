@@ -201,6 +201,20 @@ Collection commands are provider-neutral and read-only by default. `collect plan
 
 The active TypeScript runtime now runs normal market download, list, stats, and audit commands directly. The retained Python package remains a reference implementation instead of the default data-analysis execution path.
 
+### Rust execution helpers
+
+`rtk stats <SYMBOL> --json` uses the TypeScript implementation by default, but it can use the Rust stats helper when the helper is built or when explicitly requested:
+
+```bash
+cargo build --manifest-path tui/Cargo.toml --bin quantops-stats
+rtk stats TSM --source yahoo --json
+
+# Force cargo-backed Rust execution without relying on a prebuilt helper:
+QUANTOPS_STATS_ENGINE=rust-cargo rtk stats TSM --source yahoo --json
+```
+
+`rtk doctor` reports the Rust helper path, cargo availability, and build hint under `rust_stats`. This keeps the stable Codex contract in `rtk ... --json` while moving isolated compute-heavy kernels to Rust incrementally.
+
 Safety defaults:
 - no web UI
 - no sensitive credential/session/account identifier storage in project data

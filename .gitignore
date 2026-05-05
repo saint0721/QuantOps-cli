@@ -2,7 +2,7 @@
 node_modules/
 npm-debug.log*
 coverage/
-bin/
+/bin/
 
 # Python
 __pycache__/

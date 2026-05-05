@@ -1,5 +1,6 @@
 import { downloadHistory, dataInfo, validateData, type DownloadRequest } from './data.ts';
 import { marketStats } from './marketAnalysis.ts';
+import { marketStatsRuntime } from './rustStats.ts';
 import { runResearch, formatResearchReport } from './research.ts';
 import { createIdea, addIdeaSymbol, addIdeaHypothesis, ideaStatus } from './idea.ts';
 import { formatLabWorkflow, runLabStage, formatLabRun, type LabStage } from './lab.ts';
@@ -135,7 +136,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     sensitive: false,
     mutates_trading: false,
     async run(input, context) {
-      const output = marketStats(stringArg(input, 'symbol'), {
+      const output = marketStatsRuntime(stringArg(input, 'symbol'), {
         base: context.base,
         source: stringArg(input, 'source', 'yahoo'),
         interval: stringArg(input, 'interval', 'd'),
