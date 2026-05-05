@@ -76,7 +76,7 @@ export function planNatural(input: string): NaturalPlan {
         input,
         intent: 'discover',
         steps: [{ command: `${command} --limit ${limit}`, reason: '시장 후보 목록을 실시간으로 찾습니다.' }],
-        note: '후보를 고른 뒤 /download <SYMBOL> → /analyze <SYMBOL> 순서로 진행하세요.',
+        note: '후보를 고른 뒤 /download <SYMBOL> → /stats <SYMBOL> 순서로 진행하세요.',
       };
     }
   }
@@ -101,7 +101,7 @@ export function planNatural(input: string): NaturalPlan {
       input,
       intent: 'download',
       steps: [{ command: `data download ${symbol} --period ${period}`, reason: `${symbol} ${period} 데이터를 저장합니다.` }],
-      note: `다음으로 /analyze ${symbol} 을 실행하세요.`,
+      note: `다음으로 /stats ${symbol} 을 실행하세요.`,
     };
   }
 
@@ -132,7 +132,7 @@ export function planNatural(input: string): NaturalPlan {
         input,
         intent: 'discover',
         steps: [{ command: `${command} --limit ${limit}`, reason: '시장 후보 목록을 실시간으로 찾습니다.' }],
-        note: '후보를 고른 뒤 /download <SYMBOL> → /analyze <SYMBOL> 순서로 진행하세요.',
+        note: '후보를 고른 뒤 /download <SYMBOL> → /stats <SYMBOL> 순서로 진행하세요.',
       };
     }
   }

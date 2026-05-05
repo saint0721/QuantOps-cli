@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { statusSummary } from './runtime.ts';
+import { ideaStatus, listIdeas } from './idea.ts';
 
 export function latestDiscoverySymbol(dataDir: string): string | undefined {
   const root = join(dataDir, 'discovery');
@@ -50,6 +51,39 @@ export function savedMarketSymbols(dataDir: string): string[] {
 }
 
 export function nextRecommendation(dataDir: string): string {
+  const latestIdea = listIdeas(dataDir)[0];
+  if (latestIdea) {
+    const status = ideaStatus(dataDir, latestIdea.id);
+    if (!latestIdea.symbols.length) {
+      return [
+        '추천 다음 행동',
+        '',
+        `최근 idea가 있습니다: ${latestIdea.title}`,
+        `next  /idea add-symbol latest <SYMBOL>`,
+        '',
+        '종목을 붙이면 /lab workflow latest 와 /backtest run latest 로 이어갈 수 있습니다.',
+      ].join('\n');
+    }
+    const firstMissing = status.next_commands[0];
+    if (firstMissing) {
+      return [
+        '추천 다음 행동',
+        '',
+        `최근 idea가 있습니다: ${latestIdea.title}`,
+        `symbols: ${latestIdea.symbols.join(', ')}`,
+        `next  /${firstMissing}`,
+        '',
+        '데이터/리서치가 준비되면 /lab workflow latest → /backtest run latest 순서로 진행하세요.',
+      ].join('\n');
+    }
+    return [
+      '추천 다음 행동',
+      '',
+      `최근 idea 준비도가 좋습니다: ${latestIdea.title}`,
+      'next  /lab workflow latest',
+      'next  /backtest run latest --strategy ma-cross',
+    ].join('\n');
+  }
   const marketSymbols = savedMarketSymbols(dataDir);
   if (marketSymbols.length > 0) {
     const symbol = marketSymbols[0]!;
@@ -57,7 +91,7 @@ export function nextRecommendation(dataDir: string): string {
       '추천 다음 행동',
       '',
       `데이터가 준비된 종목이 있습니다: ${marketSymbols.join(', ')}`,
-      `next  /analyze ${symbol}`,
+      `next  /stats ${symbol}`,
       '',
       '그 다음에는 /find 로 새 후보를 찾거나 /download <SYMBOL> 로 비교 대상을 추가하세요.',
     ].join('\n');
@@ -70,7 +104,7 @@ export function nextRecommendation(dataDir: string): string {
       `최근 discover 후보가 있습니다: ${discovered}`,
       `next  /download ${discovered}`,
       '',
-      '다운로드 후 /analyze 로 확인하세요.',
+      '다운로드 후 /stats 로 확인하세요.',
     ].join('\n');
   }
   const summary = statusSummary(dataDir);

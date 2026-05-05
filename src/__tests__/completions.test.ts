@@ -27,7 +27,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/start'));
   assert.ok(completionCandidates('', 'quant').includes('/find'));
   assert.ok(completionCandidates('', 'quant').includes('/download'));
-  assert.ok(completionCandidates('', 'quant').includes('/analyze'));
+  assert.equal(completionCandidates('', 'quant').includes('/analyze'), false);
   assert.ok(completionCandidates('', 'quant').includes('/research'));
   assert.ok(completionCandidates('', 'quant').includes('/idea'));
   assert.ok(completionCandidates('', 'quant').includes('/lab'));
@@ -39,6 +39,8 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/sources'));
   assert.ok(completionCandidates('', 'quant').includes('/symbol'));
   assert.ok(completionCandidates('', 'quant').includes('/stats'));
+  assert.ok(completionCandidates('', 'quant').includes('/backtest'));
+  assert.ok(completionCandidates('', 'quant').includes('/strategy'));
   assert.ok(completionCandidates('', 'quant').includes('/research'));
   assert.deepEqual(completionCandidates('quote ', 'quant'), ['fetch', 'history']);
   assert.deepEqual(completionCandidates('/quote ', 'quant'), ['fetch', 'history']);
@@ -55,6 +57,9 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/tools ', 'quant'), ['list', 'run']);
   assert.ok(completionCandidates('/tools run ', 'quant').includes('stats.run'));
   assert.ok(completionCandidates('/agent ', 'quant').includes('--provider'));
+  assert.ok(completionCandidates('/agent ', 'quant').includes('lang'));
+  assert.deepEqual(completionCandidates('/agent lang ', 'quant'), ['ko', 'en', 'auto']);
+  assert.deepEqual(completionCandidates('/agent --lang ', 'quant'), ['ko', 'en', 'auto']);
   assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));
@@ -70,6 +75,10 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/find trending --limit ', 'quant'), ['10', '25', '50', '100']);
   assert.ok(completionCandidates('/download NVDA ', 'quant').includes('--period'));
   assert.deepEqual(completionCandidates('/analyze NVDA ', 'quant'), []);
+  assert.deepEqual(completionCandidates('/backtest ', 'quant'), ['run', 'strategies', 'list']);
+  assert.ok(completionCandidates('/backtest run NVDA ', 'quant').includes('--strategy'));
+  assert.deepEqual(completionCandidates('/backtest run NVDA --strategy ', 'quant'), ['buy-hold', 'ma-cross', 'momentum', 'mean-reversion']);
+  assert.deepEqual(completionCandidates('/strategy ', 'quant'), ['list']);
   assert.ok(completionCandidates('/research NVDA ', 'quant').includes('--source'));
   assert.deepEqual(completionCandidates('/list ', 'quant'), []);
   assert.deepEqual(completionCandidates('/discover ', 'quant'), ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor']);

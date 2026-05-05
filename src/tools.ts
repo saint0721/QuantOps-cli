@@ -3,6 +3,7 @@ import { marketStats } from './marketAnalysis.ts';
 import { runResearch, formatResearchReport } from './research.ts';
 import { createIdea, addIdeaSymbol, addIdeaHypothesis, ideaStatus } from './idea.ts';
 import { formatLabWorkflow, runLabStage, formatLabRun, type LabStage } from './lab.ts';
+import { formatBacktestResult, formatStrategyList, listBacktestStrategies, runBacktest } from './backtest.ts';
 import { redact, type JsonObject, type JsonValue } from './storage.ts';
 import { redactSessionText } from './session.ts';
 
@@ -31,6 +32,13 @@ export type ToolDefinition = {
 function stringArg(input: JsonObject, key: string, fallback = ''): string {
   const value = input[key];
   return value === undefined || value === null ? fallback : String(value);
+}
+
+function numberArg(input: JsonObject, key: string): number | undefined {
+  const value = input[key];
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 
@@ -209,6 +217,51 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
       const stage = stringArg(input, 'stage', 'discuss') as LabStage;
       const run = runLabStage(stage, stringArg(input, 'idea'), { base: context.base, save: true });
       return result('lab.stage', run as unknown as JsonObject, formatLabRun(run));
+    },
+  },
+  {
+    name: 'strategy.list',
+    description: 'List deterministic backtest strategies available in TossQuant.',
+    input_schema: schema({}),
+    read_only: true,
+    local_writes: false,
+    sensitive: false,
+    mutates_trading: false,
+    async run() {
+      return result('strategy.list', { ok: true, strategies: listBacktestStrategies() as unknown as JsonValue } as JsonObject, formatStrategyList());
+    },
+  },
+  {
+    name: 'backtest.run',
+    description: 'Run a deterministic local backtest for a saved OHLCV symbol. This never mutates trading accounts.',
+    input_schema: schema({
+      symbol: { type: 'string' },
+      strategy: { type: 'string', enum: ['buy-hold', 'ma-cross', 'momentum', 'mean-reversion'] },
+      fast: { type: 'number' },
+      slow: { type: 'number' },
+      lookback: { type: 'number' },
+      threshold: { type: 'number' },
+      source: { type: 'string' },
+      interval: { type: 'string' },
+      provider_symbol: { type: 'string' },
+    }, ['symbol']),
+    read_only: false,
+    local_writes: true,
+    sensitive: false,
+    mutates_trading: false,
+    async run(input, context) {
+      const run = runBacktest(stringArg(input, 'symbol'), {
+        base: context.base,
+        source: stringArg(input, 'source', 'yahoo'),
+        interval: stringArg(input, 'interval', 'd'),
+        providerSymbol: stringArg(input, 'provider_symbol') || undefined,
+        strategy: stringArg(input, 'strategy', 'ma-cross'),
+        fast: numberArg(input, 'fast'),
+        slow: numberArg(input, 'slow'),
+        lookback: numberArg(input, 'lookback'),
+        threshold: numberArg(input, 'threshold'),
+      });
+      return result('backtest.run', run as unknown as JsonObject, formatBacktestResult(run));
     },
   },
 ];

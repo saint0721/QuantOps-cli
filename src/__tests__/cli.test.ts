@@ -120,6 +120,32 @@ test('lab command builds idea workflow and prompt-only artifacts', async () => {
   assert.match(prompt.output, /Do not write live trading code/);
 });
 
+test('backtest command runs a selected strategy for latest idea symbol', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-backtest-'));
+  await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'new', 'AAPL', 'trend']));
+  await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'add-symbol', 'latest', 'AAPL']));
+  for (let i = 1; i <= 80; i += 1) {
+    appendJsonl(marketDatasetPath(dir, 'yahoo', 'AAPL', 'd'), {
+      ticker: 'AAPL',
+      provider_symbol: 'AAPL',
+      source: 'yahoo',
+      interval: 'd',
+      date: `2026-02-${String(i).padStart(2, '0')}`,
+      fetched_at: '2026-02-01T00:00:00Z',
+      payload: { open: 100 + i, high: 101 + i, low: 99 + i, close: 100 + i, volume: 1000 },
+    });
+  }
+
+  const strategies = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'strategy', 'list']));
+  const backtest = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'backtest', 'run', 'latest', '--strategy', 'ma-cross', '--fast', '5', '--slow', '20', '--no-save']));
+
+  assert.equal(strategies.code, 0);
+  assert.match(strategies.output, /ma-cross/);
+  assert.equal(backtest.code, 0);
+  assert.match(backtest.output, /Backtest: AAPL/);
+  assert.match(backtest.output, /"fast":5/);
+});
+
 test('skills command lists local Codex skills with dollar invocation hints', async () => {
   const codexHome = mkdtempSync(join(tmpdir(), 'tq-cli-skills-'));
   const skillDir = join(codexHome, 'skills', 'tossquant-idea-coach');
@@ -145,12 +171,16 @@ test('tools and agent commands expose LLM execution surfaces', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-agent-'));
 
   const tools = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'tools', '--json']));
+  const lang = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'lang', 'ko']));
   const agent = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'NVDA', 'earnings', 'momentum', '--session', 'cli-test']));
 
   assert.equal(tools.code, 0);
   assert.match(tools.output, /stats.run/);
+  assert.match(tools.output, /backtest.run/);
+  assert.equal(lang.code, 0);
+  assert.match(lang.output, /current: ko/);
   assert.equal(agent.code, 0);
-  assert.match(agent.output, /session: cli-test/);
+  assert.match(agent.output, /세션: cli-test/);
   assert.match(agent.output, /data.download/);
 });
 
