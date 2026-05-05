@@ -20,7 +20,7 @@ export function listProviders(env: NodeJS.ProcessEnv = process.env): ProviderSta
   const codex = hasCommand('codex');
   const claude = hasCommand('claude');
   return [
-    { name: 'none', available: true, auth: 'not-required', detail: 'deterministic local TossQuant tool loop only' },
+    { name: 'none', available: true, auth: 'not-required', detail: 'deterministic local QuantOps tool loop only' },
     { name: 'codex', available: Boolean(codex), auth: codex ? 'cli' : 'missing', detail: codex ? `Codex CLI: ${codex}` : 'codex CLI not found in PATH' },
     { name: 'claude', available: Boolean(claude), auth: claude ? 'cli' : 'missing', detail: claude ? `Claude CLI: ${claude}` : 'claude CLI not found in PATH' },
     { name: 'openai', available: Boolean(env.OPENAI_API_KEY), auth: env.OPENAI_API_KEY ? 'env' : 'planned', detail: env.OPENAI_API_KEY ? 'OPENAI_API_KEY is set; direct API adapter is scaffolded for future tool-calling support' : 'set OPENAI_API_KEY or use Codex CLI adapter' },

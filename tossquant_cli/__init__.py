@@ -1,3 +1,3 @@
-"""CLI-first quant learning tools around tossctl read-only data."""
+"""QuantOps Python reference tools for agentic quant research workflows."""
 
 __version__ = "0.1.0"

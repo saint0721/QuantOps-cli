@@ -43,7 +43,7 @@ export function installLocalBins(options: InstallBinOptions = {}): InstallBinRes
   const force = Boolean(options.force);
   const links = [
     installOne('quant', repoPath('src/cli.ts'), dir, force),
-    installOne('tossquant', repoPath('src/cli.ts'), dir, force),
+    installOne('quantops', repoPath('src/cli.ts'), dir, force),
   ];
   return { ok: true, links };
 }

@@ -103,7 +103,7 @@ export async function downloadText(url: string, timeoutMs = 20_000): Promise<str
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'TossQuant-cli/0.1' },
+      headers: { 'User-Agent': 'QuantOps-cli/0.1' },
     });
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
     return await response.text();

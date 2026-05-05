@@ -91,12 +91,12 @@ class QuantCliLabTests(unittest.TestCase):
 
     def test_prompt_for_mode_is_readline_safe_and_mode_specific(self):
         plain_prompt = prompt_for_mode("quant")
-        hud_prompt = prompt_for_mode("quant", status_line="[TossQuant] main | mode:quant")
+        hud_prompt = prompt_for_mode("quant", status_line="[QuantOps] main | mode:quant")
         quant_prompt = prompt_for_mode("quant", readline_safe=True)
         codex_prompt = prompt_for_mode("codex", readline_safe=True)
-        self.assertIn("TossQuant", plain_prompt)
+        self.assertIn("QuantOps", plain_prompt)
         self.assertIn("quant", plain_prompt)
-        self.assertIn("[TossQuant] main", hud_prompt)
+        self.assertIn("[QuantOps] main", hud_prompt)
         self.assertIn("\n", hud_prompt)
         self.assertNotIn("\001", plain_prompt)
         self.assertIn("quant", quant_prompt)
@@ -220,7 +220,7 @@ class QuantCliLabTests(unittest.TestCase):
                 "updated_at": "2026-05-04T00:00:00Z",
             }
         )
-        self.assertIn("[TossQuant] main", line)
+        self.assertIn("[QuantOps] main", line)
         self.assertIn("mode:codex", line)
         self.assertIn("quotes:1/3 samples", line)
         self.assertIn("last:/brief", line)
@@ -243,7 +243,7 @@ class QuantCliLabTests(unittest.TestCase):
         self.assertIn("launched", message)
         command = run.call_args.args[0]
         self.assertEqual(command[:5], ["/usr/bin/tmux", "split-window", "-v", "-l", "4"])
-        self.assertIn("tossquant_cli.cli", command[-1])
+        self.assertIn("quantops_cli.cli", command[-1])
         self.assertIn("--watch", command[-1])
 
     def test_launch_tmux_runtime_creates_main_and_bottom_hud_then_attaches(self):
@@ -254,14 +254,14 @@ class QuantCliLabTests(unittest.TestCase):
             return mock.Mock(returncode=0, stdout="", stderr="")
 
         with mock.patch("tossquant_cli.hud.shutil.which", return_value="/usr/bin/tmux"), mock.patch.dict("os.environ", {}, clear=True), mock.patch("tossquant_cli.hud.subprocess.run", side_effect=fake_run):
-            code, message = launch_tmux_runtime(base="data", session="tossquant-test", height=3, interval=1.0, cwd="/repo")
+            code, message = launch_tmux_runtime(base="data", session="quantops-test", height=3, interval=1.0, cwd="/repo")
         self.assertEqual(code, 0)
         self.assertIn("closed", message)
-        self.assertEqual(calls[0][:6], ["/usr/bin/tmux", "new-session", "-d", "-s", "tossquant-test", "-n"])
+        self.assertEqual(calls[0][:6], ["/usr/bin/tmux", "new-session", "-d", "-s", "quantops-test", "-n"])
         self.assertIn("--no-tmux", calls[0][-1])
-        self.assertEqual(calls[1][:6], ["/usr/bin/tmux", "split-window", "-t", "tossquant-test:main", "-v", "-l"])
+        self.assertEqual(calls[1][:6], ["/usr/bin/tmux", "split-window", "-t", "quantops-test:main", "-v", "-l"])
         self.assertIn("hud --watch", calls[1][-1])
-        self.assertEqual(calls[-1], ["/usr/bin/tmux", "attach-session", "-t", "tossquant-test"])
+        self.assertEqual(calls[-1], ["/usr/bin/tmux", "attach-session", "-t", "quantops-test"])
 
     def test_main_auto_starts_tmux_when_interactive_and_available(self):
         with mock.patch("tossquant_cli.cli.should_auto_start_tmux", return_value=True), mock.patch("tossquant_cli.cli.launch_tmux_runtime", return_value=(0, "closed")) as launch:
@@ -332,7 +332,7 @@ class QuantCliLabTests(unittest.TestCase):
             self.assertEqual(command[:4], ["/usr/local/bin/codex", "exec", "--sandbox", "read-only"])
             self.assertEqual(command[5], "/tmp/project")
             self.assertIn("Do not recommend direct buy/sell/hold decisions", command[-1])
-            self.assertIn("Currently supported TossQuant commands", command[-1])
+            self.assertIn("Currently supported QuantOps commands", command[-1])
             self.assertIn("/strategy <TICKER> momentum", command[-1])
             self.assertNotIn("order preview", command[-1])
             self.assertIn("recommend next commands", command[-1])

@@ -18,6 +18,8 @@ export function filteredCodexOutput(stdout: string, stderr = ''): string {
     if (stripped === '--------') continue;
     if (stripped === 'tokens used') { skipToken = true; continue; }
     if (NOISE_PREFIXES.some((prefix) => stripped.startsWith(prefix))) continue;
+    if (stripped.includes('[OMX_TMUX_INJECT]')) continue;
+    if (stripped === 'Continue from current mode state.') continue;
     visible.push(line);
   }
   while (visible[0] === '') visible.shift();

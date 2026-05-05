@@ -8,6 +8,7 @@ export type LabStage = 'discuss' | 'verify' | 'backtest';
 export type LabOptions = {
   base?: string;
   save?: boolean;
+  focus?: string;
   now?: string;
 };
 
@@ -17,6 +18,7 @@ export type LabRun = {
   created_at: string;
   idea: IdeaStatusReport['idea'];
   readiness: IdeaStatusReport['readiness'];
+  focus?: string;
   prompt: string;
   report: string;
   codex?: ResearchCodexResult;
@@ -51,13 +53,13 @@ function ideaContextJson(status: IdeaStatusReport): JsonObject {
   } as unknown as JsonValue) as JsonObject;
 }
 
-export function buildLabPrompt(status: IdeaStatusReport, stage: LabStage): string {
+export function buildLabPrompt(status: IdeaStatusReport, stage: LabStage, focus = ''): string {
   const context = ideaContextJson(status);
   const stageInstructions: Record<LabStage, string[]> = {
     discuss: [
       'Act as a quant research discussion swarm lead.',
       'Turn the idea into concrete research questions, missing evidence, search terms, and a safe investigation sequence.',
-      'Recommend which TossQuant commands should be run next and what each command is expected to prove or disprove.',
+      'Recommend which QuantOps commands should be run next and what each command is expected to prove or disprove.',
     ],
     verify: [
       'Act as a skeptical quant verifier swarm lead.',
@@ -66,27 +68,28 @@ export function buildLabPrompt(status: IdeaStatusReport, stage: LabStage): strin
     ],
     backtest: [
       'Act as a backtest implementation swarm lead.',
-      'Write a coding brief for a future deterministic backtest module using the local TossQuant data model.',
+      'Write a coding brief for a future deterministic backtest module using the local QuantOps data model.',
       'Include inputs, strategy rules to parameterize, metrics, leakage checks, fixtures, and tests. Do not write live trading code.',
     ],
   };
   return [
-    `You are helping TossQuant-cli run the "${STAGE_LABELS[stage]}" stage for a saved quant idea.`,
+    `You are helping QuantOps-cli run the "${STAGE_LABELS[stage]}" stage for a saved quant idea.`,
     '',
     'Safety rules:',
     ...safetyRules(),
     '',
     'Stage instructions:',
     ...stageInstructions[stage].map((item) => `- ${item}`),
+    ...(focus.trim() ? ['', 'User discussion focus:', focus.trim()] : []),
     '',
     'Return sections:',
     '1. What we know from local state',
     '2. Missing evidence / blockers',
     '3. Agent-swarm task split',
     '4. Verification criteria',
-    '5. Next TossQuant commands',
+    '5. Next QuantOps commands',
     '',
-    'Redacted TossQuant idea context JSON:',
+    'Redacted QuantOps idea context JSON:',
     JSON.stringify(context, null, 2),
   ].join('\n');
 }
@@ -100,7 +103,33 @@ function readinessLine(item: IdeaStatusReport['readiness'][number]): string {
   return `- ${item.symbol}: ${gates}`;
 }
 
-function deterministicReport(status: IdeaStatusReport, stage: LabStage, codex?: ResearchCodexResult): string {
+function discussionOutput(status: IdeaStatusReport, focus: string): string[] {
+  const idea = status.idea;
+  const target = focus.trim();
+  if (!target) {
+    return [
+      '- 아직 논의 주제가 없습니다.',
+      '- 자연스럽게 이렇게 입력하세요:',
+      `  /lab discuss ${idea.id} NVDA 실적 모멘텀이 가격에 반영되는지 검증하고 싶어`,
+      `  /lab discuss latest 뉴스 이벤트와 이동평균 백테스트를 연결해서 보고 싶어`,
+      '- 그 다음 질문은 /agent 로 이어가면 같은 agent-chat 세션에 계속 쌓입니다.',
+    ];
+  }
+  return [
+    `- 논의 주제: ${target}`,
+    '- 먼저 이 주제를 가설/데이터/검증 기준으로 나눠 봅니다.',
+    `- 가설화: "${target}"를 숫자로 확인 가능한 조건으로 바꿔야 합니다.`,
+    '- 필요한 증거: 저장된 OHLCV 데이터, 이벤트/뉴스 맥락, 비교 기준, 실패 조건.',
+    '- 주의점: 매수/매도 결론이 아니라 검증 가능한 연구 질문으로 유지합니다.',
+    '',
+    '이어가기',
+    `- /agent ${target}`,
+    `- /lab verify ${idea.id}`,
+    `- /backtest run ${idea.symbols[0] ?? 'latest'} --strategy ma-cross`,
+  ];
+}
+
+function deterministicReport(status: IdeaStatusReport, stage: LabStage, focus: string, codex?: ResearchCodexResult): string {
   const idea = status.idea;
   const hasSymbols = idea.symbols.length > 0;
   const hasHypotheses = idea.hypotheses.length > 0;
@@ -115,11 +144,11 @@ function deterministicReport(status: IdeaStatusReport, stage: LabStage, codex?: 
   ].filter(Boolean) as string[];
   const stageNext: Record<LabStage, string[]> = {
     discuss: [
-      `lab verify ${idea.id} --no-codex`,
+      `lab verify ${idea.id}`,
       ...status.next_commands,
     ],
     verify: [
-      `lab backtest ${idea.id} --no-codex`,
+      `lab backtest ${idea.id}`,
       ...status.next_commands,
     ],
     backtest: [
@@ -135,6 +164,7 @@ function deterministicReport(status: IdeaStatusReport, stage: LabStage, codex?: 
     `- status: ${idea.status}`,
     `- symbols: ${idea.symbols.join(', ') || 'none'}`,
     `- hypotheses: ${idea.hypotheses.length ? idea.hypotheses.length : 'none'}`,
+    ...(focus.trim() ? [`- discussion_focus: ${focus.trim()}`] : []),
     '',
     'Readiness gates',
     ...(status.readiness.length ? status.readiness.map(readinessLine) : ['- no symbols yet']),
@@ -145,9 +175,11 @@ function deterministicReport(status: IdeaStatusReport, stage: LabStage, codex?: 
     `${STAGE_LABELS[stage]} output`,
     codex?.ok && codex.text?.trim()
       ? codex.text.trim()
-      : `- Codex discussion was not run${codex?.error ? `: ${codex.error}` : ''}. Use --prompt to copy the exact prompt into Codex/Claude, or rerun without --no-codex.`,
+      : (stage === 'discuss'
+        ? discussionOutput(status, focus).join('\n')
+        : `- Codex discussion was not run${codex?.error ? `: ${codex.error}` : ''}. Use --prompt to copy the exact prompt, or add --codex to ask the local Codex CLI when available.`),
     '',
-    'Next TossQuant commands',
+    'Next QuantOps commands',
     ...[...new Set(stageNext[stage])].map((cmd) => `- ${cmd}`),
   ].join('\n');
 }
@@ -155,16 +187,18 @@ function deterministicReport(status: IdeaStatusReport, stage: LabStage, codex?: 
 export function runLabStage(stage: LabStage, ideaRef: string, options: LabOptions = {}, codexRunner?: ResearchCodexRunner): LabRun {
   const base = options.base ?? 'data';
   const createdAt = options.now ?? utcNow();
+  const focus = options.focus?.trim() ?? '';
   const status = ideaStatus(base, ideaRef);
-  const prompt = buildLabPrompt(status, stage);
+  const prompt = buildLabPrompt(status, stage, focus);
   const codex = codexRunner ? codexRunner(prompt) : { ok: false, error: 'codex runner not configured' };
-  const report = deterministicReport(status, stage, codex);
+  const report = deterministicReport(status, stage, focus, codex);
   const run: LabRun = {
     ok: true,
     stage,
     created_at: createdAt,
     idea: status.idea,
     readiness: status.readiness,
+    focus: focus || undefined,
     prompt,
     report,
     codex,
@@ -192,15 +226,15 @@ export function formatLabWorkflow(status: IdeaStatusReport): string {
     `id: ${idea.id}`,
     '',
     '1. discuss',
-    `   quant lab discuss ${idea.id} --no-codex`,
+    `   quant lab discuss ${idea.id}`,
     '   Turn the idea into research questions, search tasks, and evidence requirements.',
     '',
     '2. verify',
-    `   quant lab verify ${idea.id} --no-codex`,
+    `   quant lab verify ${idea.id}`,
     '   Challenge the hypothesis, check blockers, and define pass/fail gates.',
     '',
     '3. backtest',
-    `   quant lab backtest ${idea.id} --no-codex`,
+    `   quant lab backtest ${idea.id}`,
     '   Produce a safe coding brief for a future deterministic backtest module.',
     '',
     'Current readiness',

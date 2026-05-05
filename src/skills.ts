@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, delimiter } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export type CodexSkill = {
+export type QuantSkill = {
   name: string;
   description: string;
   path: string;
@@ -16,7 +16,7 @@ function unquoteYamlString(value: string): string {
   return trimmed;
 }
 
-function parseSkillFile(path: string): CodexSkill | null {
+function parseSkillFile(path: string): QuantSkill | null {
   const text = readFileSync(path, 'utf8');
   if (!text.startsWith('---\n')) return null;
   const end = text.indexOf('\n---\n', 4);
@@ -31,14 +31,20 @@ function parseSkillFile(path: string): CodexSkill | null {
   return { name, description: metadata.get('description')?.trim() ?? '', path };
 }
 
-function skillRoots(env: NodeJS.ProcessEnv = process.env): string[] {
-  const codexHome = env.CODEX_HOME || join(homedir(), '.codex');
-  return [join(codexHome, 'skills'), join(codexHome, 'skills', '.system')];
+function repoRoot(): string {
+  return dirname(dirname(fileURLToPath(import.meta.url)));
 }
 
-export function listCodexSkills(env: NodeJS.ProcessEnv = process.env): CodexSkill[] {
+function skillRoots(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (env.QUANTOPS_SKILLS_DIR?.trim()) {
+    return env.QUANTOPS_SKILLS_DIR.split(delimiter).map((item) => item.trim()).filter(Boolean);
+  }
+  return [join(repoRoot(), 'quant-skills')];
+}
+
+export function listQuantSkills(env: NodeJS.ProcessEnv = process.env): QuantSkill[] {
   const seen = new Set<string>();
-  const skills: CodexSkill[] = [];
+  const skills: QuantSkill[] = [];
   for (const root of skillRoots(env)) {
     if (!existsSync(root)) continue;
     for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -52,13 +58,13 @@ export function listCodexSkills(env: NodeJS.ProcessEnv = process.env): CodexSkil
           seen.add(skill.name);
         }
       } catch {
-        // Invalid skills should not break the TossQuant CLI skills list.
+        // Invalid skills should not break the QuantOps CLI skills list.
       }
     }
   }
   return skills.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function skillInvocationCandidates(env: NodeJS.ProcessEnv = process.env): string[] {
-  return listCodexSkills(env).map((skill) => `$${skill.name}`);
+export function quantSkillInvocationCandidates(env: NodeJS.ProcessEnv = process.env): string[] {
+  return listQuantSkills(env).map((skill) => `$${skill.name}`);
 }

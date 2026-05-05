@@ -62,7 +62,7 @@ def stooq_url(request: DownloadRequest) -> str:
 
 
 def download_text(url: str, timeout: float = 20.0) -> str:
-    request = urllib.request.Request(url, headers={"User-Agent": "TossQuant-cli/0.1"})
+    request = urllib.request.Request(url, headers={"User-Agent": "QuantOps-cli/0.1"})
     with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - user-triggered market data download
         return response.read().decode("utf-8-sig")
 

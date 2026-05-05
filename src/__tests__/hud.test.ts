@@ -8,14 +8,14 @@ test('tmux command builders quote runtime commands', () => {
   assert.match(hudWatchCommand('/tmp/data', 0.5), /hud' '--watch/);
   assert.match(interactiveCommand(), /--no-tmux/);
   assert.match(interactiveCommand('/tmp/data'), /--data-dir/);
-  assert.match(interactiveCommand('/tmp/data', 'tossquant-test'), /TOSSQUANT_TMUX_MANAGED=1/);
-  assert.match(interactiveCommand('/tmp/data', 'tossquant-test'), /TOSSQUANT_TMUX_SESSION=tossquant-test/);
+  assert.match(interactiveCommand('/tmp/data', 'quantops-test'), /QUANTOPS_TMUX_MANAGED=1/);
+  assert.match(interactiveCommand('/tmp/data', 'quantops-test'), /QUANTOPS_TMUX_SESSION=quantops-test/);
 });
 
 test('default tmux session derives a short stable hash from Codex or project context', () => {
   assert.equal(sessionHash('abc').length, 8);
-  assert.equal(defaultTmuxSession({ CODEX_SESSION_ID: 'codex-session-1' } as any, '/repo'), `tossquant-${sessionHash('codex-session-1')}`);
-  assert.equal(defaultTmuxSession({} as any, '/repo'), `tossquant-${sessionHash('/repo')}`);
+  assert.equal(defaultTmuxSession({ CODEX_SESSION_ID: 'codex-session-1' } as any, '/repo'), `quantops-${sessionHash('codex-session-1')}`);
+  assert.equal(defaultTmuxSession({} as any, '/repo'), `quantops-${sessionHash('/repo')}`);
 });
 
 test('tmux runtime commands pass data dir and reselect top command pane', () => {
@@ -23,23 +23,23 @@ test('tmux runtime commands pass data dir and reselect top command pane', () => 
 });
 
 test('tmux runtime enables mouse scroll friendly session options', () => {
-  assert.deepEqual(tmuxRuntimeOptions('tossquant-test'), [
-    ['set-option', '-t', 'tossquant-test', 'mouse', 'on'],
-    ['set-option', '-t', 'tossquant-test', 'history-limit', '50000'],
-    ['set-option', '-t', 'tossquant-test', 'status-keys', 'vi'],
-    ['set-option', '-t', 'tossquant-test', 'renumber-windows', 'on'],
-    ['set-window-option', '-t', 'tossquant-test:main', 'mode-keys', 'vi'],
+  assert.deepEqual(tmuxRuntimeOptions('quantops-test'), [
+    ['set-option', '-t', 'quantops-test', 'mouse', 'on'],
+    ['set-option', '-t', 'quantops-test', 'history-limit', '50000'],
+    ['set-option', '-t', 'quantops-test', 'status-keys', 'vi'],
+    ['set-option', '-t', 'quantops-test', 'renumber-windows', 'on'],
+    ['set-window-option', '-t', 'quantops-test:main', 'mode-keys', 'vi'],
   ]);
 });
 
 test('managed tmux session marker is explicit', () => {
-  assert.equal(managedTmuxSession({ TOSSQUANT_TMUX_MANAGED: '1', TOSSQUANT_TMUX_SESSION: 'tq' } as any), 'tq');
-  assert.equal(managedTmuxSession({ TOSSQUANT_TMUX_SESSION: 'tq' } as any), null);
+  assert.equal(managedTmuxSession({ QUANTOPS_TMUX_MANAGED: '1', QUANTOPS_TMUX_SESSION: 'tq' } as any), 'tq');
+  assert.equal(managedTmuxSession({ QUANTOPS_TMUX_SESSION: 'tq' } as any), null);
 });
 
 test('HUD line uses black text with blue field labels and no background', () => {
-  const line = hudColor('[TossQuant 0.1.0] main | mode:quant | codex:ready');
-  assert.match(line, /^\u001b\[30m\[TossQuant 0\.1\.0\] main \| \u001b\[38;2;0;100;255mmode:\u001b\[30mquant/);
+  const line = hudColor('[QuantOps 0.1.0] main | mode:quant | codex:ready');
+  assert.match(line, /^\u001b\[30m\[QuantOps 0\.1\.0\] main \| \u001b\[38;2;0;100;255mmode:\u001b\[30mquant/);
   assert.match(line, /\u001b\[38;2;0;100;255mcodex:\u001b\[30mready/);
   assert.doesNotMatch(line, /last:/);
   assert.doesNotMatch(line, /updated:/);

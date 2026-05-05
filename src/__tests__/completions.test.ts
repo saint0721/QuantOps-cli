@@ -57,9 +57,9 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/tools ', 'quant'), ['list', 'run']);
   assert.ok(completionCandidates('/tools run ', 'quant').includes('stats.run'));
   assert.ok(completionCandidates('/agent ', 'quant').includes('--provider'));
-  assert.ok(completionCandidates('/agent ', 'quant').includes('lang'));
+  assert.ok(completionCandidates('/agent ', 'quant').includes('ko'));
+  assert.equal(completionCandidates('/agent ', 'quant').includes('lang'), false);
   assert.deepEqual(completionCandidates('/agent lang ', 'quant'), ['ko', 'en', 'auto']);
-  assert.deepEqual(completionCandidates('/agent --lang ', 'quant'), ['ko', 'en', 'auto']);
   assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));
@@ -96,8 +96,9 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('/research ', 'quant').includes('AAPL'));
   assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--topic'));
   assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--provider-symbol'));
-  assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--no-codex'));
-  assert.deepEqual(completeLine('/research NVDA --', 'quant')[0], ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--no-codex']);
+  assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--codex'));
+  assert.equal(completionCandidates('/research AAPL ', 'quant').includes('--no-codex'), false);
+  assert.deepEqual(completeLine('/research NVDA --', 'quant')[0], ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--codex']);
   assert.deepEqual(completionCandidates('/research NVDA --source ', 'quant'), ['yahoo', 'stooq']);
   assert.deepEqual(completionCandidates('/research NVDA --interval ', 'quant'), ['d', '1d', '1wk', '1mo']);
   assert.deepEqual(completionCandidates('/research NVDA --topic ', 'quant'), []);
@@ -117,7 +118,7 @@ test('idea tab completion suggests latest and saved idea ids', () => {
   assert.deepEqual(completeLine('/idea status latest --', 'quant', dir)[0], ['--plain']);
   assert.deepEqual(completionCandidates('/lab verify ', 'quant', dir), ['latest', idea.id]);
   assert.deepEqual(completeLine('/lab backtest idea-20260505', 'quant', dir)[0], [idea.id]);
-  assert.ok(completionCandidates('/lab discuss latest ', 'quant', dir).includes('--no-codex'));
+  assert.ok(completionCandidates('/lab discuss latest ', 'quant', dir).includes('--codex'));
 });
 
 test('codex mode limits completion to slash controls', () => {
@@ -126,17 +127,17 @@ test('codex mode limits completion to slash controls', () => {
   assert.equal(candidates.includes('quote'), false);
 });
 
-test('skill invocation completion suggests local Codex skills', () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'tq-complete-skills-'));
-  const dir = join(codexHome, 'skills', 'tossquant-idea-coach');
+test('skill invocation completion suggests QuantOps local skills', () => {
+  const skillsRoot = mkdtempSync(join(tmpdir(), 'tq-complete-skills-'));
+  const dir = join(skillsRoot, 'quantops-idea-coach');
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'SKILL.md'), '---\nname: tossquant-idea-coach\ndescription: "Idea coach"\n---\n', 'utf8');
-  const previous = process.env.CODEX_HOME;
-  process.env.CODEX_HOME = codexHome;
+  writeFileSync(join(dir, 'SKILL.md'), '---\nname: quantops-idea-coach\ndescription: "Idea coach"\n---\n', 'utf8');
+  const previous = process.env.QUANTOPS_SKILLS_DIR;
+  process.env.QUANTOPS_SKILLS_DIR = skillsRoot;
   try {
-    assert.deepEqual(completeLine('$toss', 'quant')[0], ['$tossquant-idea-coach']);
+    assert.deepEqual(completeLine('$quant', 'quant')[0], ['$quantops-idea-coach']);
   } finally {
-    if (previous === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = previous;
+    if (previous === undefined) delete process.env.QUANTOPS_SKILLS_DIR;
+    else process.env.QUANTOPS_SKILLS_DIR = previous;
   }
 });

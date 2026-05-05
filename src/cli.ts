@@ -14,11 +14,11 @@ import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist, type JsonObject } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './lab.ts';
-import { listCodexSkills, skillInvocationCandidates, type CodexSkill } from './skills.ts';
+import { listQuantSkills, quantSkillInvocationCandidates, type QuantSkill } from './skills.ts';
 import { listTools, runTool, toolSummaries } from './tools.ts';
 import { runAgent } from './agent.ts';
 import { providersJson, listProviders } from './providers.ts';
-import { ensureQuantSession, listQuantSessions, sessionHandoff } from './session.ts';
+import { ensureQuantSession, listQuantSessions, recordSessionEvent, sessionHandoff } from './session.ts';
 import { formatAgentLanguagePreference, normalizeAgentLanguage, readAgentPreferences, writeAgentLanguage } from './preferences.ts';
 import { formatBacktestResult, formatStrategyList, listBacktestStrategies, runBacktest } from './backtest.ts';
 import { runMcpServer } from './mcp.ts';
@@ -33,7 +33,7 @@ import { formatResearchReport, runResearch, type ResearchCodexResult } from './r
 
 export { periodToDateRange } from './period.ts';
 
-const APP = 'TossQuant';
+const APP = 'QuantOps';
 const VERSION = '0.1.0';
 const GREEN = '\u001b[92m';
 const CYAN = '\u001b[96m';
@@ -60,7 +60,7 @@ function discoverCompletionCandidates(parts: string[]): string[] {
 export function completionCandidates(line: string, mode = 'quant', completionDataDir = 'data'): string[] {
   const trimmed = line.trimStart();
   if (mode === 'codex') return SLASH_COMPLETIONS;
-  if (trimmed.startsWith('$')) return skillInvocationCandidates();
+  if (trimmed.startsWith('$')) return quantSkillInvocationCandidates();
   if (!trimmed) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
   const baseParts = trimmed.trimEnd().split(/\s+/).filter(Boolean);
   const parts = trimmed.endsWith(' ') ? [...baseParts, ''] : baseParts;
@@ -84,10 +84,10 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
   }
   if (command === 'tools') return parts.length <= 2 ? ['list', 'run'] : (parts[1] === 'run' && parts.length <= 3 ? listTools().map((tool) => tool.name) : ['--json', '--input']);
   if (command === 'agent') {
-    if (parts.length <= 2) return ['lang', '--lang', '--provider', '--download', '--json', '--session'];
-    if (parts[1] === 'lang' && parts.length <= 3) return ['ko', 'en', 'auto'];
+    if (parts.length <= 2) return ['ko', 'en', 'auto', '--provider', '--download', '--json', '--session'];
+    if ((parts[1] === 'lang' || parts[1] === 'language') && parts.length <= 3) return ['ko', 'en', 'auto'];
     if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--lang') return ['ko', 'en', 'auto'];
-    return ['--lang', '--provider', '--download', '--json', '--session'];
+    return ['--provider', '--download', '--json', '--session'];
   }
   if (command === 'provider') return parts.length <= 2 ? ['list'] : ['--json'];
   if (command === 'session') return parts.length <= 2 ? ['current', 'list', 'handoff'] : ['--json'];
@@ -95,7 +95,7 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
     if (parts.length <= 2) return ['workflow', 'discuss', 'verify', 'backtest'];
     const action = parts[1];
     if ((action === 'workflow' || action === 'discuss' || action === 'verify' || action === 'backtest') && parts.length <= 3) return ideaReferenceCandidates(completionDataDir);
-    if ((action === 'discuss' || action === 'verify' || action === 'backtest') && parts.length <= 4) return ['--no-codex', '--prompt', '--no-save'];
+    if ((action === 'discuss' || action === 'verify' || action === 'backtest') && parts.length <= 4) return ['--codex', '--prompt', '--no-save'];
     return [];
   }
   if (command === 'data') {
@@ -135,7 +135,7 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
     if (trimmed.endsWith(' ') && parts.at(-2) === '--source') return ['yahoo', 'stooq'];
     if (trimmed.endsWith(' ') && parts.at(-2) === '--interval') return ['d', '1d', '1wk', '1mo'];
     if (trimmed.endsWith(' ') && (parts.at(-2) === '--topic' || parts.at(-2) === '--provider-symbol')) return [];
-    return trimmed.endsWith(' ') || (parts.at(-1) ?? '').startsWith('--') ? ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--no-codex'] : [];
+    return trimmed.endsWith(' ') || (parts.at(-1) ?? '').startsWith('--') ? ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--codex'] : [];
   }
   if (command === 'list') return [];
   if (command === 'audit') return [];
@@ -606,9 +606,9 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
   try {
     const rest = [...tail];
     const noSave = rest.includes('--no-save');
-    const noCodex = rest.includes('--no-codex') || process.env.TOSSQUANT_RESEARCH_NO_CODEX === '1';
+    const useCodex = rest.includes('--codex') || process.env.QUANTOPS_RESEARCH_CODEX === '1';
     for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-save') rest.splice(i, 1);
-    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-codex') rest.splice(i, 1);
+    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-codex' || rest[i] === '--codex') rest.splice(i, 1);
     const explicitSource = rest.includes('--source');
     const explicitInterval = rest.includes('--interval');
     const explicitProvider = rest.includes('--provider-symbol');
@@ -622,7 +622,7 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
       interval: explicitInterval ? request.interval : undefined,
       providerSymbol: explicitProvider ? request.providerSymbol : undefined,
       save: !noSave,
-    }, noCodex ? undefined : runCodexPromptText);
+    }, useCodex ? runCodexPromptText : undefined);
     printText(formatResearchReport(result));
     return result.missing_data ? 1 : 0;
   } catch (error) {
@@ -635,12 +635,12 @@ function commandLab(dataDir: string, action = 'workflow', tail: string[] = []): 
   const stages = new Set(['discuss', 'verify', 'backtest']);
   try {
     const promptOnly = tail.includes('--prompt');
+    const useCodex = tail.includes('--codex') || process.env.QUANTOPS_LAB_CODEX === '1';
     const noSave = tail.includes('--no-save') || promptOnly;
-    const noCodex = tail.includes('--no-codex') || promptOnly || process.env.TOSSQUANT_LAB_NO_CODEX === '1';
-    const args = tail.filter((item) => item !== '--prompt' && item !== '--no-save' && item !== '--no-codex');
+    const args = tail.filter((item) => item !== '--prompt' && item !== '--no-save' && item !== '--no-codex' && item !== '--codex');
     const ref = args[0];
     if (!ref) {
-      warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--no-codex] [--prompt] [--no-save]');
+      warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--codex] [--prompt] [--no-save]');
       return 2;
     }
     if (action === 'workflow') {
@@ -648,7 +648,16 @@ function commandLab(dataDir: string, action = 'workflow', tail: string[] = []): 
       return 0;
     }
     if (stages.has(action)) {
-      const result = runLabStage(action as LabStage, ref, { base: dataDir, save: !noSave }, noCodex ? undefined : runCodexPromptText);
+      const focus = args.slice(1).join(' ');
+      const result = runLabStage(action as LabStage, ref, { base: dataDir, save: !noSave, focus }, useCodex && !promptOnly ? runCodexPromptText : undefined);
+      if (action === 'discuss') {
+        const session = ensureQuantSession({ id: 'agent-chat', title: `Discuss ${result.idea.title}` });
+        recordSessionEvent(session, {
+          type: 'lab.discuss',
+          summary: focus || `started discussion for ${result.idea.title}`,
+          payload: { idea: result.idea.id, focus: focus || '', next: ['agent <your follow-up>', `lab verify ${result.idea.id}`] },
+        });
+      }
       printText(formatLabRun(result, { promptOnly }));
       return 0;
     }
@@ -656,7 +665,7 @@ function commandLab(dataDir: string, action = 'workflow', tail: string[] = []): 
     printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
     return 1;
   }
-  warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--no-codex] [--prompt] [--no-save]');
+  warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--codex] [--prompt] [--no-save]');
   return 2;
 }
 
@@ -855,8 +864,8 @@ async function commandAgent(dataDir: string, tail: string[] = []): Promise<numbe
     const json = args.includes('--json');
     const allowDownloads = args.includes('--download');
     for (let i = args.length - 1; i >= 0; i -= 1) if (args[i] === '--json' || args[i] === '--download') args.splice(i, 1);
-    if (args[0] === 'lang' || args[0] === 'language') {
-      const requested = args[1];
+    if (args[0] === 'lang' || args[0] === 'language' || args[0] === 'ko' || args[0] === 'en' || args[0] === 'auto') {
+      const requested = args[0] === 'lang' || args[0] === 'language' ? args[1] : args[0];
       if (!requested) {
         printText(formatAgentLanguagePreference(readAgentPreferences(dataDir)));
         return 0;
@@ -868,9 +877,9 @@ async function commandAgent(dataDir: string, tail: string[] = []): Promise<numbe
     const provider = takeOption(args, '--provider') || 'none';
     const requestedLanguage = takeOption(args, '--lang');
     const language = requestedLanguage ? normalizeAgentLanguage(requestedLanguage) : readAgentPreferences(dataDir).language;
-    const sessionId = takeOption(args, '--session');
+    const sessionId = takeOption(args, '--session') || 'agent-chat';
     const request = args.join(' ');
-    if (!request) { warn('usage: agent <REQUEST> [--lang auto|ko|en] [--provider codex|claude|none] [--download] [--session ID] [--json]\n       agent lang [auto|ko|en]'); return 2; }
+    if (!request) { warn('usage: agent <REQUEST> [--provider codex|claude|none] [--download] [--session ID] [--json]\n       agent ko|en|auto'); return 2; }
     const run = await runAgent(request, { base: dataDir, provider, allowDownloads, sessionId, language });
     printText(json ? JSON.stringify({ ...run, report: undefined }, null, 2) : run.report);
     return run.ok ? 0 : 1;
@@ -995,22 +1004,22 @@ function commandSession(action = 'current', tail: string[] = []): number {
   return 2;
 }
 
-function skillSummaryRow(skill: CodexSkill): string[] {
+function skillSummaryRow(skill: QuantSkill): string[] {
   const shorten = (text: string, max: number) => text.length > max ? `${text.slice(0, max - 1)}…` : text;
   return [skill.name, shorten(skill.description || '-', 96), skill.path];
 }
 
 function commandSkills(): number {
-  const skills = listCodexSkills();
+  const skills = listQuantSkills();
   printText([
-    'Codex skills',
+    'QuantOps local skills',
     '',
-    skills.length ? table(['skill', 'description', 'path'], skills.map(skillSummaryRow)) : 'No skills found under $CODEX_HOME/skills or ~/.codex/skills.',
+    skills.length ? table(['skill', 'description', 'path'], skills.map(skillSummaryRow)) : 'No QuantOps skills found under quant-skills/ or $QUANTOPS_SKILLS_DIR.',
     '',
     'Use inside quant:',
     '  /skills',
-    '  $tossquant-idea-coach --lang ko',
-    '  $tossquant-research-lab latest --lang ko',
+    '  $quantops-idea-coach --lang ko',
+    '  $quantops-research-lab latest --lang ko',
   ].join('\n'));
   return 0;
 }
@@ -1289,14 +1298,14 @@ export function welcomeCard(): string {
   return [
     `${CYAN}${APP}${RESET} ${VERSION} · TypeScript runtime · trading mutations disabled`,
     '',
-    'project     TossQuant-cli — terminal-first quant runtime around tossctl',
+    'project     QuantOps-cli — agentic quant research and execution workflows',
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
     'beginner    /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list',
     'flow        /idea new "NVDA momentum"  →  /idea add-symbol latest NVDA  →  /lab workflow latest',
-    'advanced    /tools · /agent lang ko · /agent "NVDA momentum" · /backtest run latest · /strategy list · /discover · /data info · /stats <SYMBOL>',
-    'codex       /skills · /tools · /agent · $tossquant-idea-coach · /ask <question> · /codex · /quant · /exit',
+    'advanced    /tools · /agent ko · /agent "NVDA momentum" · /backtest run latest · /strategy list · /discover · /data info · /stats <SYMBOL>',
+    'codex       /skills · /tools · /agent · $quantops-idea-coach · /ask <question> · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
     '',
   ].join('\n');
@@ -1320,7 +1329,7 @@ async function runInteractive(dataDir: string): Promise<number> {
       return true;
     }
     if (['exit', '/quit', 'quit', '/:q', ':q'].includes(line)) {
-      warn('Use /exit to close TossQuant and its managed tmux session.');
+      warn('Use /exit to close QuantOps and its managed tmux session.');
       lastAction = 'exit-help';
       return false;
     }
@@ -1448,13 +1457,13 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
       return 1;
     }
   }
-  if (cmd === 'brief') return runCodexPrompt('Create a concise TossQuant session brief from local redacted data. Do not give buy/sell/hold advice.');
+  if (cmd === 'brief') return runCodexPrompt('Create a concise QuantOps session brief from local redacted data. Do not give buy/sell/hold advice.');
   if (!opts.quietUnknown) warn(`unknown command: ${cmd}`);
   return 2;
 }
 
 export function shouldAutoStartTmux(noTmux: boolean): boolean {
-  return !noTmux && !process.env.TOSSQUANT_NO_TMUX && !process.env.TMUX && input.isTTY && output.isTTY && Boolean(tmuxPath());
+  return !noTmux && !process.env.QUANTOPS_NO_TMUX && !process.env.TMUX && input.isTTY && output.isTTY && Boolean(tmuxPath());
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {

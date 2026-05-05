@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { appendJsonl } from '../storage.ts';
 import { marketDatasetPath } from '../data.ts';
 import { runAgent, extractSymbols } from '../agent.ts';
-import { sessionEvents } from '../session.ts';
+import { ensureQuantSession, recordSessionEvent, sessionEvents } from '../session.ts';
 import { addIdeaSymbol, createIdea } from '../idea.ts';
 
 function writeYahooClose(base: string, day: number, close: number) {
@@ -44,6 +44,47 @@ test('agent local report can auto-select Korean or explicit English', async () =
   assert.equal(korean.steps.some((step) => step.tool === 'idea.create'), false);
   assert.equal(english.language, 'en');
   assert.match(english.report, /Agent run/);
+});
+
+test('agent keeps a conversational local reply when no tools are needed', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-agent-chat-data-'));
+  const sessionRoot = mkdtempSync(join(tmpdir(), 'tq-agent-chat-session-'));
+  const session = ensureQuantSession({ id: 'agent-chat', root: sessionRoot, now: '2026-05-05T00:00:00Z' });
+  recordSessionEvent(session, {
+    at: '2026-05-05T00:00:01Z',
+    type: 'lab.discuss',
+    summary: 'NVDA earnings momentum',
+    payload: { focus: '실적 모멘텀이 가격에 반영되는지 보고 싶어' },
+  });
+
+  const run = await runAgent('그럼 이걸 어떻게 논의하면 돼?', { base: dir, sessionRoot, sessionId: 'agent-chat', language: 'ko', now: '2026-05-05T00:01:00Z' });
+
+  assert.equal(run.ok, true);
+  assert.equal(run.session.id, 'agent-chat');
+  assert.deepEqual(run.steps, []);
+  assert.match(run.report, /에이전트 답변/);
+  assert.match(run.report, /agent-chat 대화/);
+  assert.match(run.report, /최근 이어받은 대화/);
+  assert.match(run.report, /lab\.discuss/);
+  assert.doesNotMatch(run.report, /제공자 요약/);
+  assert.doesNotMatch(run.report, /도구 실행\n- 없음/);
+  assert.doesNotMatch(run.report, /idea new "<your strategy idea>"/);
+});
+
+test('agent carries prior conversation replies instead of restarting command guidance', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-agent-cont-data-'));
+  const sessionRoot = mkdtempSync(join(tmpdir(), 'tq-agent-cont-session-'));
+
+  const first = await runAgent('명령어 말고 전략 아이디어를 같이 논의하고 싶어', { base: dir, sessionRoot, sessionId: 'agent-chat', language: 'ko', now: '2026-05-05T00:00:00Z' });
+  const second = await runAgent('아까 말한 흐름에서 반례는 뭐야?', { base: dir, sessionRoot, sessionId: 'agent-chat', language: 'ko', now: '2026-05-05T00:01:00Z' });
+  const events = sessionEvents(second.session, sessionRoot);
+
+  assert.match(first.report, /명령어 가이드가 아니라 agent-chat 대화/);
+  assert.match(second.report, /최근 이어받은 대화/);
+  assert.match(second.report, /이전 에이전트 답변/);
+  assert.equal(events.some((event) => event.type === 'agent.reply'), true);
+  assert.doesNotMatch(second.report, /바로 이어서 이렇게 물어볼 수 있어요/);
+  assert.doesNotMatch(second.report, /다음 안전 명령/);
 });
 
 
@@ -90,6 +131,7 @@ test('agent explains lab workflow latest by running the lab workflow tool', asyn
   assert.match(run.report, /discuss/);
   assert.match(run.report, /verify/);
   assert.match(run.report, /backtest/);
-  assert.match(run.report, /lab discuss latest --no-codex/);
+  assert.match(run.report, /lab discuss latest/);
+  assert.doesNotMatch(run.report, /--no-codex/);
   assert.doesNotMatch(run.report, /idea new "<your strategy idea>"/);
 });

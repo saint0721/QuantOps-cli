@@ -1,13 +1,13 @@
 [project]
-name = "tossquant-cli"
+name = "quantops-cli"
 version = "0.1.0"
-description = "TypeScript-first terminal quant runtime around tossctl read-only data"
+description = "Agentic quant research, validation, backtesting, and execution workflow CLI"
 requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
-tossquant = "tossquant_cli.cli:main"
-quant = "tossquant_cli.cli:main"
+quantops = "quantops_cli.cli:main"
+quant = "quantops_cli.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

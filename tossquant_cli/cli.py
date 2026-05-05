@@ -23,7 +23,7 @@ from .runtime import current_runtime_line, record_runtime, status_summary as run
 from .hud import launch_tmux_hud, launch_tmux_runtime, print_hud_once, tmux_path, tmux_install_hint, watch_hud
 from . import toss
 
-APP_NAME = "TossQuant"
+APP_NAME = "QuantOps"
 RESET = "\033[0m"
 CYAN = "\033[96m"
 GREEN = "\033[92m"
@@ -99,7 +99,7 @@ BANNER = r"""
    ╚═╝    ╚═════╝ ╚══════╝╚══════╝ ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝
 """
 
-HELP_TEXT = """TossQuant commands:
+HELP_TEXT = """QuantOps commands:
   doctor
   quote fetch <TICKER>        fetch quote through tossctl and save history
   quote history <TICKER>      show saved quote history and changes
@@ -140,7 +140,7 @@ Runtime commands:
   hud --tmux                   open a bottom tmux HUD pane
   runtime snapshot             write and print ./data/runtime/state.json
   runtime line                 print the one-line runtime status
-  tmux start                   start TossQuant in tmux with bottom HUD pane
+  tmux start                   start QuantOps in tmux with bottom HUD pane
 
 Guided learning slash commands:
   /start                      show the beginner quant workflow
@@ -176,18 +176,18 @@ START_HERE_TEXT = """Start here:
   10) /strategy AAPL momentum ask Codex for a research plan
 
 Type /help for every command. Press Tab to autocomplete commands.
-TossQuant stays quiet until you run a command.
+QuantOps stays quiet until you run a command.
 """
 
 MODES_TEXT = """Modes:
-  quant   default; local TossQuant commands only
+  quant   default; local QuantOps commands only
   codex   only after /codex; each message is sent to: codex exec --sandbox read-only
 
 Safety defaults:
   - Codex bridge is opt-in, never always-on
   - Codex runs read-only by default from this project directory
-  - Codex recommends research steps and TossQuant commands, not buy/sell actions
-  - Trading remains preview-only; TossQuant has no real order mutation command
+  - Codex recommends research steps and QuantOps commands, not buy/sell actions
+  - Trading remains preview-only; QuantOps has no real order mutation command
 """
 
 LEARN_TOPICS = {
@@ -223,10 +223,10 @@ def color(text: str, ansi: str, *, readline_safe: bool = False) -> str:
 
 def prompt_for_mode(mode: str, *, readline_safe: bool = False, status_line: str | None = None) -> str:
     if mode == "codex":
-        name = color("TossQuant", MAGENTA, readline_safe=readline_safe)
+        name = color("QuantOps", MAGENTA, readline_safe=readline_safe)
         badge = color("codex", CYAN, readline_safe=readline_safe)
     else:
-        name = color("TossQuant", GREEN, readline_safe=readline_safe)
+        name = color("QuantOps", GREEN, readline_safe=readline_safe)
         badge = color("quant", CYAN, readline_safe=readline_safe)
     arrow = color("❯", BOLD, readline_safe=readline_safe)
     prompt = f"{name} {badge} {arrow} "
@@ -324,7 +324,7 @@ def status_summary(base: str | Path | None = None) -> dict[str, Any]:
 
 def print_start_workflow() -> None:
     print_section("Beginner quant workflow")
-    print("  TossQuant는 '데이터 수집 → 기록 확인 → 후보 분류 → 리스크 확인' 순서로 쓰면 됩니다.")
+    print("  QuantOps는 '데이터 수집 → 기록 확인 → 후보 분류 → 리스크 확인' 순서로 쓰면 됩니다.")
     print_command("doctor", "환경/auth 확인")
     print_command("/watchlist add AAPL", "관심 종목 등록")
     print_command("quote AAPL", "가격 샘플 저장")
@@ -573,16 +573,16 @@ def command_order_preview(args: argparse.Namespace) -> int:
 
 
 def brief_instructions() -> str:
-    return """Create a concise TossQuant session brief.
+    return """Create a concise QuantOps session brief.
 
 Output:
 1. Current data readiness by ticker.
-2. The top 3 next TossQuant commands to run.
+2. The top 3 next QuantOps commands to run.
 3. Any data-quality gaps to inspect.
 4. A safety note that this is not a trade recommendation.
 
 Prefer exact commands such as quote AAPL, history AAPL, classify AAPL, /audit, or /watchlist add AAPL.
-Use only commands from the "Currently supported TossQuant commands" list in the prompt.
+Use only commands from the "Currently supported QuantOps commands" list in the prompt.
 Do not recommend buy/sell/hold decisions."""
 
 
@@ -592,7 +592,7 @@ def command_brief(args: argparse.Namespace) -> int:
 
 
 def strategy_instructions(ticker: str, topic: str) -> str:
-    return f"""Create a TossQuant research strategy plan for {ticker.upper()} using topic '{topic}'.
+    return f"""Create a QuantOps research strategy plan for {ticker.upper()} using topic '{topic}'.
 
 Output sections:
 - Strategy hypothesis
@@ -601,11 +601,11 @@ Output sections:
 - Rule draft for study/backtest only
 - Validation steps
 - Risk checks
-- Next TossQuant commands
+- Next QuantOps commands
 - Safety note: no direct trade advice and no real orders
 
 Keep the plan educational and test-oriented.
-Use only commands from the "Currently supported TossQuant commands" list in the prompt."""
+Use only commands from the "Currently supported QuantOps commands" list in the prompt."""
 
 
 def command_strategy(args: argparse.Namespace) -> int:
@@ -618,12 +618,12 @@ def command_strategy(args: argparse.Namespace) -> int:
 
 
 def audit_explanation_instructions(findings: list[dict[str, Any]]) -> str:
-    return """Explain these deterministic TossQuant audit findings.
+    return """Explain these deterministic QuantOps audit findings.
 
 Output:
 1. Prioritized issues.
 2. Why each issue matters for data quality.
-3. Exact TossQuant commands to repair or inspect.
+3. Exact QuantOps commands to repair or inspect.
 4. Safety note: do not give buy/sell/hold advice.
 
 Findings:
@@ -729,14 +729,14 @@ def handle_hud(parts: list[str], mode: str, last_action: str, base: str | Path |
     return 0
 
 
-class TossQuantArgumentParser(argparse.ArgumentParser):
+class QuantOpsArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         raise ValueError(message)
 
 
 def build_parser(*, interactive: bool = False) -> argparse.ArgumentParser:
-    parser_cls = TossQuantArgumentParser if interactive else argparse.ArgumentParser
-    parser = parser_cls(prog="tossquant", description="TossQuant: CLI-first quant learning tools around tossctl")
+    parser_cls = QuantOpsArgumentParser if interactive else argparse.ArgumentParser
+    parser = parser_cls(prog="quantops", description="QuantOps: agentic quant research and execution workflow tools")
     parser.add_argument("--data-dir", default="data", help="Local non-sensitive data directory")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor").set_defaults(func=command_doctor)
@@ -834,7 +834,7 @@ def build_parser(*, interactive: bool = False) -> argparse.ArgumentParser:
     tmux = sub.add_parser("tmux")
     tsub = tmux.add_subparsers(dest="tmux_cmd", required=True)
     start = tsub.add_parser("start")
-    start.add_argument("--session", default="tossquant")
+    start.add_argument("--session", default="quantops")
     start.add_argument("--height", type=int, default=3)
     start.add_argument("--interval", type=float, default=1.0)
     start.set_defaults(func=command_tmux_start)
@@ -843,7 +843,7 @@ def build_parser(*, interactive: bool = False) -> argparse.ArgumentParser:
 
 
 def run_codex_prompt(prompt: str) -> int:
-    """Ask Codex once from TossQuant without granting write access."""
+    """Ask Codex once from QuantOps without granting write access."""
     prompt = prompt.strip()
     if not prompt:
         print("usage: /ask <QUESTION>")
@@ -895,7 +895,7 @@ def run_once(argv: list[str]) -> int:
 
 def run_interactive() -> int:
     print(color(BANNER, CYAN))
-    print(f"{APP_NAME} {__version__}  ·  tossctl read-only quant lab  ·  trading mutations disabled")
+    print(f"{APP_NAME} {__version__}  ·  agentic quant research workflows  ·  trading mutations disabled")
     print("data: ./data  ·  mode: quant  ·  type /help for commands, exit to quit")
     print_start_here()
     parser = build_parser(interactive=True)
@@ -1006,7 +1006,7 @@ def run_interactive() -> int:
             continue
         if line == "/quant":
             mode = "quant"
-            print("Quant mode enabled. Normal text is parsed as TossQuant commands again.")
+            print("Quant mode enabled. Normal text is parsed as QuantOps commands again.")
             print_hud(mode, "/quant")
             continue
         if line.startswith("/ask "):
@@ -1039,7 +1039,7 @@ def should_auto_start_tmux() -> bool:
     import os
     import sys
 
-    if os.environ.get("TOSSQUANT_NO_TMUX") in {"1", "true", "yes", "on"}:
+    if os.environ.get("QUANTOPS_NO_TMUX") in {"1", "true", "yes", "on"}:
         return False
     if os.environ.get("TMUX"):
         return False

@@ -10,7 +10,7 @@ import { appendJsonl } from '../storage.ts';
 
 test('welcome keeps neofetch summary without runtime HUD line', () => {
   const welcome = welcomeCard();
-  assert.match(welcome, /TossQuant-cli/);
+  assert.match(welcome, /QuantOps-cli/);
   assert.match(welcome, /beginner/);
   assert.match(welcome, /\/find/);
   assert.match(welcome, /\/download <SYMBOL>/);
@@ -105,12 +105,16 @@ test('lab command builds idea workflow and prompt-only artifacts', async () => {
   await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'add-symbol', 'latest', 'NVDA']));
 
   const workflow = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'workflow', 'latest']));
-  const verify = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'verify', 'latest', '--no-codex', '--no-save']));
+  const discuss = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'discuss', 'latest', '실적', '모멘텀을', '뉴스와', '연결해서', '보고', '싶어', '--no-save']));
+  const verify = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'verify', 'latest', '--no-save']));
   const prompt = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'backtest', 'latest', '--prompt']));
 
   assert.equal(workflow.code, 0);
   assert.match(workflow.output, /Lab workflow: NVDA earnings momentum/);
   assert.match(workflow.output, /quant lab discuss/);
+  assert.equal(discuss.code, 0);
+  assert.match(discuss.output, /논의 주제: 실적 모멘텀을 뉴스와 연결해서 보고 싶어/);
+  assert.match(discuss.output, /\/agent 실적 모멘텀을 뉴스와 연결해서 보고 싶어/);
   assert.equal(verify.code, 0);
   assert.match(verify.output, /Lab verify: NVDA earnings momentum/);
   assert.match(verify.output, /Blocking gaps/);
@@ -146,23 +150,23 @@ test('backtest command runs a selected strategy for latest idea symbol', async (
   assert.match(backtest.output, /"fast":5/);
 });
 
-test('skills command lists local Codex skills with dollar invocation hints', async () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'tq-cli-skills-'));
-  const skillDir = join(codexHome, 'skills', 'tossquant-idea-coach');
+test('skills command lists QuantOps local skills with dollar invocation hints', async () => {
+  const skillsRoot = mkdtempSync(join(tmpdir(), 'tq-cli-skills-'));
+  const skillDir = join(skillsRoot, 'quantops-idea-coach');
   mkdirSync(skillDir, { recursive: true });
-  writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: tossquant-idea-coach\ndescription: "Beginner idea coach"\n---\n', 'utf8');
-  const previous = process.env.CODEX_HOME;
-  process.env.CODEX_HOME = codexHome;
+  writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: quantops-idea-coach\ndescription: "Beginner idea coach"\n---\n', 'utf8');
+  const previous = process.env.QUANTOPS_SKILLS_DIR;
+  process.env.QUANTOPS_SKILLS_DIR = skillsRoot;
   try {
     const result = await captureConsole(() => runOnce(['--no-tmux', 'skills']));
 
     assert.equal(result.code, 0);
-    assert.match(result.output, /Codex skills/);
-    assert.match(result.output, /tossquant-idea-coach/);
-    assert.match(result.output, /\$tossquant-idea-coach --lang ko/);
+    assert.match(result.output, /QuantOps local skills/);
+    assert.match(result.output, /quantops-idea-coach/);
+    assert.match(result.output, /\$quantops-idea-coach --lang ko/);
   } finally {
-    if (previous === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = previous;
+    if (previous === undefined) delete process.env.QUANTOPS_SKILLS_DIR;
+    else process.env.QUANTOPS_SKILLS_DIR = previous;
   }
 });
 
@@ -171,8 +175,9 @@ test('tools and agent commands expose LLM execution surfaces', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-agent-'));
 
   const tools = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'tools', '--json']));
-  const lang = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'lang', 'ko']));
+  const lang = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'ko']));
   const agent = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'NVDA', 'earnings', 'momentum', '--session', 'cli-test']));
+  const continued = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', '다음엔', '뭐해?']));
 
   assert.equal(tools.code, 0);
   assert.match(tools.output, /stats.run/);
@@ -182,6 +187,9 @@ test('tools and agent commands expose LLM execution surfaces', async () => {
   assert.equal(agent.code, 0);
   assert.match(agent.output, /세션: cli-test/);
   assert.match(agent.output, /data.download/);
+  assert.equal(continued.code, 0);
+  assert.match(continued.output, /세션: agent-chat/);
+  assert.match(continued.output, /에이전트 답변/);
 });
 
 test('provider and session commands report local integration state', async () => {

@@ -24,7 +24,7 @@ export async function handleMcpMessage(message: RpcMessage, options: { base?: st
     return response(message.id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'tossquant-cli', version: '0.1.0' },
+      serverInfo: { name: 'quantops-cli', version: '0.1.0' },
     });
   }
   if (message.method === 'tools/list') {

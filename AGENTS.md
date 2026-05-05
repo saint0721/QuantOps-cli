@@ -1,6 +1,6 @@
-# TossQuant-cli Agent Guide
+# QuantOps-cli Agent Guide
 
-This file is the repository-local operating contract for agents working in TossQuant-cli.
+This file is the repository-local operating contract for agents working in QuantOps-cli.
 
 ## Project shape
 
@@ -25,13 +25,13 @@ This file is the repository-local operating contract for agents working in TossQ
 
 - Chat UI uses `#eeeeee` as a background, not as foreground text.
 - Chat text should remain black/default-readable on the light background.
-- In interactive mode, user commands, TossQuant results, warnings, runtime lines, and Codex responses should be visually distinct.
+- In interactive mode, user commands, QuantOps results, warnings, runtime lines, and Codex responses should be visually distinct.
 - In subcommand mode, preserve machine-friendly JSON/stdout behavior.
 - The tmux HUD belongs in the bottom pane; do not print persistent HUD spam into the top command pane.
 
 ## Command execution rules
 
-- Run local TossQuant commands through `rtk` by default. Prefer `rtk <command ...>` over calling `node ./src/cli.ts`, `quant`, or `tossquant` directly unless a test explicitly needs the raw entrypoint.
+- Run local QuantOps commands through `rtk` by default. Prefer `rtk <command ...>` over calling `node ./src/cli.ts`, `quant`, or `quantops` directly unless a test explicitly needs the raw entrypoint.
 - Keep direct `node ./src/cli.ts ...` usage limited to entrypoint-specific tests, launcher installation checks, or fallback diagnostics where `rtk` itself is the suspected problem.
 
 ## Testing rules
