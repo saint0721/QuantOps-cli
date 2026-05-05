@@ -116,6 +116,10 @@ quant doctor
 quant collect plan AAPL
 quant collect quote AAPL
 quant collect watchlist
+quant idea new "NVDA earnings momentum"
+quant idea add-symbol <ID> NVDA
+quant idea add-hypothesis <ID> "Earnings surprise momentum persists"
+quant idea status <ID>
 quant data download AAPL
 quant data info AAPL
 quant data validate AAPL
@@ -137,7 +141,7 @@ quant tmux start
 quant order preview --symbol AAPL --side buy --qty 1 --price 100
 ```
 
-Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, `data info <SYMBOL>` shows saved dataset coverage/freshness, `data validate <SYMBOL>` checks local OHLCV quality/readiness, `data refresh <SYMBOL>` incrementally updates an existing dataset, `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics, and `research <SYMBOL>` builds an educational external-factor report under `data/research/`.
+Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `idea new <TITLE>` starts a local quant research idea under `data/ideas/`, `idea add-symbol` and `idea add-hypothesis` attach the test universe and hypothesis, and `idea status` turns that idea into next commands for data, validation, stats, and research. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, `data info <SYMBOL>` shows saved dataset coverage/freshness, `data validate <SYMBOL>` checks local OHLCV quality/readiness, `data refresh <SYMBOL>` incrementally updates an existing dataset, `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics, and `research <SYMBOL>` builds an educational external-factor report under `data/research/`.
 
 The active TypeScript runtime now runs normal market download, list, stats, and audit commands directly. The retained Python package remains a reference implementation instead of the default data-analysis execution path.
 
@@ -211,6 +215,8 @@ TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls 
 - `/hud` shows a compact status line with current mode, watchlist count, quote samples, Codex availability, and last action.
 
 Market data defaults:
+- `quant idea new "NVDA earnings momentum"` creates a local ResearchOps record before you collect evidence.
+- `quant idea status <ID>` shows whether each linked symbol has market data, validation status, saved research, and next TossQuant commands.
 - `quant data download AAPL --period 1y` uses Yahoo Finance's chart endpoint by default.
 - `quant data info AAPL` shows saved source, interval, row count, date coverage, freshness age, and next refresh command.
 - `quant data validate AAPL` checks local rows for duplicate dates, invalid OHLCV values, stale data, and short histories.
