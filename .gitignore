@@ -38,3 +38,6 @@ data/
 
 # Local agent/runtime state
 .omx/
+
+# TossQuant local LLM/session state
+.quant/

@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::io;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -33,6 +34,10 @@ const ROOT_COMMANDS: &[&str] = &[
     "/research",
     "/idea",
     "/lab",
+    "/tools",
+    "/agent",
+    "/provider",
+    "/session",
     "/skills",
     "/list",
     "/status",
@@ -389,7 +394,7 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "beginner /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
         "flow     /idea new \"NVDA momentum\" → /idea add-symbol latest NVDA → /lab workflow latest".to_string(),
         "advanced /lab discuss latest · /lab verify latest · /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL>".to_string(),
-        "tools    /skills · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
+        "tools    /skills · /tools · /agent · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
         "try      /start".to_string(),
@@ -454,6 +459,10 @@ fn command_candidates(
         "/analyze" => &[],
         "/research" => research_candidates(parts, trailing_space),
         "/skills" => &[],
+        "/tools" => &["list", "run"],
+        "/agent" => &["--provider", "--download", "--json", "--session"],
+        "/provider" => &["list", "--json"],
+        "/session" => &["current", "list", "handoff", "--json"],
         "/idea" => one_level_candidates(
             parts,
             trailing_space,
@@ -777,6 +786,7 @@ fn token_bounds(input: &str, cursor: usize) -> (usize, usize, String) {
     (start, end, input[start..end].to_string())
 }
 
+#[cfg(test)]
 fn completion_matches(input: &str, mode: &str) -> Vec<String> {
     completion_matches_with_data_dir(input, mode, None)
 }
@@ -841,6 +851,7 @@ fn char_display_width(ch: char) -> usize {
     }
 }
 
+#[cfg(test)]
 fn input_cursor_column(input: &str, cursor: usize) -> u16 {
     display_width(&input[..cursor])
 }
@@ -919,6 +930,10 @@ fn main() -> io::Result<()> {
             }
             _ => {}
         }
+    }
+
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        return Ok(());
     }
 
     enable_raw_mode()?;
@@ -1384,6 +1399,8 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/research".to_string()));
         assert!(completion_matches("", "quant").contains(&"/idea".to_string()));
         assert!(completion_matches("", "quant").contains(&"/lab".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/tools".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/agent".to_string()));
         assert!(completion_matches("", "quant").contains(&"/skills".to_string()));
         assert!(completion_matches("", "quant").contains(&"/list".to_string()));
         assert!(completion_matches("", "quant").contains(&"/sources".to_string()));

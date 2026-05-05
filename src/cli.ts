@@ -11,10 +11,15 @@ import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shu
 import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
 import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
-import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
+import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist, type JsonObject } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
 import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './lab.ts';
 import { listCodexSkills, skillInvocationCandidates, type CodexSkill } from './skills.ts';
+import { listTools, runTool, toolSummaries } from './tools.ts';
+import { runAgent } from './agent.ts';
+import { providersJson, listProviders } from './providers.ts';
+import { ensureQuantSession, listQuantSessions, sessionHandoff } from './session.ts';
+import { runMcpServer } from './mcp.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 import { table } from './ui/table.ts';
 import { SOURCES, discoverMarket, searchSymbolsLive, sourceById, symbolInfo, type DiscoverResult, type SourceInfo, type SymbolInfo, type SymbolSearchResult } from './discovery.ts';
@@ -34,8 +39,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'idea', 'lab', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/idea', '/lab', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'idea', 'lab', 'tools', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/idea', '/lab', '/tools', '/agent', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
 
@@ -75,6 +80,10 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
     if ((action === 'status' || action === 'show') && parts.length <= 4) return ['--plain'];
     return [];
   }
+  if (command === 'tools') return parts.length <= 2 ? ['list', 'run'] : (parts[1] === 'run' && parts.length <= 3 ? listTools().map((tool) => tool.name) : ['--json', '--input']);
+  if (command === 'agent') return ['--provider', '--download', '--json', '--session'];
+  if (command === 'provider') return parts.length <= 2 ? ['list'] : ['--json'];
+  if (command === 'session') return parts.length <= 2 ? ['current', 'list', 'handoff'] : ['--json'];
   if (command === 'lab') {
     if (parts.length <= 2) return ['workflow', 'discuss', 'verify', 'backtest'];
     const action = parts[1];
@@ -769,6 +778,116 @@ function commandStart(): number {
   return 0;
 }
 
+
+function parseJsonInput(value: string | undefined): JsonObject {
+  if (!value) return {};
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('--input must be a JSON object');
+  return parsed as JsonObject;
+}
+
+function argsToObject(args: string[]): JsonObject {
+  const out: JsonObject = {};
+  for (let i = 0; i < args.length; i += 1) {
+    const item = args[i]!;
+    if (!item.startsWith('--')) continue;
+    const key = item.slice(2).replaceAll('-', '_');
+    const next = args[i + 1];
+    if (next === undefined || next.startsWith('--')) out[key] = true;
+    else { out[key] = next; i += 1; }
+  }
+  return out;
+}
+
+function toolRow(tool: ReturnType<typeof toolSummaries>[number]): string[] {
+  return [String(tool.name), tool.read_only ? 'read' : 'local-write', tool.mutates_trading ? 'yes' : 'no', String(tool.description)];
+}
+
+async function commandTools(dataDir: string, action = 'list', tail: string[] = []): Promise<number> {
+  try {
+    const json = tail.includes('--json');
+    const args = tail.filter((item) => item !== '--json');
+    if (action === 'list') {
+      const payload = { ok: true, tools: toolSummaries() };
+      printText(json ? JSON.stringify(payload, null, 2) : table(['tool', 'mode', 'trading', 'description'], payload.tools.map(toolRow)));
+      return 0;
+    }
+    if (action === 'run') {
+      const name = args[0];
+      if (!name) { warn('usage: tools run <TOOL_NAME> [--input JSON] [--key value] [--json]'); return 2; }
+      const rest = args.slice(1);
+      const inputJson = takeOption(rest, '--input');
+      const input = { ...argsToObject(rest), ...parseJsonInput(inputJson) };
+      const result = await runTool(name, input, { base: dataDir });
+      printText(json ? JSON.stringify(result.output, null, 2) : result.text);
+      return result.ok ? 0 : 1;
+    }
+  } catch (error) {
+    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
+  warn('usage: tools [list|run <TOOL_NAME>] [--json]');
+  return 2;
+}
+
+async function commandAgent(dataDir: string, tail: string[] = []): Promise<number> {
+  try {
+    const args = [...tail];
+    const json = args.includes('--json');
+    const allowDownloads = args.includes('--download');
+    for (let i = args.length - 1; i >= 0; i -= 1) if (args[i] === '--json' || args[i] === '--download') args.splice(i, 1);
+    const provider = takeOption(args, '--provider') || 'none';
+    const sessionId = takeOption(args, '--session');
+    const request = args.join(' ');
+    if (!request) { warn('usage: agent <REQUEST> [--provider codex|claude|none] [--download] [--session ID] [--json]'); return 2; }
+    const run = await runAgent(request, { base: dataDir, provider, allowDownloads, sessionId });
+    printText(json ? JSON.stringify({ ...run, report: undefined }, null, 2) : run.report);
+    return run.ok ? 0 : 1;
+  } catch (error) {
+    printJson({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
+}
+
+function commandProviders(action = 'list', tail: string[] = []): number {
+  const json = tail.includes('--json');
+  if (action === 'list') {
+    const payload = providersJson();
+    printText(json ? JSON.stringify(payload, null, 2) : table(['provider', 'available', 'auth', 'detail'], listProviders().map((provider) => [provider.name, provider.available ? 'yes' : 'no', provider.auth, provider.detail])));
+    return 0;
+  }
+  warn('usage: provider list [--json]');
+  return 2;
+}
+
+function commandSession(action = 'current', tail: string[] = []): number {
+  try {
+    const json = tail.includes('--json');
+    const args = tail.filter((item) => item !== '--json');
+    if (action === 'current') {
+      const session = ensureQuantSession({ id: args[0] });
+      printText(json ? JSON.stringify({ ok: true, session }, null, 2) : sessionHandoff(session));
+      return 0;
+    }
+    if (action === 'list') {
+      const sessions = listQuantSessions();
+      printText(json ? JSON.stringify({ ok: true, sessions }, null, 2) : table(['id', 'updated', 'title'], sessions.map((session) => [session.id, session.updated_at, session.title])));
+      return 0;
+    }
+    if (action === 'handoff') {
+      const id = args[0] || listQuantSessions()[0]?.id;
+      if (!id) { warn('usage: session handoff <SESSION_ID>'); return 2; }
+      printText(sessionHandoff(id));
+      return 0;
+    }
+  } catch (error) {
+    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
+  warn('usage: session [current|list|handoff] [--json]');
+  return 2;
+}
+
 function skillSummaryRow(skill: CodexSkill): string[] {
   const shorten = (text: string, max: number) => text.length > max ? `${text.slice(0, max - 1)}…` : text;
   return [skill.name, shorten(skill.description || '-', 96), skill.path];
@@ -1069,8 +1188,8 @@ export function welcomeCard(): string {
     '',
     'beginner    /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
     'flow        /idea new "NVDA momentum"  →  /idea add-symbol latest NVDA  →  /lab workflow latest',
-    'advanced    /lab discuss latest · /lab verify latest · /discover · /data info · /stats <SYMBOL>',
-    'codex       /skills · $tossquant-idea-coach · /ask <question> · /codex · /quant · /exit',
+    'advanced    /tools · /agent "NVDA momentum" · /lab discuss latest · /lab verify latest · /discover · /data info · /stats <SYMBOL>',
+    'codex       /skills · /tools · /agent · $tossquant-idea-coach · /ask <question> · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
     '',
   ].join('\n');
@@ -1104,6 +1223,10 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (line === '/start') { commandStart(); lastAction = '/start'; return false; }
     if (line === '/next') { commandNext(dataDir); lastAction = '/next'; return false; }
     if (line === '/skills') { commandSkills(); lastAction = '/skills'; return false; }
+    if (line.startsWith('/tools')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/tools'; return false; }
+    if (line.startsWith('/agent')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/agent'; return false; }
+    if (line.startsWith('/provider')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/provider'; return false; }
+    if (line.startsWith('/session')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/session'; return false; }
     if (line === '/status') { printStatus(dataDir); lastAction = '/status'; return false; }
     if (line.startsWith('/watchlist')) { handleWatchlist(parts, dataDir); lastAction = '/watchlist'; return false; }
     if (line === '/hud') { emitChat(runtimeLine(dataDir, mode, lastAction)); lastAction = '/hud'; return false; }
@@ -1163,6 +1286,10 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'research') return commandResearch(dataDir, sub, tail);
   if (cmd === 'idea') return commandIdea(dataDir, sub ?? 'list', tail);
   if (cmd === 'lab') return commandLab(dataDir, sub ?? 'workflow', tail);
+  if (cmd === 'tools') return commandTools(dataDir, sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
+  if (cmd === 'agent') return commandAgent(dataDir, [sub, ...tail].filter(Boolean));
+  if (cmd === 'provider' || cmd === 'providers') return commandProviders(sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
+  if (cmd === 'session') return commandSession(sub?.startsWith('--') ? 'current' : sub ?? 'current', sub?.startsWith('--') ? [sub, ...tail] : tail);
   if (cmd === 'skills') return commandSkills();
   if (cmd === 'list') return commandData(dataDir, 'list', tail);
   if (cmd === 'status') { printStatus(dataDir); return 0; }
@@ -1186,6 +1313,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd?.startsWith('$')) return runCodexPrompt([cmd, sub, ...tail].filter(Boolean).join(' '));
   if (cmd === 'runtime' && sub === 'snapshot') { printJson(recordRuntime({ base: dataDir, lastAction: 'snapshot' })); return 0; }
   if (cmd === 'runtime' && sub === 'line') { console.log(runtimeLine(dataDir)); return 0; }
+  if (cmd === 'mcp') { await runMcpServer({ base: dataDir }); return 0; }
   if (cmd === 'hud' && rest.includes('--watch')) { void watchHud(dataDir, Number(rest[rest.indexOf('--interval') + 1] ?? 1)); return 0; }
   if (cmd === 'hud' && rest.includes('--tmux')) { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); return r.code; }
   if (cmd === 'hud') { printHudOnce(dataDir); return 0; }

@@ -13,6 +13,8 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('idea'));
   assert.ok(completionCandidates('', 'quant').includes('lab'));
   assert.ok(completionCandidates('', 'quant').includes('skills'));
+  assert.ok(completionCandidates('', 'quant').includes('tools'));
+  assert.ok(completionCandidates('', 'quant').includes('agent'));
   assert.ok(completionCandidates('', 'quant').includes('collect'));
   assert.ok(completionCandidates('', 'quant').includes('/collect'));
   assert.ok(completionCandidates('', 'quant').includes('data'));
@@ -30,6 +32,8 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/idea'));
   assert.ok(completionCandidates('', 'quant').includes('/lab'));
   assert.ok(completionCandidates('', 'quant').includes('/skills'));
+  assert.ok(completionCandidates('', 'quant').includes('/tools'));
+  assert.ok(completionCandidates('', 'quant').includes('/agent'));
   assert.ok(completionCandidates('', 'quant').includes('/list'));
   assert.ok(completionCandidates('', 'quant').includes('/discover'));
   assert.ok(completionCandidates('', 'quant').includes('/sources'));
@@ -48,6 +52,9 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/idea status idea-20260505T031000-nvda ', 'quant'), ['--plain']);
   assert.deepEqual(completionCandidates('/lab ', 'quant'), ['workflow', 'discuss', 'verify', 'backtest']);
   assert.deepEqual(completionCandidates('/skills ', 'quant'), []);
+  assert.deepEqual(completionCandidates('/tools ', 'quant'), ['list', 'run']);
+  assert.ok(completionCandidates('/tools run ', 'quant').includes('stats.run'));
+  assert.ok(completionCandidates('/agent ', 'quant').includes('--provider'));
   assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));

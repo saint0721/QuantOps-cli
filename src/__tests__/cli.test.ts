@@ -139,3 +139,37 @@ test('skills command lists local Codex skills with dollar invocation hints', asy
     else process.env.CODEX_HOME = previous;
   }
 });
+
+
+test('tools and agent commands expose LLM execution surfaces', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-agent-'));
+
+  const tools = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'tools', '--json']));
+  const agent = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'NVDA', 'earnings', 'momentum', '--session', 'cli-test']));
+
+  assert.equal(tools.code, 0);
+  assert.match(tools.output, /stats.run/);
+  assert.equal(agent.code, 0);
+  assert.match(agent.output, /session: cli-test/);
+  assert.match(agent.output, /data.download/);
+});
+
+test('provider and session commands report local integration state', async () => {
+  const providers = await captureConsole(() => runOnce(['--no-tmux', 'provider', '--json']));
+  const session = await captureConsole(() => runOnce(['--no-tmux', 'session', 'current', 'readme-test', '--json']));
+
+  assert.equal(providers.code, 0);
+  assert.match(providers.output, /codex/);
+  assert.equal(session.code, 0);
+  assert.match(session.output, /readme-test/);
+});
+
+
+test('tools command redacts unknown tool names in CLI output', async () => {
+  const result = await captureConsole(() => runOnce(['--no-tmux', 'tools', 'run', 'unknown?apikey=super-secret&session_id=sess-123', '--json']));
+
+  assert.equal(result.code, 1);
+  assert.doesNotMatch(result.output, /super-secret/);
+  assert.doesNotMatch(result.output, /sess-123/);
+  assert.match(result.output, /<redacted>/);
+});
