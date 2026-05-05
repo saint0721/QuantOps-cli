@@ -49,6 +49,9 @@ test('agent extracts symbols and records a .quant session while running safe too
   assert.equal(run.session.id, 'test-session');
   assert.equal(run.language, 'en');
   assert.ok(run.steps.some((step) => step.tool === 'stats.run'));
+  assert.ok(run.steps.some((step) => step.rtk_command === 'rtk stats NVDA --source yahoo --json'));
+  const agentRunEvent = sessionEvents(run.session, sessionRoot).find((event) => event.type === 'agent.run') as any;
+  assert.ok(agentRunEvent?.payload?.steps?.some((step: any) => step.rtk_command === 'rtk stats NVDA --source yahoo --json'));
   assert.match(run.report, /checked only the local state needed/);
   assert.doesNotMatch(run.report, /Next safe commands/);
   assert.doesNotMatch(run.report, /Local tool output/);

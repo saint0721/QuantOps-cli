@@ -151,13 +151,6 @@ function ideaReferenceFromText(text: string): string {
   return 'latest';
 }
 
-function toolObservation(step: ToolResult): string {
-  const text = step.text.trim();
-  if (!text) return `- ${step.tool}: ${step.ok ? 'ok' : 'blocked'}`;
-  const shortened = text.length > 1600 ? `${text.slice(0, 1599)}…` : text;
-  return [`### ${step.tool}`, shortened].join('\n');
-}
-
 function nextSafeCommands(run: AgentRun): string[] {
   const blockedWithNext = run.steps.find((step) => !step.ok && typeof step.output.next_command === 'string');
   if (blockedWithNext && typeof blockedWithNext.output.next_command === 'string') return [`- ${blockedWithNext.output.next_command}`];
@@ -183,6 +176,15 @@ function nextSafeCommands(run: AgentRun): string[] {
     ]);
   }
   return [];
+}
+
+function stepHandoff(step: ToolResult): JsonObject {
+  return {
+    tool: step.tool,
+    ok: step.ok,
+    rtk_command: step.rtk_command ?? null,
+    output: step.output,
+  };
 }
 
 function summarizeRecentEvents(session: QuantSession, language: 'ko' | 'en'): string[] {
@@ -366,7 +368,7 @@ function safeProviderPrompt(run: Omit<AgentRun, 'provider_response' | 'report'>)
     run.request,
     '',
     'Tool observations JSON:',
-    JSON.stringify({ symbols: run.symbols, steps: run.steps.map((step) => ({ tool: step.tool, ok: step.ok, output: step.output })), skipped: run.skipped }, null, 2),
+    JSON.stringify({ symbols: run.symbols, steps: run.steps.map(stepHandoff), skipped: run.skipped }, null, 2),
   ].join('\n');
 }
 
@@ -445,7 +447,13 @@ export async function runAgent(request: string, options: AgentOptions = {}): Pro
     at: options.now,
     type: 'agent.run',
     summary: `${symbols.join(', ') || 'no-symbol'} · ${steps.length} tools · ${skipped.length} skipped`,
-    payload: { request_preview: requestPreview, provider, symbols, steps: steps.map((step) => ({ tool: step.tool, ok: step.ok })), skipped },
+    payload: {
+      request_preview: requestPreview,
+      provider,
+      symbols,
+      steps: steps.map((step) => ({ tool: step.tool, ok: step.ok, rtk_command: step.rtk_command ?? null })),
+      skipped,
+    },
   });
   const providerReply = providerResponse?.ok && providerResponse.text?.trim() ? providerResponse.text.trim() : '';
   const replySummary = providerReply
