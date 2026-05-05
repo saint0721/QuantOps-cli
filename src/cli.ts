@@ -7,12 +7,12 @@ import { auditAll } from './audit.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
 import { filteredCodexOutput } from './codex.ts';
 import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist } from './data.ts';
-import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
+import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxPath, watchHud } from './hud.ts';
 import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
 import { buildRustHelpers, installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist, type JsonObject } from './storage.ts';
-import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
+import { accountSummary, orderPreview, portfolioPositions } from './toss.ts';
 import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './lab.ts';
 import { listQuantSkills, quantSkillInvocationCandidates, type QuantSkill } from './skills.ts';
 import { listTools, runTool, toolSummaries } from './tools.ts';
@@ -21,8 +21,8 @@ import { providersJson, listProviders } from './providers.ts';
 import { ensureQuantSession, listQuantSessions, recordSessionEvent, sessionHandoff } from './session.ts';
 import { formatAgentLanguagePreference, normalizeAgentLanguage, readAgentPreferences, writeAgentLanguage } from './preferences.ts';
 import { formatBacktestResult, formatStrategyList, listBacktestStrategies } from './backtest.ts';
-import { runBacktestRuntime, rustBacktestStatus } from './rustBacktest.ts';
-import { validateDataRuntime, rustValidateStatus } from './rustValidate.ts';
+import { runBacktestRuntime } from './rustBacktest.ts';
+import { validateDataRuntime } from './rustValidate.ts';
 import { runMcpServer } from './mcp.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 import { table } from './ui/table.ts';
@@ -30,14 +30,16 @@ import { SOURCES, discoverMarket, searchSymbolsLive, sourceById, symbolInfo, typ
 import { nextRecommendation } from './next.ts';
 import { periodToDateRange } from './period.ts';
 import { marketStats } from './marketAnalysis.ts';
-import { marketStatsRuntime, rustStatsStatus } from './rustStats.ts';
+import { marketStatsRuntime } from './rustStats.ts';
 import { formatResearchReport, runResearch, type ResearchCodexResult } from './research.ts';
 import { codexRuntimeGuide, formatCodexRuntimeGuide } from './guide.ts';
 import { defineEvent, parseEventWindows } from './events.ts';
-import { runEventStudyRuntime, rustEventStatus } from './rustEvent.ts';
+import { runEventStudyRuntime } from './rustEvent.ts';
 import { compareSymbols, formatCompareResult } from './compare.ts';
 import { runtimeInfoPayload, formatRuntimeInfo } from './runtimeContract.ts';
 import { dataOptionsFromTail, numberOption, takeOption, takeRepeatedOption } from './cliArgs.ts';
+import { doctorPayload } from './doctor.ts';
+import { helpText } from './help.ts';
 
 export { periodToDateRange } from './period.ts';
 
@@ -49,7 +51,7 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'codex-guide', 'next', 'download', 'research', 'event', 'compare', 'idea', 'lab', 'tools', 'mcp', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const ROOT_COMPLETIONS = ['start', 'help', 'codex-guide', 'next', 'download', 'research', 'event', 'compare', 'idea', 'lab', 'tools', 'mcp', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
 export const SLASH_COMPLETIONS = ['/start', '/next', '/download', '/research', '/idea', '/lab', '/tools', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/backtest', '/strategy', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
@@ -383,26 +385,9 @@ function parseJsonOrRaw(stdout: string, stderr: string, returncode: number): unk
 }
 
 function commandDoctor(dataDir: string): number {
-  const ver = version();
-  const auth = authStatus();
-  printJson({
-    app: APP,
-    version: VERSION,
-    data_dir: dataDir,
-    trading_mutations: 'disabled',
-    tossctl_version_ok: ver.ok,
-    tossctl_version: (ver.stdout || ver.stderr).trim(),
-    auth_status_ok: auth.ok,
-    auth_status: (auth.stdout || auth.stderr).trim(),
-    tmux_path: tmuxPath(),
-    tmux_available: Boolean(tmuxPath()),
-    tmux_install_hint: tmuxPath() ? 'ok' : tmuxInstallHint(),
-    rust_stats: rustStatsStatus(),
-    rust_backtest: rustBacktestStatus(),
-    rust_event: rustEventStatus(),
-    rust_validate: rustValidateStatus(),
-  });
-  return ver.ok ? 0 : 1;
+  const payload = doctorPayload(dataDir, { app: APP, version: VERSION });
+  printJson(payload);
+  return payload.ok ? 0 : 1;
 }
 
 function commandQuoteFetch(dataDir: string, ticker?: string): number {
@@ -1462,6 +1447,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   const { dataDir, rest } = dataDirFrom(argv);
   const [cmd, sub, ...tail] = rest;
   if (!cmd) return 2;
+  if (cmd === 'help' || cmd === '--help' || cmd === '-h') { printText(helpText()); return 0; }
   if (cmd === 'start') return commandStart();
   if (cmd === 'codex-guide') return commandCodexGuide([sub, ...tail].filter(Boolean));
   if (cmd === 'next') return commandNext(dataDir);
