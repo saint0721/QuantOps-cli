@@ -75,10 +75,19 @@ function toolObservation(step: ToolResult): string {
 }
 
 function nextSafeCommands(run: AgentRun): string[] {
-  if (run.steps.some((step) => step.tool === 'lab.workflow')) {
+  const blockedWithNext = run.steps.find((step) => !step.ok && typeof step.output.next_command === 'string');
+  if (blockedWithNext && typeof blockedWithNext.output.next_command === 'string') return [`- ${blockedWithNext.output.next_command}`];
+  const blockedWorkflow = run.steps.find((step) => step.tool === 'lab.workflow' && !step.ok);
+  if (blockedWorkflow) {
+    return ['- idea list', '- idea new "<your strategy idea>"'];
+  }
+  if (run.steps.some((step) => step.tool === 'strategy.list')) {
+    return ['- backtest run <SYMBOL> --strategy ma-cross', '- idea new "<your strategy idea>"'];
+  }
+  if (run.steps.some((step) => step.tool === 'lab.workflow' && step.ok)) {
     return [
-      '- lab discuss latest --no-codex',
-      '- lab verify latest --no-codex',
+      '- lab discuss latest',
+      '- lab verify latest',
       '- lab backtest latest --prompt',
     ];
   }

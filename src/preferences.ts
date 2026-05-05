@@ -46,11 +46,10 @@ export function formatAgentLanguagePreference(prefs: AgentPreferences): string {
     `current: ${label}`,
     '',
     'Set with:',
-    '- /agent lang ko',
-    '- /agent lang en',
-    '- /agent lang auto',
+    '- /agent ko',
+    '- /agent en',
+    '- /agent auto',
     '',
-    'Per request override:',
-    '- /agent "workflow latest가 뭐야" --lang ko',
+    'Agent requests without --session continue in the shared agent-chat session.',
   ].join('\n');
 }

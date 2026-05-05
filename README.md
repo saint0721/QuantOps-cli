@@ -79,7 +79,7 @@ TossQuant quant ❯ portfolio
 TossQuant quant ❯ /ask what should I study next?
 TossQuant quant ❯ /skills
 TossQuant quant ❯ /tools
-TossQuant quant ❯ /agent lang ko
+TossQuant quant ❯ /agent ko
 TossQuant quant ❯ /agent NVDA earnings momentum research
 TossQuant quant ❯ $tossquant-idea-coach --lang ko
 TossQuant quant ❯ /brief
@@ -130,8 +130,8 @@ quant idea add-hypothesis latest "Earnings surprise momentum persists"
 quant idea status latest
 quant idea status latest --plain
 quant lab workflow latest
-quant lab discuss latest --no-codex
-quant lab verify latest --no-codex
+quant lab discuss latest
+quant lab verify latest
 quant lab backtest latest --prompt
 quant strategy list
 quant backtest run latest --strategy ma-cross
@@ -225,14 +225,14 @@ TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls 
 - `/quant` returns to normal TossQuant commands.
 - `/skills` lists Codex skills found under `$CODEX_HOME/skills` or `~/.codex/skills`.
 - `/tools` lists the safe TossQuant tool registry exposed to agents and MCP clients.
-- `/agent lang ko|en|auto` sets the default local agent report language; `/agent <request> --lang ko` overrides it per request.
-- `/agent <request>` runs a beginner-friendly local tool loop, records meaningful context under `.quant/`, and can optionally ask a provider with `--provider codex|claude`. Use `--download` before allowing network/local data-download writes.
+- `/agent ko|en|auto` sets the default local agent report language.
+- `/agent <request>` runs a beginner-friendly local tool loop, continues the shared `.quant` `agent-chat` session by default, and can optionally ask a provider with `--provider codex|claude`. Use `--download` before allowing network/local data-download writes.
 - `/session handoff` prints the recent `.quant/` session summary so Codex/Claude can continue the conversation without raw credentials.
 - `$skill-name ...` invokes an installed Codex skill from interactive quant/TUI; Tab completion suggests installed skills such as `$tossquant-idea-coach`.
 - `/brief` or `/today` asks Codex for a local-data session brief and next TossQuant commands.
 - `/research <TICKER>` combines local OHLCV/stat/audit context with a Codex/web event-summary prompt, saves a redacted report under `data/research/`, and avoids buy/sell/hold advice or single-score conclusions.
 - `/audit [TICKER]` runs deterministic local data-quality checks; add `explain` or `--explain` to ask Codex to explain the findings.
-- `/research <SYMBOL> [--topic <TEXT>] [--no-codex]` builds a redacted local market/stats/audit context, asks Codex for external-factor research when available, and saves the report under `data/research/`. It is research-only: no buy/sell/hold advice and no single score.
+- `/research <SYMBOL> [--topic <TEXT>] [--codex]` builds a redacted local market/stats/audit context, optionally asks Codex for external-factor research, and saves the report under `data/research/`. It is research-only: no buy/sell/hold advice and no single score.
 - `/hud` shows a compact status line with current mode, watchlist count, quote samples, Codex availability, and last action.
 
 Market data defaults:
@@ -240,8 +240,8 @@ Market data defaults:
 - `quant idea status latest` shows whether each linked symbol has market data, validation status, saved research, and next TossQuant commands. You can also use a unique id prefix, title text, or a linked symbol instead of the full id.
 - `quant idea status latest --plain` prints a copy-friendly version for Codex/Claude discussions.
 - `quant lab workflow latest` shows the discuss → verify → backtest workflow for the saved idea.
-- `quant lab discuss latest --no-codex` builds a local discussion checklist; omit `--no-codex` to ask Codex when available.
-- `quant lab verify latest --no-codex` builds a skeptical validation/falsification checklist.
+- `quant lab discuss latest` builds a local discussion checklist; add `--codex` to ask Codex when available.
+- `quant lab verify latest` builds a skeptical validation/falsification checklist.
 - `quant lab backtest latest --prompt` prints the backtest coding prompt to copy into Codex/Claude.
 - `quant strategy list` shows deterministic strategy templates such as `ma-cross`, `momentum`, `mean-reversion`, and `buy-hold`.
 - `quant backtest run latest --strategy ma-cross` runs a deterministic local backtest for the latest idea's first symbol; it stores results under `data/backtests/` and never touches live trading.
@@ -262,9 +262,9 @@ quant tools list --json
 quant tools run data.info --symbol NVDA --json
 quant tools run strategy.list
 quant tools run backtest.run --symbol NVDA --strategy ma-cross
-quant agent lang ko
+quant agent ko
 quant agent "NVDA earnings momentum research"
-quant agent "NVDA earnings momentum research" --lang ko --download --provider codex
+quant agent "NVDA earnings momentum research" --download --provider codex
 quant provider list --json
 quant session handoff
 quant mcp

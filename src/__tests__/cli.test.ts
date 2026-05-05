@@ -105,7 +105,7 @@ test('lab command builds idea workflow and prompt-only artifacts', async () => {
   await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'add-symbol', 'latest', 'NVDA']));
 
   const workflow = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'workflow', 'latest']));
-  const verify = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'verify', 'latest', '--no-codex', '--no-save']));
+  const verify = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'verify', 'latest', '--no-save']));
   const prompt = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'backtest', 'latest', '--prompt']));
 
   assert.equal(workflow.code, 0);
@@ -171,8 +171,9 @@ test('tools and agent commands expose LLM execution surfaces', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-agent-'));
 
   const tools = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'tools', '--json']));
-  const lang = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'lang', 'ko']));
+  const lang = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'ko']));
   const agent = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'NVDA', 'earnings', 'momentum', '--session', 'cli-test']));
+  const continued = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', '다음엔', '뭐해?']));
 
   assert.equal(tools.code, 0);
   assert.match(tools.output, /stats.run/);
@@ -182,6 +183,8 @@ test('tools and agent commands expose LLM execution surfaces', async () => {
   assert.equal(agent.code, 0);
   assert.match(agent.output, /세션: cli-test/);
   assert.match(agent.output, /data.download/);
+  assert.equal(continued.code, 0);
+  assert.match(continued.output, /세션: agent-chat/);
 });
 
 test('provider and session commands report local integration state', async () => {

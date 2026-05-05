@@ -90,6 +90,7 @@ test('agent explains lab workflow latest by running the lab workflow tool', asyn
   assert.match(run.report, /discuss/);
   assert.match(run.report, /verify/);
   assert.match(run.report, /backtest/);
-  assert.match(run.report, /lab discuss latest --no-codex/);
+  assert.match(run.report, /lab discuss latest/);
+  assert.doesNotMatch(run.report, /--no-codex/);
   assert.doesNotMatch(run.report, /idea new "<your strategy idea>"/);
 });

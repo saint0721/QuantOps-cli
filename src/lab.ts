@@ -115,11 +115,11 @@ function deterministicReport(status: IdeaStatusReport, stage: LabStage, codex?: 
   ].filter(Boolean) as string[];
   const stageNext: Record<LabStage, string[]> = {
     discuss: [
-      `lab verify ${idea.id} --no-codex`,
+      `lab verify ${idea.id}`,
       ...status.next_commands,
     ],
     verify: [
-      `lab backtest ${idea.id} --no-codex`,
+      `lab backtest ${idea.id}`,
       ...status.next_commands,
     ],
     backtest: [
@@ -145,7 +145,7 @@ function deterministicReport(status: IdeaStatusReport, stage: LabStage, codex?: 
     `${STAGE_LABELS[stage]} output`,
     codex?.ok && codex.text?.trim()
       ? codex.text.trim()
-      : `- Codex discussion was not run${codex?.error ? `: ${codex.error}` : ''}. Use --prompt to copy the exact prompt into Codex/Claude, or rerun without --no-codex.`,
+      : `- Codex discussion was not run${codex?.error ? `: ${codex.error}` : ''}. Use --prompt to copy the exact prompt, or add --codex to ask the local Codex CLI when available.`,
     '',
     'Next TossQuant commands',
     ...[...new Set(stageNext[stage])].map((cmd) => `- ${cmd}`),
@@ -192,15 +192,15 @@ export function formatLabWorkflow(status: IdeaStatusReport): string {
     `id: ${idea.id}`,
     '',
     '1. discuss',
-    `   quant lab discuss ${idea.id} --no-codex`,
+    `   quant lab discuss ${idea.id}`,
     '   Turn the idea into research questions, search tasks, and evidence requirements.',
     '',
     '2. verify',
-    `   quant lab verify ${idea.id} --no-codex`,
+    `   quant lab verify ${idea.id}`,
     '   Challenge the hypothesis, check blockers, and define pass/fail gates.',
     '',
     '3. backtest',
-    `   quant lab backtest ${idea.id} --no-codex`,
+    `   quant lab backtest ${idea.id}`,
     '   Produce a safe coding brief for a future deterministic backtest module.',
     '',
     'Current readiness',

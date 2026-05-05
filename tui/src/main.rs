@@ -395,7 +395,7 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "beginner /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list".to_string(),
         "flow     /idea new \"NVDA momentum\" → /idea add-symbol latest NVDA → /lab workflow latest".to_string(),
         "advanced /backtest run latest · /strategy list · /lab verify latest · /discover · /data info · /stats <SYMBOL>".to_string(),
-        "tools    /skills · /tools · /agent lang ko · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
+        "tools    /skills · /tools · /agent ko · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
         "try      /start".to_string(),
@@ -499,7 +499,7 @@ fn command_candidates(
 
 fn agent_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
     if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
-        return &["lang", "--lang", "--provider", "--download", "--json", "--session"];
+        return &["ko", "en", "auto", "--provider", "--download", "--json", "--session"];
     }
     if parts.get(1) == Some(&"lang") && (parts.len() <= 2 || (parts.len() == 3 && !trailing_space)) {
         return &["ko", "en", "auto"];
@@ -507,7 +507,7 @@ fn agent_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static 
     if trailing_space && parts.last() == Some(&"--lang") {
         return &["ko", "en", "auto"];
     }
-    &["--lang", "--provider", "--download", "--json", "--session"]
+    &["--provider", "--download", "--json", "--session"]
 }
 
 fn backtest_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
@@ -605,7 +605,7 @@ fn lab_candidates(parts: &[&str], trailing_space: bool, data_dir: Option<&str>) 
         && ((trailing_space && parts.len() <= 3) || parts.len() == 4)
     {
         return vec![
-            "--no-codex".to_string(),
+            "--codex".to_string(),
             "--prompt".to_string(),
             "--no-save".to_string(),
         ];
@@ -743,7 +743,7 @@ fn research_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'stat
             "--interval",
             "--provider-symbol",
             "--no-save",
-            "--no-codex",
+            "--codex",
         ];
     }
     &[]
@@ -1497,7 +1497,7 @@ mod tests {
         );
         assert_eq!(
             completion_matches("/lab verify latest --", "quant"),
-            vec!["--no-codex".to_string(), "--prompt".to_string(), "--no-save".to_string()]
+            vec!["--codex".to_string(), "--prompt".to_string(), "--no-save".to_string()]
         );
         assert_eq!(
             completion_matches("/collect plan --watchlist ", "quant"),
@@ -1557,7 +1557,8 @@ mod tests {
             completion_matches("/analyze NVDA ", "quant"),
             Vec::<String>::new()
         );
-        assert!(completion_matches("/agent ", "quant").contains(&"lang".to_string()));
+        assert!(completion_matches("/agent ", "quant").contains(&"ko".to_string()));
+        assert!(!completion_matches("/agent ", "quant").contains(&"lang".to_string()));
         assert_eq!(
             completion_matches("/agent lang ", "quant"),
             vec!["ko".to_string(), "en".to_string(), "auto".to_string()]
@@ -1581,7 +1582,7 @@ mod tests {
                 "--interval".to_string(),
                 "--provider-symbol".to_string(),
                 "--no-save".to_string(),
-                "--no-codex".to_string()
+                "--codex".to_string()
             ]
         );
         assert_eq!(
@@ -1653,7 +1654,8 @@ mod tests {
         assert!(completion_matches("/research ", "quant").contains(&"AAPL".to_string()));
         assert!(completion_matches("/research AAPL ", "quant").contains(&"--topic".to_string()));
         assert!(completion_matches("/research AAPL ", "quant").contains(&"--provider-symbol".to_string()));
-        assert!(completion_matches("/research AAPL ", "quant").contains(&"--no-codex".to_string()));
+        assert!(completion_matches("/research AAPL ", "quant").contains(&"--codex".to_string()));
+        assert!(!completion_matches("/research AAPL ", "quant").contains(&"--no-codex".to_string()));
         assert_eq!(
             completion_matches("/data list ", "quant"),
             Vec::<String>::new()
