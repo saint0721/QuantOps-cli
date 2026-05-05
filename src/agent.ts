@@ -39,6 +39,42 @@ function wantsResearch(text: string): boolean {
   return /research|news|event|earnings|momentum|검증|뉴스|리서치|실적|모멘텀/i.test(text);
 }
 
+function wantsLabWorkflow(text: string): boolean {
+  return /lab\s+workflow|workflow|worflow|워크플로우|흐름/i.test(text);
+}
+
+function ideaReferenceFromText(text: string): string {
+  const ideaId = text.match(/\bidea-[a-zA-Z0-9-]+\b/)?.[0];
+  if (ideaId) return ideaId;
+  if (/\blatest\b|최근|방금|지금/i.test(text)) return 'latest';
+  return 'latest';
+}
+
+function toolObservation(step: ToolResult): string {
+  const text = step.text.trim();
+  if (!text) return `- ${step.tool}: ${step.ok ? 'ok' : 'blocked'}`;
+  const shortened = text.length > 1600 ? `${text.slice(0, 1599)}…` : text;
+  return [`### ${step.tool}`, shortened].join('\n');
+}
+
+function nextSafeCommands(run: AgentRun): string[] {
+  if (run.steps.some((step) => step.tool === 'lab.workflow')) {
+    return [
+      '- lab discuss latest --no-codex',
+      '- lab verify latest --no-codex',
+      '- lab backtest latest --prompt',
+    ];
+  }
+  if (run.symbols.length) {
+    return run.symbols.flatMap((symbol) => [
+      `- data info ${symbol}`,
+      `- stats ${symbol}`,
+      `- research ${symbol} --topic "${run.request.replaceAll('"', '\\"')}"`,
+    ]);
+  }
+  return ['- idea new "<your strategy idea>"'];
+}
+
 function safeProviderPrompt(run: Omit<AgentRun, 'provider_response' | 'report'>): string {
   return [
     'You are inside TossQuant-cli as a safe quant research assistant.',
@@ -65,6 +101,7 @@ function formatAgentReport(run: AgentRun): string {
     '',
     'Tool steps',
     ...(run.steps.length ? run.steps.map((step, index) => `${index + 1}. ${step.tool}: ${step.ok ? 'ok' : 'blocked'}`) : ['- none']),
+    ...(run.steps.length ? ['', 'Local tool output', ...run.steps.map(toolObservation)] : []),
     ...(run.skipped.length ? ['', 'Skipped / needs permission', ...run.skipped.map((item) => `- ${String(item.tool)}: ${String(item.reason)}`)] : []),
     '',
     'Provider synthesis',
@@ -73,7 +110,7 @@ function formatAgentReport(run: AgentRun): string {
       : `- Provider synthesis not run${run.provider_response?.error ? `: ${redactSessionText(run.provider_response.error)}` : ''}. Local tool loop still completed.`,
     '',
     'Next safe commands',
-    ...(run.symbols.length ? run.symbols.flatMap((symbol) => [`- data info ${symbol}`, `- stats ${symbol}`, `- research ${symbol} --topic "${run.request.replaceAll('"', '\\"')}"`]) : ['- idea new "<your strategy idea>"']),
+    ...nextSafeCommands(run),
   ];
   return lines.join('\n');
 }
@@ -92,6 +129,10 @@ export async function runAgent(request: string, options: AgentOptions = {}): Pro
   if (wantsIdea(cleaned)) {
     const idea = await runTool('idea.create', { title: requestPreview, ...(symbols[0] ? { symbol: symbols[0] } : {}) }, { base: options.base });
     steps.push(idea);
+  }
+
+  if (wantsLabWorkflow(cleaned)) {
+    steps.push(await runTool('lab.workflow', { idea: ideaReferenceFromText(cleaned) }, { base: options.base }));
   }
 
   for (const symbol of symbols) {

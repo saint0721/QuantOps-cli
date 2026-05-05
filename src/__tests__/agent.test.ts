@@ -7,6 +7,7 @@ import { appendJsonl } from '../storage.ts';
 import { marketDatasetPath } from '../data.ts';
 import { runAgent, extractSymbols } from '../agent.ts';
 import { sessionEvents } from '../session.ts';
+import { addIdeaSymbol, createIdea } from '../idea.ts';
 
 function writeYahooClose(base: string, day: number, close: number) {
   appendJsonl(marketDatasetPath(base, 'yahoo', 'NVDA', 'd'), {
@@ -56,4 +57,22 @@ test('agent does not extract uppercase secret values as symbols after request sa
   assert.deepEqual(run.symbols, ['NVDA']);
   assert.doesNotMatch(serialized, /ABCDEF123/);
   assert.doesNotMatch(serialized, /SESSIONXYZ/);
+});
+
+test('agent explains lab workflow latest by running the lab workflow tool', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-agent-lab-workflow-'));
+  const sessionRoot = mkdtempSync(join(tmpdir(), 'tq-agent-lab-session-'));
+  const idea = createIdea(dir, 'NVDA earnings momentum', { now: '2026-05-05T00:00:00Z' });
+  addIdeaSymbol(dir, idea.id, 'NVDA');
+
+  const run = await runAgent('지금 물어본 worflow latest는 뭐야', { base: dir, sessionRoot, sessionId: 'lab-help', now: '2026-05-05T00:01:00Z' });
+
+  assert.equal(run.ok, true);
+  assert.ok(run.steps.some((step) => step.tool === 'lab.workflow'));
+  assert.match(run.report, /Lab workflow: NVDA earnings momentum/);
+  assert.match(run.report, /discuss/);
+  assert.match(run.report, /verify/);
+  assert.match(run.report, /backtest/);
+  assert.match(run.report, /lab discuss latest --no-codex/);
+  assert.doesNotMatch(run.report, /idea new "<your strategy idea>"/);
 });
