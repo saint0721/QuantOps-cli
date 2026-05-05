@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::io;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -785,6 +786,7 @@ fn token_bounds(input: &str, cursor: usize) -> (usize, usize, String) {
     (start, end, input[start..end].to_string())
 }
 
+#[cfg(test)]
 fn completion_matches(input: &str, mode: &str) -> Vec<String> {
     completion_matches_with_data_dir(input, mode, None)
 }
@@ -849,6 +851,7 @@ fn char_display_width(ch: char) -> usize {
     }
 }
 
+#[cfg(test)]
 fn input_cursor_column(input: &str, cursor: usize) -> u16 {
     display_width(&input[..cursor])
 }
@@ -927,6 +930,10 @@ fn main() -> io::Result<()> {
             }
             _ => {}
         }
+    }
+
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        return Ok(());
     }
 
     enable_raw_mode()?;

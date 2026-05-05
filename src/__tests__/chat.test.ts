@@ -19,7 +19,8 @@ test('input hint uses neofetch style without background or runtime HUD', () => {
   assert.match(hint, /TossQuant@quant/);
   assert.match(hint, /project\u001b\[0m  TossQuant-cli/);
   assert.match(hint, /beginner\u001b\[0m \/start/);
-  assert.match(hint, /flow\u001b\[0m     \/find/);
+  assert.match(hint, /flow\u001b\[0m     \/idea new/);
+  assert.match(hint, /tools\u001b\[0m    \/skills · \/tools · \/agent/);
   assert.match(hint, /keys\u001b\[0m     Tab completes/);
   assert.match(hint, /try\u001b\[0m      \/start/);
   assert.doesNotMatch(hint, /48;2;/);
