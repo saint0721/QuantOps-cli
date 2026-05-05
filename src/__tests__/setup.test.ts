@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { installLocalBins } from '../setup.ts';
+import { buildRustHelpers, installLocalBins } from '../setup.ts';
 
 test('setup bin installs rtk, quant, and quantops symlinks', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-bin-'));
@@ -15,4 +15,11 @@ test('setup bin installs rtk, quant, and quantops symlinks', () => {
   assert.ok(existsSync(join(dir, 'quant')));
   assert.ok(readlinkSync(join(dir, 'quant')).endsWith('/src/cli.ts'));
   assert.ok(existsSync(join(dir, 'quantops')));
+});
+
+test('setup rust builds both Rust helper commands in dry-run mode', () => {
+  const result = buildRustHelpers({ dryRun: true });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.helpers.map((helper) => helper.name), ['quantops-stats', 'quantops-backtest']);
+  assert.ok(result.helpers.every((helper) => helper.command.includes('build')));
 });
