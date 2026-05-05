@@ -59,8 +59,11 @@ chat, and the bottom pane is a live HUD like:
 ```
 
 Use `TOSSQUANT_NO_TMUX=1 quant` or `quant --no-tmux`
-to start the plain non-tmux interactive shell. Inside the managed tmux runtime,
-`exit`, `quit`, or `:q` closes the whole TossQuant session, including the HUD pane.
+to start the plain non-tmux interactive shell. If your terminal mouse selection
+is captured by the Rust TUI, start it with `TOSSQUANT_TUI_MOUSE=off quant` or
+use copy-friendly subcommands such as `quant idea status latest --plain`.
+Inside the managed tmux runtime, `exit`, `quit`, or `:q` closes the whole
+TossQuant session, including the HUD pane.
 
 Then type. Press `Tab` to autocomplete commands, nested subcommands, slash modes,
 and tmux options such as `tmux start --session`:
@@ -117,9 +120,14 @@ quant collect plan AAPL
 quant collect quote AAPL
 quant collect watchlist
 quant idea new "NVDA earnings momentum"
-quant idea add-symbol <ID> NVDA
-quant idea add-hypothesis <ID> "Earnings surprise momentum persists"
-quant idea status <ID>
+quant idea add-symbol latest NVDA
+quant idea add-hypothesis latest "Earnings surprise momentum persists"
+quant idea status latest
+quant idea status latest --plain
+quant lab workflow latest
+quant lab discuss latest --no-codex
+quant lab verify latest --no-codex
+quant lab backtest latest --prompt
 quant data download AAPL
 quant data info AAPL
 quant data validate AAPL
@@ -141,7 +149,7 @@ quant tmux start
 quant order preview --symbol AAPL --side buy --qty 1 --price 100
 ```
 
-Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `idea new <TITLE>` starts a local quant research idea under `data/ideas/`, `idea add-symbol` and `idea add-hypothesis` attach the test universe and hypothesis, and `idea status` turns that idea into next commands for data, validation, stats, and research. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, `data info <SYMBOL>` shows saved dataset coverage/freshness, `data validate <SYMBOL>` checks local OHLCV quality/readiness, `data refresh <SYMBOL>` incrementally updates an existing dataset, `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics, and `research <SYMBOL>` builds an educational external-factor report under `data/research/`.
+Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `idea new <TITLE>` starts a local quant research idea under `data/ideas/`; `idea add-symbol`, `idea add-hypothesis`, `idea show`, and `idea status` accept the full id, a unique prefix, `latest`, title text, or a linked symbol such as `NVDA`; and `idea status latest --plain` prints a copy-friendly checklist for Codex discussions. `lab workflow <IDEA_REF>` turns a saved idea into a safe discuss → verify → backtest workflow, `lab discuss` creates research questions for Codex/Claude, `lab verify` creates a skeptical falsification checklist, and `lab backtest --prompt` creates a coding brief for a future deterministic backtest module without live trading code. In interactive mode, Tab completion suggests saved idea ids after `/idea ...` and `/lab ...` commands. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, `data info <SYMBOL>` shows saved dataset coverage/freshness, `data validate <SYMBOL>` checks local OHLCV quality/readiness, `data refresh <SYMBOL>` incrementally updates an existing dataset, `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics, and `research <SYMBOL>` builds an educational external-factor report under `data/research/`.
 
 The active TypeScript runtime now runs normal market download, list, stats, and audit commands directly. The retained Python package remains a reference implementation instead of the default data-analysis execution path.
 
@@ -216,7 +224,12 @@ TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls 
 
 Market data defaults:
 - `quant idea new "NVDA earnings momentum"` creates a local ResearchOps record before you collect evidence.
-- `quant idea status <ID>` shows whether each linked symbol has market data, validation status, saved research, and next TossQuant commands.
+- `quant idea status latest` shows whether each linked symbol has market data, validation status, saved research, and next TossQuant commands. You can also use a unique id prefix, title text, or a linked symbol instead of the full id.
+- `quant idea status latest --plain` prints a copy-friendly version for Codex/Claude discussions.
+- `quant lab workflow latest` shows the discuss → verify → backtest workflow for the saved idea.
+- `quant lab discuss latest --no-codex` builds a local discussion checklist; omit `--no-codex` to ask Codex when available.
+- `quant lab verify latest --no-codex` builds a skeptical validation/falsification checklist.
+- `quant lab backtest latest --prompt` prints the backtest coding prompt to copy into Codex/Claude.
 - `quant data download AAPL --period 1y` uses Yahoo Finance's chart endpoint by default.
 - `quant data info AAPL` shows saved source, interval, row count, date coverage, freshness age, and next refresh command.
 - `quant data validate AAPL` checks local rows for duplicate dates, invalid OHLCV values, stale data, and short histories.

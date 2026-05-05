@@ -8,11 +8,12 @@ import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } fr
 import { filteredCodexOutput } from './codex.ts';
 import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist, validateData, type DownloadRequest } from './data.ts';
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
-import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
+import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
 import { installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
+import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './lab.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 import { table } from './ui/table.ts';
 import { SOURCES, discoverMarket, searchSymbolsLive, sourceById, symbolInfo, type DiscoverResult, type SourceInfo, type SymbolInfo, type SymbolSearchResult } from './discovery.ts';
@@ -32,8 +33,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'idea', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/idea', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'analyze', 'research', 'idea', 'lab', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/analyze', '/research', '/idea', '/lab', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
 
@@ -48,7 +49,7 @@ function discoverCompletionCandidates(parts: string[]): string[] {
   return DISCOVER_OPTIONS;
 }
 
-export function completionCandidates(line: string, mode = 'quant'): string[] {
+export function completionCandidates(line: string, mode = 'quant', completionDataDir = 'data'): string[] {
   const trimmed = line.trimStart();
   if (mode === 'codex') return SLASH_COMPLETIONS;
   if (!trimmed) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
@@ -66,6 +67,17 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
   }
   if (command === 'idea') {
     if (parts.length <= 2) return ['new', 'list', 'show', 'add-symbol', 'add-hypothesis', 'status'];
+    const action = parts[1];
+    const needsIdeaReference = action === 'show' || action === 'status' || action === 'add-symbol' || action === 'add-hypothesis';
+    if (needsIdeaReference && parts.length <= 3) return ideaReferenceCandidates(completionDataDir);
+    if ((action === 'status' || action === 'show') && parts.length <= 4) return ['--plain'];
+    return [];
+  }
+  if (command === 'lab') {
+    if (parts.length <= 2) return ['workflow', 'discuss', 'verify', 'backtest'];
+    const action = parts[1];
+    if ((action === 'workflow' || action === 'discuss' || action === 'verify' || action === 'backtest') && parts.length <= 3) return ideaReferenceCandidates(completionDataDir);
+    if ((action === 'discuss' || action === 'verify' || action === 'backtest') && parts.length <= 4) return ['--no-codex', '--prompt', '--no-save'];
     return [];
   }
   if (command === 'data') {
@@ -117,9 +129,9 @@ export function completionCandidates(line: string, mode = 'quant'): string[] {
   return [];
 }
 
-export function completeLine(line: string, mode = 'quant'): [string[], string] {
+export function completeLine(line: string, mode = 'quant', completionDataDir = 'data'): [string[], string] {
   const token = line.endsWith(' ') ? '' : (line.split(/\s+/).at(-1) ?? '');
-  const candidates = completionCandidates(line, mode);
+  const candidates = completionCandidates(line, mode, completionDataDir);
   const matches = candidates.filter((candidate) => candidate.startsWith(token));
   return [matches.length ? matches : candidates, token];
 }
@@ -434,6 +446,19 @@ function formatIdea(idea: QuantIdea): string {
   ].join('\n');
 }
 
+function formatIdeaPlain(idea: QuantIdea): string {
+  return [
+    `id=${idea.id}`,
+    `title=${idea.title}`,
+    `status=${idea.status}`,
+    `created_at=${idea.created_at}`,
+    `updated_at=${idea.updated_at}`,
+    `symbols=${idea.symbols.join(',') || '-'}`,
+    'hypotheses:',
+    ...(idea.hypotheses.length ? idea.hypotheses.map((item) => `- ${item}`) : ['- none']),
+  ].join('\n');
+}
+
 function formatReadiness(item: IdeaReadiness): string[] {
   return [item.symbol, item.market_data, item.validation, item.research, item.next_commands.map((cmd) => `/${cmd}`).join(' | ')];
 }
@@ -452,10 +477,25 @@ function formatIdeaStatus(result: ReturnType<typeof ideaStatus>): string {
   ].join('\n');
 }
 
+function formatIdeaStatusPlain(result: ReturnType<typeof ideaStatus>): string {
+  const idea = result.idea;
+  return [
+    formatIdeaPlain(idea),
+    'readiness:',
+    ...(result.readiness.length
+      ? result.readiness.map((item) => `${item.symbol}: market=${item.market_data} validation=${item.validation} research=${item.research}`)
+      : ['- no symbols yet']),
+    'next:',
+    ...(result.next_commands.length ? result.next_commands.map((cmd) => `/${cmd}`) : [`/idea add-symbol ${idea.id} AAPL`]),
+  ].join('\n');
+}
+
 function commandIdea(dataDir: string, action = 'list', tail: string[] = []): number {
   try {
+    const plain = tail.includes('--plain');
+    const args = tail.filter((item) => item !== '--plain');
     if (action === 'new') {
-      const title = tail.join(' ');
+      const title = args.join(' ');
       const idea = createIdea(dataDir, title);
       const suggestedSymbol = title.match(/\b[A-Z][A-Z0-9.-]{1,9}\b/)?.[0] ?? 'AAPL';
       printText([
@@ -472,13 +512,14 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       return 0;
     }
     if (action === 'show') {
-      const id = tail[0];
+      const id = args[0];
       if (!id) { warn('usage: idea show <ID>'); return 2; }
-      printText(formatIdea(readIdea(dataDir, id)));
+      const idea = readIdea(dataDir, id);
+      printText(plain ? formatIdeaPlain(idea) : formatIdea(idea));
       return 0;
     }
     if (action === 'add-symbol') {
-      const [id, symbol] = tail;
+      const [id, symbol] = args;
       if (!id || !symbol) { warn('usage: idea add-symbol <ID> <SYMBOL>'); return 2; }
       const idea = addIdeaSymbol(dataDir, id, symbol);
       printText([
@@ -489,8 +530,8 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       return 0;
     }
     if (action === 'add-hypothesis') {
-      const id = tail[0];
-      const hypothesis = tail.slice(1).join(' ');
+      const id = args[0];
+      const hypothesis = args.slice(1).join(' ');
       if (!id || !hypothesis) { warn('usage: idea add-hypothesis <ID> <TEXT>'); return 2; }
       const idea = addIdeaHypothesis(dataDir, id, hypothesis);
       printText([
@@ -501,9 +542,10 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       return 0;
     }
     if (action === 'status') {
-      const id = tail[0];
+      const id = args[0];
       if (!id) { warn('usage: idea status <ID>'); return 2; }
-      printText(formatIdeaStatus(ideaStatus(dataDir, id)));
+      const status = ideaStatus(dataDir, id);
+      printText(plain ? formatIdeaStatusPlain(status) : formatIdeaStatus(status));
       return 0;
     }
   } catch (error) {
@@ -555,6 +597,35 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
     printJson({ ok: false, symbol: symbol.toUpperCase(), error: error instanceof Error ? error.message : String(error) });
     return 1;
   }
+}
+
+function commandLab(dataDir: string, action = 'workflow', tail: string[] = []): number {
+  const stages = new Set(['discuss', 'verify', 'backtest']);
+  try {
+    const promptOnly = tail.includes('--prompt');
+    const noSave = tail.includes('--no-save') || promptOnly;
+    const noCodex = tail.includes('--no-codex') || promptOnly || process.env.TOSSQUANT_LAB_NO_CODEX === '1';
+    const args = tail.filter((item) => item !== '--prompt' && item !== '--no-save' && item !== '--no-codex');
+    const ref = args[0];
+    if (!ref) {
+      warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--no-codex] [--prompt] [--no-save]');
+      return 2;
+    }
+    if (action === 'workflow') {
+      printText(formatLabWorkflow(ideaStatus(dataDir, ref)));
+      return 0;
+    }
+    if (stages.has(action)) {
+      const result = runLabStage(action as LabStage, ref, { base: dataDir, save: !noSave }, noCodex ? undefined : runCodexPromptText);
+      printText(formatLabRun(result, { promptOnly }));
+      return 0;
+    }
+  } catch (error) {
+    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
+  warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--no-codex] [--prompt] [--no-save]');
+  return 2;
 }
 
 function commandStats(dataDir: string, symbol?: string, tail: string[] = []): number {
@@ -681,12 +752,14 @@ function commandStart(): number {
         ['2', '/symbol info NVDA', '고른 심볼이 뭔지 확인'],
         ['3', '/download NVDA', '1년치 일봉 데이터 저장'],
         ['4', '/analyze NVDA', '수익률/변동성/추세 확인'],
-        ['5', '/next', '현재 상태에서 다음 행동 추천'],
+        ['5', '/idea new "NVDA momentum"', '전략 아이디어를 저장'],
+        ['6', '/lab workflow latest', '논의/검증/백테스트 작업 흐름 시작'],
+        ['7', '/next', '현재 상태에서 다음 행동 추천'],
       ],
     ),
     '',
-    '기본 흐름: /find → /download <SYMBOL> → /analyze <SYMBOL> → /next',
-    '고급 명령: /idea, /discover, /data download, /stats, /sources, /runtime',
+    '기본 흐름: /find → /download <SYMBOL> → /analyze <SYMBOL> → /idea new ... → /lab workflow latest',
+    '고급 명령: /idea, /lab, /discover, /data download, /stats, /sources, /runtime',
   ].join('\n'));
   return 0;
 }
@@ -969,9 +1042,9 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'beginner    /start · /next · /idea · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
-    'flow        /idea new "NVDA momentum"  →  /idea add-symbol <ID> NVDA  →  /download NVDA  →  /analyze NVDA',
-    'advanced    /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL> · /sources',
+    'beginner    /start · /next · /idea · /lab · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list',
+    'flow        /idea new "NVDA momentum"  →  /idea add-symbol latest NVDA  →  /lab workflow latest',
+    'advanced    /lab discuss latest · /lab verify latest · /discover · /data info · /stats <SYMBOL>',
     'codex       /ask <question> · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
     '',
@@ -1024,7 +1097,7 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (code === 2) warn('unknown slash command: try /start, /find, /download NVDA, /analyze NVDA, /next, or /exit');
     return false;
   };
-  const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode) });
+  const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode, dataDir) });
   if (!input.isTTY) {
     for await (const line of rl) {
       recordRuntime({ base: dataDir, mode, lastAction });
@@ -1062,6 +1135,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'analyze') return commandStats(dataDir, sub, tail);
   if (cmd === 'research') return commandResearch(dataDir, sub, tail);
   if (cmd === 'idea') return commandIdea(dataDir, sub ?? 'list', tail);
+  if (cmd === 'lab') return commandLab(dataDir, sub ?? 'workflow', tail);
   if (cmd === 'list') return commandData(dataDir, 'list', tail);
   if (cmd === 'status') { printStatus(dataDir); return 0; }
   if (cmd === 'doctor') return commandDoctor(dataDir);

@@ -77,3 +77,44 @@ test('idea command records research hypotheses and links next data commands', as
   assert.match(status.output, /data download NVDA --period 1y/);
   assert.match(status.output, /research NVDA --topic "NVDA earnings momentum"/);
 });
+
+test('idea command resolves latest references and prints copy-friendly plain status', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-idea-latest-'));
+
+  await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'new', 'NVDA', 'earnings', 'momentum']));
+  const idea = listIdeas(dir)[0]!;
+  await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'add-symbol', 'latest', 'nvda']));
+
+  const show = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'show', 'NVDA', '--plain']));
+  const status = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'status', 'latest', '--plain']));
+
+  assert.equal(show.code, 0);
+  assert.match(show.output, new RegExp(`id=${idea.id}`));
+  assert.match(show.output, /symbols=NVDA/);
+  assert.equal(status.code, 0);
+  assert.match(status.output, /readiness:/);
+  assert.match(status.output, /NVDA: market=missing validation=missing research=missing/);
+  assert.match(status.output, /\/data download NVDA --period 1y/);
+});
+
+test('lab command builds idea workflow and prompt-only artifacts', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-lab-'));
+
+  await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'new', 'NVDA', 'earnings', 'momentum']));
+  await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'add-symbol', 'latest', 'NVDA']));
+
+  const workflow = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'workflow', 'latest']));
+  const verify = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'verify', 'latest', '--no-codex', '--no-save']));
+  const prompt = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'lab', 'backtest', 'latest', '--prompt']));
+
+  assert.equal(workflow.code, 0);
+  assert.match(workflow.output, /Lab workflow: NVDA earnings momentum/);
+  assert.match(workflow.output, /quant lab discuss/);
+  assert.equal(verify.code, 0);
+  assert.match(verify.output, /Lab verify: NVDA earnings momentum/);
+  assert.match(verify.output, /Blocking gaps/);
+  assert.doesNotMatch(verify.output, /saved_to:/);
+  assert.equal(prompt.code, 0);
+  assert.match(prompt.output, /backtest implementation swarm lead/);
+  assert.match(prompt.output, /Do not write live trading code/);
+});

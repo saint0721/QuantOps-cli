@@ -1,6 +1,7 @@
 use std::env;
+use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
@@ -31,6 +32,7 @@ const ROOT_COMMANDS: &[&str] = &[
     "/analyze",
     "/research",
     "/idea",
+    "/lab",
     "/list",
     "/status",
     "/collect",
@@ -177,7 +179,7 @@ impl App {
     }
 
     fn completion_matches(&self) -> Vec<String> {
-        completion_matches(&self.input, &self.mode)
+        completion_matches_with_data_dir(&self.input, &self.mode, Some(&self.data_dir))
     }
 
     fn complete_current_token(&mut self) {
@@ -326,9 +328,9 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "beginner /start · /next · /idea · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
-        "flow     /idea new \"NVDA momentum\" → /idea add-symbol <ID> NVDA → /download NVDA → /analyze NVDA".to_string(),
-        "advanced /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL>".to_string(),
+        "beginner /start · /next · /idea · /lab · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
+        "flow     /idea new \"NVDA momentum\" → /idea add-symbol latest NVDA → /lab workflow latest".to_string(),
+        "advanced /lab discuss latest · /lab verify latest · /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL>".to_string(),
         "tools    /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
@@ -357,6 +359,11 @@ fn command_candidates(
             trailing_space,
             &["new", "list", "show", "add-symbol", "add-hypothesis", "status"],
         ),
+        "/lab" => one_level_candidates(
+            parts,
+            trailing_space,
+            &["workflow", "discuss", "verify", "backtest"],
+        ),
         "/list" => &[],
         "/discover" => discover_candidates(parts, trailing_space),
         "/sources" => one_level_candidates(
@@ -376,6 +383,79 @@ fn command_candidates(
         "/order" => one_level_candidates(parts, trailing_space, &["preview"]),
         _ => &[],
     }
+}
+
+fn idea_reference_candidates(data_dir: Option<&str>) -> Vec<String> {
+    let Some(data_dir) = data_dir else {
+        return Vec::new();
+    };
+    let ideas_dir = Path::new(data_dir).join("ideas");
+    let Ok(entries) = fs::read_dir(ideas_dir) else {
+        return Vec::new();
+    };
+    let mut ids = entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            (path.extension().and_then(|item| item.to_str()) == Some("json"))
+                .then(|| path.file_stem()?.to_str().map(str::to_string))
+                .flatten()
+        })
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids.reverse();
+    if ids.is_empty() {
+        Vec::new()
+    } else {
+        let mut candidates = vec!["latest".to_string()];
+        candidates.extend(ids);
+        candidates
+    }
+}
+
+fn idea_candidates(parts: &[&str], trailing_space: bool, data_dir: Option<&str>) -> Vec<String> {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        return ["new", "list", "show", "add-symbol", "add-hypothesis", "status"]
+            .iter()
+            .map(|item| item.to_string())
+            .collect();
+    }
+    let action = parts.get(1).copied().unwrap_or("");
+    let needs_reference = matches!(action, "show" | "status" | "add-symbol" | "add-hypothesis");
+    if needs_reference && (parts.len() <= 2 || (parts.len() == 3 && !trailing_space)) {
+        return idea_reference_candidates(data_dir);
+    }
+    if matches!(action, "show" | "status")
+        && ((trailing_space && parts.len() <= 3) || parts.len() == 4)
+    {
+        return vec!["--plain".to_string()];
+    }
+    Vec::new()
+}
+
+fn lab_candidates(parts: &[&str], trailing_space: bool, data_dir: Option<&str>) -> Vec<String> {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        return ["workflow", "discuss", "verify", "backtest"]
+            .iter()
+            .map(|item| item.to_string())
+            .collect();
+    }
+    let action = parts.get(1).copied().unwrap_or("");
+    if matches!(action, "workflow" | "discuss" | "verify" | "backtest")
+        && (parts.len() <= 2 || (parts.len() == 3 && !trailing_space))
+    {
+        return idea_reference_candidates(data_dir);
+    }
+    if matches!(action, "discuss" | "verify" | "backtest")
+        && ((trailing_space && parts.len() <= 3) || parts.len() == 4)
+    {
+        return vec![
+            "--no-codex".to_string(),
+            "--prompt".to_string(),
+            "--no-save".to_string(),
+        ];
+    }
+    Vec::new()
 }
 
 const DISCOVER_CATEGORIES: &[&str] = &[
@@ -544,6 +624,10 @@ fn token_bounds(input: &str, cursor: usize) -> (usize, usize, String) {
 }
 
 fn completion_matches(input: &str, mode: &str) -> Vec<String> {
+    completion_matches_with_data_dir(input, mode, None)
+}
+
+fn completion_matches_with_data_dir(input: &str, mode: &str, data_dir: Option<&str>) -> Vec<String> {
     if mode == "codex" && !input.starts_with('/') {
         return ROOT_COMMANDS.iter().map(|item| item.to_string()).collect();
     }
@@ -555,15 +639,21 @@ fn completion_matches(input: &str, mode: &str) -> Vec<String> {
     let (_, _, token) = token_bounds(input, cursor);
     let parts = trimmed.split_whitespace().collect::<Vec<_>>();
     let candidates = if parts.len() <= 1 && !trimmed.ends_with(' ') {
-        ROOT_COMMANDS
+        ROOT_COMMANDS.iter().map(|item| item.to_string()).collect()
+    } else if parts.first().copied() == Some("/idea") {
+        idea_candidates(&parts, trimmed.ends_with(' '), data_dir)
+    } else if parts.first().copied() == Some("/lab") {
+        lab_candidates(&parts, trimmed.ends_with(' '), data_dir)
     } else {
         let command = parts.first().copied().unwrap_or("");
         command_candidates(command, &parts, trimmed.ends_with(' '))
+            .iter()
+            .map(|item| item.to_string())
+            .collect()
     };
     candidates
-        .iter()
+        .into_iter()
         .filter(|candidate| token.is_empty() || candidate.starts_with(&token))
-        .map(|candidate| candidate.to_string())
         .collect()
 }
 
@@ -594,6 +684,41 @@ fn input_cursor_column(input: &str, cursor: usize) -> u16 {
     display_width(&input[..cursor])
 }
 
+fn input_cursor_visual_position(input: &str, cursor: usize, width: u16) -> (u16, u16) {
+    let width = usize::from(width.max(1));
+    let mut row = 0usize;
+    let mut col = usize::from(display_width(PROMPT_LABEL)).min(width.saturating_sub(1));
+    for ch in input[..cursor].chars() {
+        let ch_width = char_display_width(ch);
+        if col > 0 && col + ch_width > width {
+            row += 1;
+            col = 0;
+        }
+        col += ch_width;
+        if col >= width {
+            row += col / width;
+            col %= width;
+        }
+    }
+    (col.min(width.saturating_sub(1)) as u16, row as u16)
+}
+
+fn input_visual_rows(input: &str, width: u16) -> u16 {
+    let displayed = if input.is_empty() {
+        INPUT_PLACEHOLDER
+    } else {
+        input
+    };
+    let (_, row) = input_cursor_visual_position(displayed, displayed.len(), width);
+    row.saturating_add(1).max(1)
+}
+
+fn dynamic_input_height(input: &str, width: u16, frame_height: u16) -> u16 {
+    let desired = input_visual_rows(input, width).saturating_add(1).max(3);
+    let max_height = frame_height.saturating_sub(3).max(1);
+    desired.min(max_height)
+}
+
 fn strip_ansi(text: &str) -> String {
     let mut out = String::new();
     let mut chars = text.chars().peekable();
@@ -616,6 +741,9 @@ fn main() -> io::Result<()> {
     let mut entry = PathBuf::from("src/cli.ts");
     let mut data_dir = "data".to_string();
     let mut node = "node".to_string();
+    let mut mouse_capture = env::var("TOSSQUANT_TUI_MOUSE")
+        .map(|value| !matches!(value.as_str(), "0" | "false" | "off" | "no"))
+        .unwrap_or(true);
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -624,23 +752,29 @@ fn main() -> io::Result<()> {
             }
             "--data-dir" => data_dir = args.next().unwrap_or_else(|| "data".to_string()),
             "--node" => node = args.next().unwrap_or_else(|| "node".to_string()),
+            "--mouse" => {
+                let value = args.next().unwrap_or_else(|| "on".to_string());
+                mouse_capture = !matches!(value.as_str(), "0" | "false" | "off" | "no");
+            }
             _ => {}
         }
     }
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, EnterAlternateScreen)?;
+    if mouse_capture {
+        execute!(stdout, EnableMouseCapture)?;
+    }
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let mut app = App::new(entry, data_dir, node);
     let result = run(&mut terminal, &mut app);
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        DisableMouseCapture,
-        LeaveAlternateScreen
-    )?;
+    if mouse_capture {
+        execute!(terminal.backend_mut(), DisableMouseCapture)?;
+    }
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     result
 }
@@ -715,16 +849,18 @@ fn handle_key(app: &mut App, key: KeyEvent) -> bool {
 }
 
 fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let area = frame.area();
+    let input_height = dynamic_input_height(&app.input, area.width, area.height);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),
-            Constraint::Length(3),
+            Constraint::Length(input_height),
             Constraint::Length(2),
         ])
-        .split(frame.area());
+        .split(area);
 
-    let visible_height = chunks[0].height.saturating_sub(1) as usize;
+    let visible_height = chunks[0].height as usize;
     let visual_lines = visual_transcript_lines(&app.transcript, chunks[0].width.saturating_sub(1));
     let visible_lines =
         visible_transcript_window(&visual_lines, visible_height.max(1), app.scroll_offset);
@@ -759,20 +895,25 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
         input_text,
     ]);
     let input = Paragraph::new(input)
+        .wrap(Wrap { trim: false })
         .block(
             Block::default()
                 .borders(Borders::TOP)
                 .border_style(Style::default().fg(TOSS_BLUE)),
         )
         .style(Style::default().bg(CHAT_BG));
+    let inner_input_height = chunks[1].height.saturating_sub(1).max(1);
+    let (cursor_col, cursor_row) =
+        input_cursor_visual_position(&app.input, app.cursor, chunks[1].width);
+    let input_scroll = cursor_row.saturating_add(1).saturating_sub(inner_input_height);
+    let input = input.scroll((input_scroll, 0));
     frame.render_widget(input, chunks[1]);
 
     let suggestions = Paragraph::new(suggestion_line(app)).style(Style::default().bg(CHAT_BG));
     frame.render_widget(suggestions, chunks[2]);
 
-    let cursor_x =
-        chunks[1].x + display_width(PROMPT_LABEL) + input_cursor_column(&app.input, app.cursor);
-    let cursor_y = chunks[1].y + 1;
+    let cursor_x = chunks[1].x + cursor_col.min(chunks[1].width.saturating_sub(1));
+    let cursor_y = chunks[1].y + 1 + cursor_row.saturating_sub(input_scroll);
     frame.set_cursor_position(Position::new(cursor_x, cursor_y));
 }
 
@@ -948,10 +1089,12 @@ fn wrap_visual_line(line: &str, width: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_completion_token, completion_matches, display_width, input_cursor_column,
-        suggestion_line, transcript_line, visible_transcript_window, visual_transcript_lines,
-        welcome_lines, App, INPUT_PLACEHOLDER,
+        active_completion_token, completion_matches, completion_matches_with_data_dir,
+        display_width, dynamic_input_height, input_cursor_column, input_cursor_visual_position,
+        input_visual_rows, suggestion_line, transcript_line, visible_transcript_window,
+        visual_transcript_lines, welcome_lines, App, INPUT_PLACEHOLDER,
     };
+    use std::{env, fs};
 
     #[test]
     fn cursor_column_uses_terminal_display_width_for_korean() {
@@ -1039,6 +1182,7 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/analyze".to_string()));
         assert!(completion_matches("", "quant").contains(&"/research".to_string()));
         assert!(completion_matches("", "quant").contains(&"/idea".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/lab".to_string()));
         assert!(completion_matches("", "quant").contains(&"/list".to_string()));
         assert!(completion_matches("", "quant").contains(&"/sources".to_string()));
         assert!(completion_matches("", "quant").contains(&"/symbol".to_string()));
@@ -1066,6 +1210,27 @@ mod tests {
                 "add-hypothesis".to_string(),
                 "status".to_string()
             ]
+        );
+        assert_eq!(
+            completion_matches("/idea status latest ", "quant"),
+            vec!["--plain".to_string()]
+        );
+        assert_eq!(
+            completion_matches("/idea status latest --", "quant"),
+            vec!["--plain".to_string()]
+        );
+        assert_eq!(
+            completion_matches("/lab ", "quant"),
+            vec![
+                "workflow".to_string(),
+                "discuss".to_string(),
+                "verify".to_string(),
+                "backtest".to_string()
+            ]
+        );
+        assert_eq!(
+            completion_matches("/lab verify latest --", "quant"),
+            vec!["--no-codex".to_string(), "--prompt".to_string(), "--no-save".to_string()]
         );
         assert_eq!(
             completion_matches("/collect plan --watchlist ", "quant"),
@@ -1205,6 +1370,35 @@ mod tests {
     }
 
     #[test]
+    fn idea_completion_reads_saved_ids_from_data_dir() {
+        let root = env::temp_dir().join(format!(
+            "tq-tui-idea-complete-{}",
+            std::process::id()
+        ));
+        let ideas = root.join("ideas");
+        fs::create_dir_all(&ideas).unwrap();
+        fs::write(
+            ideas.join("idea-20260505T031500-nvda-earnings-momentum.json"),
+            "{}",
+        )
+        .unwrap();
+
+        let matches =
+            completion_matches_with_data_dir("/idea status ", "quant", root.to_str());
+
+        assert!(matches.contains(&"latest".to_string()));
+        assert!(matches.contains(
+            &"idea-20260505T031500-nvda-earnings-momentum".to_string()
+        ));
+        let lab_matches = completion_matches_with_data_dir("/lab verify ", "quant", root.to_str());
+        assert!(lab_matches.contains(&"latest".to_string()));
+        assert!(lab_matches.contains(
+            &"idea-20260505T031500-nvda-earnings-momentum".to_string()
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn suggestion_line_highlights_the_current_matching_token() {
         let mut app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
         app.set_input("/co".to_string());
@@ -1237,6 +1431,26 @@ mod tests {
         let visual = visual_transcript_lines(&lines, 4);
 
         assert_eq!(visual, vec!["abcd", "ef", "한글", "abcd"]);
+    }
+
+    #[test]
+    fn long_input_expands_and_keeps_cursor_visible_after_wrapping() {
+        let input = "/lab backtest latest --prompt ".repeat(4);
+
+        assert!(input_visual_rows(&input, 24) > 3);
+        assert!(dynamic_input_height(&input, 24, 20) > 3);
+
+        let (col, row) = input_cursor_visual_position(&input, input.len(), 24);
+        assert!(row > 0);
+        assert!(col < 24);
+    }
+
+    #[test]
+    fn dynamic_input_height_preserves_history_space_on_small_terminals() {
+        let input = "x".repeat(500);
+
+        assert_eq!(dynamic_input_height(&input, 10, 6), 3);
+        assert_eq!(dynamic_input_height(&input, 10, 4), 1);
     }
 
     #[test]

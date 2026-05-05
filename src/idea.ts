@@ -86,15 +86,33 @@ function writeIdea(base: string, idea: QuantIdea): QuantIdea {
   return idea;
 }
 
-function findIdeaPath(base: string, id: string): string {
-  const direct = ideaPath(base, id);
-  if (existsSync(direct)) return direct;
-  const matches = readdirSync(ideasDir(base))
-    .filter((file) => file.endsWith('.json') && file.slice(0, -5).startsWith(id))
-    .sort();
-  if (matches.length === 1) return join(ideasDir(base), matches[0]!);
-  if (matches.length > 1) throw new Error(`ambiguous idea id: ${id}`);
-  throw new Error(`idea not found: ${id}`);
+function matchIdeaByReference(base: string, reference: string): QuantIdea {
+  const query = reference.trim();
+  if (!query) throw new Error('idea id is required');
+  const ideas = listIdeas(base);
+  if (query === 'latest') {
+    const latest = ideas[0];
+    if (!latest) throw new Error('idea not found: latest');
+    return latest;
+  }
+  const direct = ideaPath(base, query);
+  if (existsSync(direct)) return asIdea(JSON.parse(readFileSync(direct, 'utf8')) as JsonValue, direct);
+  const lower = query.toLowerCase();
+  const upper = query.toUpperCase();
+  const matches = ideas.filter((idea) =>
+    idea.id.startsWith(query)
+    || idea.id.toLowerCase().includes(lower)
+    || idea.title.toLowerCase().includes(lower)
+    || idea.symbols.includes(upper)
+  );
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length > 1) throw new Error(`ambiguous idea reference: ${reference} (${matches.slice(0, 5).map((idea) => idea.id).join(', ')})`);
+  throw new Error(`idea not found: ${reference}`);
+}
+
+export function ideaReferenceCandidates(base = 'data'): string[] {
+  const ids = listIdeas(base).map((idea) => idea.id);
+  return ids.length ? ['latest', ...ids] : [];
 }
 
 export function createIdea(base: string, title: string, options: { now?: string } = {}): QuantIdea {
@@ -114,8 +132,7 @@ export function createIdea(base: string, title: string, options: { now?: string 
 }
 
 export function readIdea(base: string, id: string): QuantIdea {
-  const path = findIdeaPath(base, id);
-  return asIdea(JSON.parse(readFileSync(path, 'utf8')) as JsonValue, path);
+  return matchIdeaByReference(base, id);
 }
 
 export function listIdeas(base = 'data'): QuantIdea[] {
