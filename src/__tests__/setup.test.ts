@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -15,6 +16,17 @@ test('setup bin installs rtk, quant, and quantops symlinks', () => {
   assert.ok(existsSync(join(dir, 'quant')));
   assert.ok(readlinkSync(join(dir, 'quant')).endsWith('/src/cli.ts'));
   assert.ok(existsSync(join(dir, 'quantops')));
+});
+
+test('installed rtk symlink executes the CLI entrypoint', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-bin-exec-'));
+  installLocalBins({ dir });
+
+  const result = spawnSync(join(dir, 'rtk'), ['--no-tmux', '--help'], { encoding: 'utf8' });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Codex-first quant research harness/);
+  assert.match(result.stdout, /Codex calls rtk commands with --json/);
 });
 
 test('setup rust builds Rust helper commands in dry-run mode', () => {
