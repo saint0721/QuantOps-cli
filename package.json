@@ -4,6 +4,7 @@
   "description": "Agentic quant research, validation, backtesting, and execution workflow CLI",
   "type": "module",
   "bin": {
+    "rtk": "./src/cli.ts",
     "quantops": "./src/cli.ts",
     "quant": "./src/cli.ts"
   },

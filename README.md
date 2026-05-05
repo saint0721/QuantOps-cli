@@ -1,25 +1,25 @@
 # QuantOps
 
-Agent-native quant research runtime for Codex/Claude-style agents. QuantOps is no longer positioned as a standalone chat/TUI-first app: the intended workflow is **user talks to Codex → Codex calls `quantops` shell commands with `--json` → QuantOps returns deterministic data, research, backtest, and artifact context**. The active `quant` and `quantops` launchers point at `src/cli.ts`; Python remains available for quant-analysis/reference work through the `quantops_cli` compatibility module.
+Agent-native quant research runtime for Codex/Claude-style agents. QuantOps is no longer positioned as a standalone chat/TUI-first app: the intended workflow is **user talks to Codex → Codex calls `rtk` shell commands with `--json` → QuantOps returns deterministic data, research, backtest, and artifact context**. The active `rtk`, `quant`, and `quantops` launchers point at `src/cli.ts`; Python remains available for quant-analysis/reference work through the `quantops_cli` compatibility module.
 
 ## Codex runtime contract
 
 Use QuantOps as a local execution harness from a Codex tmux/session:
 
 ```bash
-quantops codex-guide --json
-quantops runtime info --json
-quantops symbol search TSMC --json
-quantops data info TSM --json
-quantops data download TSM --start 2026-01-01 --end 2026-05-05 --json
-quantops data validate TSM --json
-quantops stats TSM --json
-quantops compare TSM SOXX NVDA ASML --json
-quantops research TSM --topic "earnings momentum" --json
-quantops event define --type competitor_negative --source-symbol 005930.KS --target-symbol TSM --benchmark SOXX --json
-quantops event study TSM --event-date 2026-04-18 --benchmark SOXX --json
-quantops backtest strategies --json
-quantops backtest run TSM --strategy ma-cross --json
+rtk codex-guide --json
+rtk runtime info --json
+rtk symbol search TSMC --json
+rtk data info TSM --json
+rtk data download TSM --start 2026-01-01 --end 2026-05-05 --json
+rtk data validate TSM --json
+rtk stats TSM --json
+rtk compare TSM SOXX NVDA ASML --json
+rtk research TSM --topic "earnings momentum" --json
+rtk event define --type competitor_negative --source-symbol 005930.KS --target-symbol TSM --benchmark SOXX --json
+rtk event study TSM --event-date 2026-04-18 --benchmark SOXX --json
+rtk backtest strategies --json
+rtk backtest run TSM --strategy ma-cross --json
 ```
 
 Runtime decisions:
@@ -38,8 +38,8 @@ TypeScript execution, so there are no npm runtime dependencies yet.
 ```bash
 node --version   # requires >= 24
 npm test
-node ./src/cli.ts setup bin   # installs ~/.local/bin/quant and ~/.local/bin/quantops
-quant                       # starts the tmux-backed runtime when tmux is available
+node ./src/cli.ts setup bin   # installs ~/.local/bin/rtk, ~/.local/bin/quant, ~/.local/bin/quantops
+rtk                         # preferred agent launcher; starts tmux-backed runtime when available
 ```
 
 The Python reference prototype is still available for comparison:
@@ -60,23 +60,26 @@ node ./src/cli.ts setup bin
 It creates symlinks in `~/.local/bin`:
 
 ```text
+~/.local/bin/rtk -> <repo>/src/cli.ts
 ~/.local/bin/quant -> <repo>/src/cli.ts
 ~/.local/bin/quantops -> <repo>/src/cli.ts
 ```
 
-After that, `quant` is enough. If `tmux` is installed and you are in an
+After that, `rtk` is the preferred launcher and `quant`/`quantops` remain aliases. If `tmux` is installed and you are in an
 interactive terminal, it automatically starts the QuantOps tmux runtime with the
-live HUD pane. Use `quant --no-tmux` or `QUANTOPS_NO_TMUX=1 quant` for plain mode.
+live HUD pane. Use `rtk --no-tmux` or `QUANTOPS_NO_TMUX=1 rtk` for plain mode.
 
 ## Interactive mode
 
 ```bash
+rtk
+# or
 quant
 # or
 quantops
 ```
 
-Interactive mode is now a secondary debugging/dashboard surface. For normal research, discuss with Codex in your tmux/session and let Codex call `quantops ... --json`.
+Interactive mode is now a secondary debugging/dashboard surface. For normal research, discuss with Codex in your tmux/session and let Codex call `rtk ... --json`.
 
 When `tmux` is installed and QuantOps is started from an interactive terminal,
 it opens a `quantops-<hash>` tmux session automatically. The hash is derived
@@ -88,12 +91,12 @@ chat, and the bottom pane is a live HUD like:
 [QuantOps] main | mode:quant | watchlist:5 | quotes:5/10 samples | classify-ready:0 | codex:ready | last:ready | updated:2026-05-04T02:12:19Z
 ```
 
-Use `QUANTOPS_NO_TMUX=1 quant` or `quant --no-tmux`
+Use `QUANTOPS_NO_TMUX=1 rtk` or `rtk --no-tmux`
 to start the plain non-tmux interactive shell. The Rust TUI leaves terminal
 mouse selection available by default, so normal mouse drag can copy visible
 text. If you prefer app-level mouse wheel scrolling instead, start it with
-`QUANTOPS_TUI_MOUSE=1 quant`; use copy-friendly subcommands such as
-`quant idea status latest --plain` when you need stable text output.
+`QUANTOPS_TUI_MOUSE=1 rtk`; use copy-friendly subcommands such as
+`rtk idea status latest --plain` when you need stable text output.
 Inside the managed tmux runtime, `exit`, `quit`, or `:q` closes the whole
 QuantOps session, including the HUD pane.
 
@@ -152,46 +155,46 @@ Recommended beginner loop:
 ## Subcommand mode
 
 ```bash
-quant codex-guide
-quant runtime info --json
-quant doctor
-quant collect plan AAPL
-quant collect quote AAPL
-quant collect watchlist
-quant idea new "NVDA earnings momentum"
-quant idea add-symbol latest NVDA
-quant idea add-hypothesis latest "Earnings surprise momentum persists"
-quant idea status latest
-quant idea status latest --plain
-quant lab workflow latest
-quant lab discuss latest
-quant lab discuss latest 실적 모멘텀이 가격에 반영되는지 보고 싶어
-quant lab verify latest
-quant lab backtest latest --prompt
-quant strategy list
-quant backtest run latest --strategy ma-cross
-quant data download AAPL
-quant data info AAPL
-quant data validate AAPL
-quant data refresh AAPL
-quant data watchlist refresh
-quant stats AAPL
-quant research AAPL
-quant compare AAPL SPY QQQ
-quant event define --type earnings --target-symbol AAPL
-quant event study AAPL --event-date 2026-01-15 --benchmark SPY
-quant quote fetch AAPL
-quant quote history AAPL
-quant classify AAPL
-quant portfolio snapshot
-quant brief
-quant research AAPL --topic momentum
-quant runtime line
-quant runtime snapshot
-quant hud
-quant hud --tmux
-quant tmux start
-quant order preview --symbol AAPL --side buy --qty 1 --price 100
+rtk codex-guide
+rtk runtime info --json
+rtk doctor
+rtk collect plan AAPL
+rtk collect quote AAPL
+rtk collect watchlist
+rtk idea new "NVDA earnings momentum"
+rtk idea add-symbol latest NVDA
+rtk idea add-hypothesis latest "Earnings surprise momentum persists"
+rtk idea status latest
+rtk idea status latest --plain
+rtk lab workflow latest
+rtk lab discuss latest
+rtk lab discuss latest 실적 모멘텀이 가격에 반영되는지 보고 싶어
+rtk lab verify latest
+rtk lab backtest latest --prompt
+rtk strategy list
+rtk backtest run latest --strategy ma-cross
+rtk data download AAPL
+rtk data info AAPL
+rtk data validate AAPL
+rtk data refresh AAPL
+rtk data watchlist refresh
+rtk stats AAPL
+rtk research AAPL
+rtk compare AAPL SPY QQQ
+rtk event define --type earnings --target-symbol AAPL
+rtk event study AAPL --event-date 2026-01-15 --benchmark SPY
+rtk quote fetch AAPL
+rtk quote history AAPL
+rtk classify AAPL
+rtk portfolio snapshot
+rtk brief
+rtk research AAPL --topic momentum
+rtk runtime line
+rtk runtime snapshot
+rtk hud
+rtk hud --tmux
+rtk tmux start
+rtk order preview --symbol AAPL --side buy --qty 1 --price 100
 ```
 
 Collection commands are provider-neutral and read-only by default. `collect plan` previews the tickers and existing local sample counts, `collect quote <TICKER>` stores one `tossctl quote get` sample in `data/quotes/<TICKER>.jsonl`, and `collect watchlist` runs the same collection over `data/watchlist.json`. `idea new <TITLE>` starts a local quant research idea under `data/ideas/`; `idea add-symbol`, `idea add-hypothesis`, `idea show`, and `idea status` accept the full id, a unique prefix, `latest`, title text, or a linked symbol such as `NVDA`; and `idea status latest --plain` prints a copy-friendly checklist for Codex discussions. `lab workflow <IDEA_REF>` turns a saved idea into a safe discuss → verify → backtest workflow, `lab discuss` creates research questions for Codex/Claude, `lab verify` creates a skeptical falsification checklist, and `lab backtest --prompt` creates a coding brief for a future deterministic backtest module without live trading code. In interactive mode, Tab completion suggests saved idea ids after `/idea ...` and `/lab ...` commands. `data download <SYMBOL>` stores OHLCV market data under `data/market/`, `data info <SYMBOL>` shows saved dataset coverage/freshness, `data validate <SYMBOL>` checks local OHLCV quality/readiness, `data refresh <SYMBOL>` incrementally updates an existing dataset, `stats <SYMBOL>` summarizes downloaded return, volatility, drawdown, moving-average, volume, and readiness metrics, and `research <SYMBOL>` builds an educational external-factor report under `data/research/`.
@@ -279,36 +282,36 @@ Market data defaults:
 - `quant idea status latest --plain` prints a copy-friendly version for Codex/Claude discussions.
 - `quant lab workflow latest` shows the discuss → verify → backtest workflow for the saved idea.
 - `quant lab discuss latest <what you want to discuss>` starts a focused local discussion without quotes in the interactive prompt, records it in the shared `agent-chat` session, and tells you to continue with plain natural-language chat; add `--codex` to ask Codex when available.
-- `quant lab verify latest` builds a skeptical validation/falsification checklist.
-- `quant lab backtest latest --prompt` prints the backtest coding prompt to copy into Codex/Claude.
-- `quant strategy list` shows deterministic strategy templates such as `ma-cross`, `momentum`, `mean-reversion`, and `buy-hold`.
-- `quant backtest run latest --strategy ma-cross` runs a deterministic local backtest for the latest idea's first symbol; it stores results under `data/backtests/` and never touches live trading.
-- `quant data download AAPL --period 1y` uses Yahoo Finance's chart endpoint by default.
-- `quant data info AAPL` shows saved source, interval, row count, date coverage, freshness age, and next refresh command.
-- `quant data validate AAPL` checks local rows for duplicate dates, invalid OHLCV values, stale data, and short histories.
-- `quant data refresh AAPL` refreshes from the next day after the latest saved row through today; if no saved dataset exists, it falls back to the provider's default range.
-- `quant data watchlist refresh` refreshes every ticker in `data/watchlist.json`.
-- `quant data download AAPL --source stooq --period 1y` uses Stooq when `STOOQ_API_KEY` is available or Stooq allows CSV access.
-- `quant stats AAPL` reads the default Yahoo dataset unless you pass another `--source`.
+- `rtk lab verify latest` builds a skeptical validation/falsification checklist.
+- `rtk lab backtest latest --prompt` prints the backtest coding prompt to copy into Codex/Claude.
+- `rtk strategy list` shows deterministic strategy templates such as `ma-cross`, `momentum`, `mean-reversion`, and `buy-hold`.
+- `rtk backtest run latest --strategy ma-cross` runs a deterministic local backtest for the latest idea's first symbol; it stores results under `data/backtests/` and never touches live trading.
+- `rtk data download AAPL --period 1y` uses Yahoo Finance's chart endpoint by default.
+- `rtk data info AAPL` shows saved source, interval, row count, date coverage, freshness age, and next refresh command.
+- `rtk data validate AAPL` checks local rows for duplicate dates, invalid OHLCV values, stale data, and short histories.
+- `rtk data refresh AAPL` refreshes from the next day after the latest saved row through today; if no saved dataset exists, it falls back to the provider's default range.
+- `rtk data watchlist refresh` refreshes every ticker in `data/watchlist.json`.
+- `rtk data download AAPL --source stooq --period 1y` uses Stooq when `STOOQ_API_KEY` is available or Stooq allows CSV access.
+- `rtk stats AAPL` reads the default Yahoo dataset unless you pass another `--source`.
 
 ## LLM tool/workbench mode
 
 QuantOps exposes a curated tool registry instead of letting LLMs run arbitrary shell commands:
 
 ```bash
-quant tools list --json
-quant tools run data.info --symbol NVDA --json
-quant tools run strategy.list
-quant tools run backtest.run --symbol NVDA --strategy ma-cross
-quant agent ko
-quant agent "NVDA earnings momentum research"
-quant agent "NVDA earnings momentum research" --download --provider codex
-quant provider list --json
-quant session handoff
-quant mcp
+rtk tools list --json
+rtk tools run data.info --symbol NVDA --json
+rtk tools run strategy.list
+rtk tools run backtest.run --symbol NVDA --strategy ma-cross
+rtk agent ko
+rtk agent "NVDA earnings momentum research"
+rtk agent "NVDA earnings momentum research" --download --provider codex
+rtk provider list --json
+rtk session handoff
+rtk mcp
 ```
 
-The registry currently includes safe research/data tools such as `data.info`, `data.download`, `data.validate`, `stats.run`, `research.run`, `idea.create`, `idea.add-symbol`, `lab.workflow`, `lab.stage`, `strategy.list`, and `backtest.run`. It intentionally does not expose order placement, account mutation, or raw broker commands. `.quant/` stores session handoff state while `data/` remains the market-data store. `quant mcp` serves the same registry over stdio MCP (`initialize`, `tools/list`, `tools/call`) for external Codex/Claude-style clients.
+The registry currently includes safe research/data tools such as `data.info`, `data.download`, `data.validate`, `stats.run`, `research.run`, `idea.create`, `idea.add-symbol`, `lab.workflow`, `lab.stage`, `strategy.list`, and `backtest.run`. It intentionally does not expose order placement, account mutation, or raw broker commands. `.quant/` stores session handoff state while `data/` remains the market-data store. `rtk mcp` serves the same registry over stdio MCP (`initialize`, `tools/list`, `tools/call`) for external Codex/Claude-style clients.
 
 Codex is launched as `codex exec --sandbox read-only --cd <project> ...` so the first integration is intentionally read-only.
 QuantOps filters Codex CLI transcript noise such as hook lines and sandbox warnings, then renders the model response in a colored Codex window.

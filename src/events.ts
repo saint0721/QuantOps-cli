@@ -56,8 +56,8 @@ export function defineEvent(input: {
       windows: (input.windows?.length ? input.windows : DEFAULT_EVENT_WINDOWS).map((window) => ({ label: window.label, from: window.from, to: window.to })),
     },
     next: [
-      target ? `quantops data info ${target} --json` : 'quantops symbol search <target> --json',
-      target ? `quantops event study ${target} --event-date YYYY-MM-DD${input.benchmark ? ` --benchmark ${input.benchmark.toUpperCase()}` : ''} --json` : 'quantops event study <target> --event-date YYYY-MM-DD --json',
+      target ? `rtk data info ${target} --json` : 'rtk symbol search <target> --json',
+      target ? `rtk event study ${target} --event-date YYYY-MM-DD${input.benchmark ? ` --benchmark ${input.benchmark.toUpperCase()}` : ''} --json` : 'rtk event study <target> --event-date YYYY-MM-DD --json',
     ],
   };
 }

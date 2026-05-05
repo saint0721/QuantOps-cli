@@ -875,7 +875,7 @@ function commandStart(): number {
       ],
     ),
     '',
-    '기본 흐름: User talks to Codex → Codex calls quantops CLI with --json → QuantOps returns artifacts/context.',
+    '기본 흐름: User talks to Codex → Codex calls rtk CLI with --json → QuantOps returns artifacts/context.',
     '주력 명령: codex-guide, runtime info, symbol, data, stats, compare, research, event, backtest, session',
     '내린 기능: QuantOps 자체 chat/TUI, /agent 중심 UX, MCP-first 흐름',
   ].join('\n'));
