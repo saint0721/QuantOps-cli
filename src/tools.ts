@@ -4,7 +4,8 @@ import { marketStatsRuntime } from './rustStats.ts';
 import { runResearch, formatResearchReport } from './research.ts';
 import { createIdea, addIdeaSymbol, addIdeaHypothesis, ideaStatus } from './idea.ts';
 import { formatLabWorkflow, runLabStage, formatLabRun, type LabStage } from './lab.ts';
-import { formatBacktestResult, formatStrategyList, listBacktestStrategies, runBacktest } from './backtest.ts';
+import { formatBacktestResult, formatStrategyList, listBacktestStrategies } from './backtest.ts';
+import { runBacktestRuntime } from './rustBacktest.ts';
 import { redact, type JsonObject, type JsonValue } from './storage.ts';
 import { redactSessionText } from './session.ts';
 
@@ -251,7 +252,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     sensitive: false,
     mutates_trading: false,
     async run(input, context) {
-      const run = runBacktest(stringArg(input, 'symbol'), {
+      const run = runBacktestRuntime(stringArg(input, 'symbol'), {
         base: context.base,
         source: stringArg(input, 'source', 'yahoo'),
         interval: stringArg(input, 'interval', 'd'),

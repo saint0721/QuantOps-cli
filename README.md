@@ -203,17 +203,20 @@ The active TypeScript runtime now runs normal market download, list, stats, and 
 
 ### Rust execution helpers
 
-`rtk stats <SYMBOL> --json` uses the TypeScript implementation by default, but it can use the Rust stats helper when the helper is built or when explicitly requested:
+`rtk stats <SYMBOL> --json` and `rtk backtest run <SYMBOL> --json` use the TypeScript implementation by default, but they can use Rust helpers when the helpers are built or when explicitly requested:
 
 ```bash
 cargo build --manifest-path tui/Cargo.toml --bin quantops-stats
+cargo build --manifest-path tui/Cargo.toml --bin quantops-backtest
 rtk stats TSM --source yahoo --json
+rtk backtest run TSM --strategy ma-cross --source yahoo --json
 
-# Force cargo-backed Rust execution without relying on a prebuilt helper:
+# Force cargo-backed Rust execution without relying on prebuilt helpers:
 QUANTOPS_STATS_ENGINE=rust-cargo rtk stats TSM --source yahoo --json
+QUANTOPS_BACKTEST_ENGINE=rust-cargo rtk backtest run TSM --strategy ma-cross --source yahoo --json
 ```
 
-`rtk doctor` reports the Rust helper path, cargo availability, and build hint under `rust_stats`. This keeps the stable Codex contract in `rtk ... --json` while moving isolated compute-heavy kernels to Rust incrementally.
+`rtk doctor` reports the Rust helper paths, cargo availability, and build hints under `rust_stats` and `rust_backtest`. This keeps the stable Codex contract in `rtk ... --json` while moving isolated compute-heavy kernels to Rust incrementally.
 
 Safety defaults:
 - no web UI

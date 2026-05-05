@@ -20,7 +20,8 @@ import { runAgent } from './agent.ts';
 import { providersJson, listProviders } from './providers.ts';
 import { ensureQuantSession, listQuantSessions, recordSessionEvent, sessionHandoff } from './session.ts';
 import { formatAgentLanguagePreference, normalizeAgentLanguage, readAgentPreferences, writeAgentLanguage } from './preferences.ts';
-import { formatBacktestResult, formatStrategyList, listBacktestStrategies, runBacktest } from './backtest.ts';
+import { formatBacktestResult, formatStrategyList, listBacktestStrategies } from './backtest.ts';
+import { runBacktestRuntime, rustBacktestStatus } from './rustBacktest.ts';
 import { runMcpServer } from './mcp.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 import { table } from './ui/table.ts';
@@ -395,6 +396,7 @@ function commandDoctor(dataDir: string): number {
     tmux_available: Boolean(tmuxPath()),
     tmux_install_hint: tmuxPath() ? 'ok' : tmuxInstallHint(),
     rust_stats: rustStatsStatus(),
+    rust_backtest: rustBacktestStatus(),
   });
   return ver.ok ? 0 : 1;
 }
@@ -1017,7 +1019,7 @@ function commandBacktest(dataDir: string, action = 'run', tail: string[] = []): 
       return 2;
     }
     const symbol = symbolFromBacktestTarget(dataDir, target);
-    const result = runBacktest(symbol, {
+    const result = runBacktestRuntime(symbol, {
       base: dataDir,
       source: explicitSource ? request.source : 'yahoo',
       interval: explicitInterval ? request.interval : 'd',
