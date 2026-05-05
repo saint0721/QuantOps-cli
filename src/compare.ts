@@ -1,4 +1,4 @@
-import { marketStats } from './marketAnalysis.ts';
+import { marketStatsRuntime } from './rustStats.ts';
 import type { JsonObject } from './storage.ts';
 import { table } from './ui/table.ts';
 
@@ -11,7 +11,7 @@ export type CompareOptions = {
 
 export function compareSymbols(symbols: string[], options: CompareOptions = {}): JsonObject {
   const targets = symbols.map((symbol) => symbol.toUpperCase());
-  const results = targets.map((symbol) => marketStats(symbol, {
+  const results = targets.map((symbol) => marketStatsRuntime(symbol, {
     base: options.base,
     source: options.source || 'yahoo',
     interval: options.interval || 'd',

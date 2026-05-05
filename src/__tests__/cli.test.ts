@@ -253,6 +253,31 @@ test('codex runtime commands expose agent-first machine contracts', async () => 
   assert.match(event.output, /event study TSM/);
 });
 
+test('compare command uses the runtime stats path for multiple local datasets', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-compare-'));
+  for (const symbol of ['AAPL', 'MSFT']) {
+    for (let i = 1; i <= 60; i += 1) {
+      appendJsonl(marketDatasetPath(dir, 'yahoo', symbol, 'd'), {
+        ticker: symbol,
+        provider_symbol: symbol,
+        source: 'yahoo',
+        interval: 'd',
+        date: `2026-01-${String(i).padStart(2, '0')}`,
+        fetched_at: '2026-01-01T00:00:00Z',
+        payload: { open: 100 + i, high: 101 + i, low: 99 + i, close: 100 + i, volume: 1000 + i },
+      });
+    }
+  }
+
+  const result = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'compare', 'AAPL', 'MSFT', '--source', 'yahoo', '--json']));
+
+  assert.equal(result.code, 0);
+  assert.match(result.output, /"command": "compare"/);
+  assert.match(result.output, /"symbols":/);
+  assert.match(result.output, /"AAPL"/);
+  assert.match(result.output, /"MSFT"/);
+});
+
 
 test('tools command redacts unknown tool names in CLI output', async () => {
   const result = await captureConsole(() => runOnce(['--no-tmux', 'tools', 'run', 'unknown?apikey=super-secret&session_id=sess-123', '--json']));
