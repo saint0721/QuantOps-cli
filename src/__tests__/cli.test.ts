@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { marketDatasetPath } from '../data.ts';
@@ -15,6 +15,7 @@ test('welcome keeps neofetch summary without runtime HUD line', () => {
   assert.match(welcome, /\/find/);
   assert.match(welcome, /\/download <SYMBOL>/);
   assert.match(welcome, /\/research <SYMBOL>/);
+  assert.match(welcome, /\/skills/);
   assert.match(welcome, /trading mutations disabled/);
   assert.doesNotMatch(welcome, /watchlist:\d/);
 });
@@ -117,4 +118,24 @@ test('lab command builds idea workflow and prompt-only artifacts', async () => {
   assert.equal(prompt.code, 0);
   assert.match(prompt.output, /backtest implementation swarm lead/);
   assert.match(prompt.output, /Do not write live trading code/);
+});
+
+test('skills command lists local Codex skills with dollar invocation hints', async () => {
+  const codexHome = mkdtempSync(join(tmpdir(), 'tq-cli-skills-'));
+  const skillDir = join(codexHome, 'skills', 'tossquant-idea-coach');
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: tossquant-idea-coach\ndescription: "Beginner idea coach"\n---\n', 'utf8');
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = codexHome;
+  try {
+    const result = await captureConsole(() => runOnce(['--no-tmux', 'skills']));
+
+    assert.equal(result.code, 0);
+    assert.match(result.output, /Codex skills/);
+    assert.match(result.output, /tossquant-idea-coach/);
+    assert.match(result.output, /\$tossquant-idea-coach --lang ko/);
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+  }
 });

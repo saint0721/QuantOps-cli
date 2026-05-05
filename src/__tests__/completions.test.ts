@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { completeLine, completionCandidates } from '../cli.ts';
@@ -12,6 +12,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('research'));
   assert.ok(completionCandidates('', 'quant').includes('idea'));
   assert.ok(completionCandidates('', 'quant').includes('lab'));
+  assert.ok(completionCandidates('', 'quant').includes('skills'));
   assert.ok(completionCandidates('', 'quant').includes('collect'));
   assert.ok(completionCandidates('', 'quant').includes('/collect'));
   assert.ok(completionCandidates('', 'quant').includes('data'));
@@ -28,6 +29,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/research'));
   assert.ok(completionCandidates('', 'quant').includes('/idea'));
   assert.ok(completionCandidates('', 'quant').includes('/lab'));
+  assert.ok(completionCandidates('', 'quant').includes('/skills'));
   assert.ok(completionCandidates('', 'quant').includes('/list'));
   assert.ok(completionCandidates('', 'quant').includes('/discover'));
   assert.ok(completionCandidates('', 'quant').includes('/sources'));
@@ -45,6 +47,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/idea ', 'quant'), ['new', 'list', 'show', 'add-symbol', 'add-hypothesis', 'status']);
   assert.deepEqual(completionCandidates('/idea status idea-20260505T031000-nvda ', 'quant'), ['--plain']);
   assert.deepEqual(completionCandidates('/lab ', 'quant'), ['workflow', 'discuss', 'verify', 'backtest']);
+  assert.deepEqual(completionCandidates('/skills ', 'quant'), []);
   assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));
@@ -105,4 +108,19 @@ test('codex mode limits completion to slash controls', () => {
   const candidates = completionCandidates('hello', 'codex');
   assert.ok(candidates.includes('/quant'));
   assert.equal(candidates.includes('quote'), false);
+});
+
+test('skill invocation completion suggests local Codex skills', () => {
+  const codexHome = mkdtempSync(join(tmpdir(), 'tq-complete-skills-'));
+  const dir = join(codexHome, 'skills', 'tossquant-idea-coach');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'SKILL.md'), '---\nname: tossquant-idea-coach\ndescription: "Idea coach"\n---\n', 'utf8');
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = codexHome;
+  try {
+    assert.deepEqual(completeLine('$toss', 'quant')[0], ['$tossquant-idea-coach']);
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+  }
 });

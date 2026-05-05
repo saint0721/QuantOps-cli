@@ -33,6 +33,7 @@ const ROOT_COMMANDS: &[&str] = &[
     "/research",
     "/idea",
     "/lab",
+    "/skills",
     "/list",
     "/status",
     "/collect",
@@ -362,6 +363,9 @@ impl App {
         if let Some(command) = line.strip_prefix('/') {
             return split_args(command);
         }
+        if line.starts_with('$') {
+            return vec!["ask".to_string(), line.to_string()];
+        }
         if self.mode == "codex" {
             return vec!["ask".to_string(), line.to_string()];
         }
@@ -382,10 +386,10 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "beginner /start · /next · /idea · /lab · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
+        "beginner /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /analyze <SYMBOL> · /research <SYMBOL> · /list".to_string(),
         "flow     /idea new \"NVDA momentum\" → /idea add-symbol latest NVDA → /lab workflow latest".to_string(),
         "advanced /lab discuss latest · /lab verify latest · /discover · /data info · /data refresh <SYMBOL> · /stats <SYMBOL>".to_string(),
-        "tools    /hud · /ask <question> · /codex · /quant · /exit".to_string(),
+        "tools    /skills · $tossquant-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
         "try      /start".to_string(),
@@ -449,6 +453,7 @@ fn command_candidates(
         "/download" => download_candidates(parts, trailing_space),
         "/analyze" => &[],
         "/research" => research_candidates(parts, trailing_space),
+        "/skills" => &[],
         "/idea" => one_level_candidates(
             parts,
             trailing_space,
@@ -551,6 +556,44 @@ fn lab_candidates(parts: &[&str], trailing_space: bool, data_dir: Option<&str>) 
         ];
     }
     Vec::new()
+}
+
+fn codex_skills_dir() -> PathBuf {
+    env::var("CODEX_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            env::var("HOME")
+                .map(|home| PathBuf::from(home).join(".codex"))
+                .unwrap_or_else(|_| PathBuf::from(".codex"))
+        })
+        .join("skills")
+}
+
+fn skill_invocation_candidates() -> Vec<String> {
+    skill_invocation_candidates_in(&codex_skills_dir())
+}
+
+fn skill_invocation_candidates_in(skills_dir: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    for root in [skills_dir.to_path_buf(), skills_dir.join(".system")] {
+        let Ok(entries) = fs::read_dir(root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.join("SKILL.md").exists() {
+                continue;
+            }
+            if let Some(name) = path.file_name().and_then(|item| item.to_str()) {
+                if name != ".system" {
+                    out.push(format!("${name}"));
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 const DISCOVER_CATEGORIES: &[&str] = &[
@@ -739,10 +782,17 @@ fn completion_matches(input: &str, mode: &str) -> Vec<String> {
 }
 
 fn completion_matches_with_data_dir(input: &str, mode: &str, data_dir: Option<&str>) -> Vec<String> {
+    let trimmed = input.trim_start();
+    if trimmed.starts_with('$') {
+        let token = active_completion_token(trimmed);
+        return skill_invocation_candidates()
+            .into_iter()
+            .filter(|candidate| token.is_empty() || candidate.starts_with(&token))
+            .collect();
+    }
     if mode == "codex" && !input.starts_with('/') {
         return ROOT_COMMANDS.iter().map(|item| item.to_string()).collect();
     }
-    let trimmed = input.trim_start();
     if trimmed.is_empty() {
         return ROOT_COMMANDS.iter().map(|item| item.to_string()).collect();
     }
@@ -1233,8 +1283,9 @@ mod tests {
     use super::{
         active_completion_token, completion_matches, completion_matches_with_data_dir,
         display_width, dynamic_input_height, input_cursor_column, input_cursor_visual_position,
-        input_visual_rows, loading_line, suggestion_line, transcript_line, visible_transcript_window,
-        visual_transcript_lines, welcome_lines, App, INPUT_PLACEHOLDER,
+        input_visual_rows, loading_line, skill_invocation_candidates_in, suggestion_line,
+        transcript_line, visible_transcript_window, visual_transcript_lines, welcome_lines, App,
+        INPUT_PLACEHOLDER,
     };
     use std::{env, fs, time::Duration};
 
@@ -1280,6 +1331,10 @@ mod tests {
         assert_eq!(
             app.command_args("/research NVDA --topic \"NVDA earnings momentum\""),
             vec!["research", "NVDA", "--topic", "NVDA earnings momentum"]
+        );
+        assert_eq!(
+            app.command_args("$tossquant-idea-coach --lang ko"),
+            vec!["ask", "$tossquant-idea-coach --lang ko"]
         );
         assert_eq!(app.command_args("collect plan AAPL"), Vec::<String>::new());
     }
@@ -1329,6 +1384,7 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/research".to_string()));
         assert!(completion_matches("", "quant").contains(&"/idea".to_string()));
         assert!(completion_matches("", "quant").contains(&"/lab".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/skills".to_string()));
         assert!(completion_matches("", "quant").contains(&"/list".to_string()));
         assert!(completion_matches("", "quant").contains(&"/sources".to_string()));
         assert!(completion_matches("", "quant").contains(&"/symbol".to_string()));
@@ -1560,6 +1616,22 @@ mod tests {
         assert!(lab_matches.contains(
             &"idea-20260505T031500-nvda-earnings-momentum".to_string()
         ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn skill_invocation_completion_reads_codex_skill_dirs() {
+        let root = env::temp_dir().join(format!(
+            "tq-tui-skills-complete-{}",
+            std::process::id()
+        ));
+        let skill = root.join("tossquant-idea-coach");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "---\nname: tossquant-idea-coach\n---\n").unwrap();
+
+        let matches = skill_invocation_candidates_in(&root);
+
+        assert_eq!(matches, vec!["$tossquant-idea-coach".to_string()]);
         let _ = fs::remove_dir_all(root);
     }
 

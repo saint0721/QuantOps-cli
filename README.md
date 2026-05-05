@@ -77,6 +77,8 @@ TossQuant quant ❯ history AAPL
 TossQuant quant ❯ classify AAPL
 TossQuant quant ❯ portfolio
 TossQuant quant ❯ /ask what should I study next?
+TossQuant quant ❯ /skills
+TossQuant quant ❯ $tossquant-idea-coach --lang ko
 TossQuant quant ❯ /brief
 TossQuant quant ❯ /research AAPL
 TossQuant quant ❯ /audit
@@ -216,6 +218,8 @@ TossQuant is not an always-on chatbot. It starts in `quant` mode and only calls 
 - `/ask <question>` runs one Codex request.
 - `/codex` changes the prompt to `tossquant/codex>`; normal text is sent to Codex.
 - `/quant` returns to normal TossQuant commands.
+- `/skills` lists Codex skills found under `$CODEX_HOME/skills` or `~/.codex/skills`.
+- `$skill-name ...` invokes an installed Codex skill from interactive quant/TUI; Tab completion suggests installed skills such as `$tossquant-idea-coach`.
 - `/brief` or `/today` asks Codex for a local-data session brief and next TossQuant commands.
 - `/research <TICKER>` combines local OHLCV/stat/audit context with a Codex/web event-summary prompt, saves a redacted report under `data/research/`, and avoids buy/sell/hold advice or single-score conclusions.
 - `/audit [TICKER]` runs deterministic local data-quality checks; add `explain` or `--explain` to ask Codex to explain the findings.
@@ -240,6 +244,7 @@ Market data defaults:
 
 Codex is launched as `codex exec --sandbox read-only --cd <project> ...` so the first integration is intentionally read-only.
 TossQuant filters Codex CLI transcript noise such as hook lines and sandbox warnings, then renders the model response in a colored Codex window.
+When invoking a skill from a regular shell instead of the interactive prompt, quote the `$...` token (for example `quant '$tossquant-idea-coach --lang ko'`) so your shell does not expand it as an environment variable.
 
 Codex safety boundaries:
 - Codex receives summarized/redacted local context, not raw credentials.
