@@ -7,12 +7,15 @@ import { marketDatasetPath } from '../data.ts';
 import { listIdeas } from '../idea.ts';
 import { runOnce, welcomeCard } from '../cli.ts';
 import { appendJsonl } from '../storage.ts';
+import { sessionEvents } from '../session.ts';
 
 test('welcome keeps neofetch summary without runtime HUD line', () => {
   const welcome = welcomeCard();
   assert.match(welcome, /QuantOps-cli/);
+  assert.match(welcome, /그냥 입력하세요/);
   assert.match(welcome, /beginner/);
-  assert.match(welcome, /\/find/);
+  assert.doesNotMatch(welcome, /\/find/);
+  assert.doesNotMatch(welcome, /\/ask/);
   assert.match(welcome, /\/download <SYMBOL>/);
   assert.match(welcome, /\/research <SYMBOL>/);
   assert.match(welcome, /\/skills/);
@@ -29,12 +32,26 @@ function captureConsole(fn: () => Promise<number>): Promise<{ code: number; outp
 
 test('research command routes to missing-data guidance without invoking generic codex chat', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-research-missing-'));
+  const sessionRoot = mkdtempSync(join(tmpdir(), 'tq-cli-session-'));
+  const previousSessionDir = process.env.QUANTOPS_SESSION_DIR;
+  process.env.QUANTOPS_SESSION_DIR = sessionRoot;
 
   const { code, output } = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'research', 'AAPL']));
+  if (previousSessionDir === undefined) delete process.env.QUANTOPS_SESSION_DIR;
+  else process.env.QUANTOPS_SESSION_DIR = previousSessionDir;
 
   assert.equal(code, 1);
   assert.match(output, /data download AAPL --period 1y/);
   assert.match(output, /before external research/);
+  assert.match(output, /chat  AAPL 리서치 결과/);
+  assert.ok(sessionEvents('agent-chat', sessionRoot).some((event) => event.type === 'research.report'));
+});
+
+test('removed human shortcuts no longer execute as commands', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-removed-shortcuts-'));
+
+  assert.equal(await runOnce(['--no-tmux', '--data-dir', dir, 'find', 'trending'], { quietUnknown: true }), 2);
+  assert.equal(await runOnce(['--no-tmux', '--data-dir', dir, 'ask', 'what', 'next'], { quietUnknown: true }), 2);
 });
 
 test('data info and validate route through local market datasets', async () => {
@@ -60,6 +77,9 @@ test('data info and validate route through local market datasets', async () => {
 
 test('idea command records research hypotheses and links next data commands', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-idea-'));
+  const sessionRoot = mkdtempSync(join(tmpdir(), 'tq-cli-idea-session-'));
+  const previousSessionDir = process.env.QUANTOPS_SESSION_DIR;
+  process.env.QUANTOPS_SESSION_DIR = sessionRoot;
 
   const created = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'idea', 'new', 'NVDA', 'earnings', 'momentum']));
   const idea = listIdeas(dir)[0]!;
@@ -69,6 +89,7 @@ test('idea command records research hypotheses and links next data commands', as
 
   assert.equal(created.code, 0);
   assert.match(created.output, /created idea/);
+  assert.match(created.output, /chat  이제 그냥 자연어/);
   assert.equal(symbol.code, 0);
   assert.match(symbol.output, /NVDA/);
   assert.equal(hypothesis.code, 0);
@@ -77,6 +98,13 @@ test('idea command records research hypotheses and links next data commands', as
   assert.match(status.output, /Idea: NVDA earnings momentum/);
   assert.match(status.output, /data download NVDA --period 1y/);
   assert.match(status.output, /research NVDA --topic "NVDA earnings momentum"/);
+  const eventTypes = sessionEvents('agent-chat', sessionRoot).map((event) => event.type);
+  assert.ok(eventTypes.includes('idea.created'));
+  assert.ok(eventTypes.includes('idea.symbol_added'));
+  assert.ok(eventTypes.includes('idea.hypothesis_added'));
+  assert.ok(eventTypes.includes('idea.status'));
+  if (previousSessionDir === undefined) delete process.env.QUANTOPS_SESSION_DIR;
+  else process.env.QUANTOPS_SESSION_DIR = previousSessionDir;
 });
 
 test('idea command resolves latest references and prints copy-friendly plain status', async () => {
@@ -114,7 +142,7 @@ test('lab command builds idea workflow and prompt-only artifacts', async () => {
   assert.match(workflow.output, /quant lab discuss/);
   assert.equal(discuss.code, 0);
   assert.match(discuss.output, /논의 주제: 실적 모멘텀을 뉴스와 연결해서 보고 싶어/);
-  assert.match(discuss.output, /\/agent 실적 모멘텀을 뉴스와 연결해서 보고 싶어/);
+  assert.match(discuss.output, /그냥 입력: 실적 모멘텀을 뉴스와 연결해서 보고 싶어/);
   assert.equal(verify.code, 0);
   assert.match(verify.output, /Lab verify: NVDA earnings momentum/);
   assert.match(verify.output, /Blocking gaps/);

@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { estimateTokens, extractLimit, extractPeriod, extractSymbol, formatNaturalPlan, planNatural } from '../natural.ts';
 
-test('natural input maps Korean discovery requests to safe find commands', () => {
+test('natural input maps Korean discovery requests to safe discover commands', () => {
   const plan = planNatural('많이 거래되는 종목 5개 찾아줘');
 
   assert.equal(plan.ok, true);
   assert.equal(plan.intent, 'discover');
-  assert.deepEqual(plan.steps.map((step) => step.command), ['find most-active --limit 5']);
-  assert.match(formatNaturalPlan(plan), /\/find most-active --limit 5/);
+  assert.deepEqual(plan.steps.map((step) => step.command), ['discover most-active --limit 5']);
+  assert.match(formatNaturalPlan(plan), /\/discover most-active --limit 5/);
 });
 
 test('natural input maps symbol download and analysis requests to an explicit command plan', () => {

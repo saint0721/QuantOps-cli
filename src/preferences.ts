@@ -46,10 +46,11 @@ export function formatAgentLanguagePreference(prefs: AgentPreferences): string {
     `current: ${label}`,
     '',
     'Set with:',
-    '- /agent ko',
-    '- /agent en',
-    '- /agent auto',
+    '- agent ko',
+    '- agent en',
+    '- agent auto',
+    '- interactive shortcut still works: /agent ko',
     '',
-    'Agent requests without --session continue in the shared agent-chat session.',
+    'In interactive mode, plain chat text is automatically handled by the shared agent-chat session.',
   ].join('\n');
 }

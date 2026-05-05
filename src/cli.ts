@@ -25,7 +25,6 @@ import { runMcpServer } from './mcp.ts';
 import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 import { table } from './ui/table.ts';
 import { SOURCES, discoverMarket, searchSymbolsLive, sourceById, symbolInfo, type DiscoverResult, type SourceInfo, type SymbolInfo, type SymbolSearchResult } from './discovery.ts';
-import { formatNaturalPlan, planNatural } from './natural.ts';
 import { nextRecommendation } from './next.ts';
 import { periodToDateRange } from './period.ts';
 import { marketStats } from './marketAnalysis.ts';
@@ -41,8 +40,8 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'next', 'find', 'download', 'research', 'idea', 'lab', 'tools', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/find', '/download', '/research', '/idea', '/lab', '/tools', '/agent', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/backtest', '/strategy', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/ask', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'next', 'download', 'research', 'idea', 'lab', 'tools', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/start', '/next', '/download', '/research', '/idea', '/lab', '/tools', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/backtest', '/strategy', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
 
@@ -111,11 +110,6 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
       return ['--period', '--start', '--end', '--interval', '--source'];
     }
     return [];
-  }
-  if (command === 'find') {
-    if (parts.length <= 2) return ['trending', 'most-active', 'gainers', 'losers'];
-    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--limit') return ['10', '25', '50', '100'];
-    return ['--limit'];
   }
   if (command === 'download') return parts.length >= 3 && trimmed.endsWith(' ') ? ['--period', '--start', '--end'] : [];
   if (command === 'analyze') return [];
@@ -522,6 +516,15 @@ function formatIdeaStatusPlain(result: ReturnType<typeof ideaStatus>): string {
   ].join('\n');
 }
 
+function recordAgentContext(type: string, summary: string, payload: JsonObject = {}): void {
+  const session = ensureQuantSession({ id: 'agent-chat', title: summary.slice(0, 80) || 'QuantOps agent chat' });
+  recordSessionEvent(session, { type, summary, payload });
+}
+
+function chatContinuationHint(text: string): string {
+  return `chat  ${text}`;
+}
+
 function commandIdea(dataDir: string, action = 'list', tail: string[] = []): number {
   try {
     const plain = tail.includes('--plain');
@@ -530,11 +533,13 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       const title = args.join(' ');
       const idea = createIdea(dataDir, title);
       const suggestedSymbol = title.match(/\b[A-Z][A-Z0-9.-]{1,9}\b/)?.[0] ?? 'AAPL';
+      recordAgentContext('idea.created', `created idea ${idea.id}: ${idea.title}`, { idea: idea.id, title: idea.title, suggested_symbol: suggestedSymbol });
       printText([
         `created idea ${idea.id}`,
         `title: ${idea.title}`,
         `saved_to: ${ideaPath(dataDir, idea.id)}`,
         `next  /idea add-symbol ${idea.id} ${suggestedSymbol}`,
+        chatContinuationHint('이제 그냥 자연어로 “이 아이디어를 어떤 데이터로 검증할까?”처럼 이어서 말하면 됩니다.'),
       ].join('\n'));
       return 0;
     }
@@ -554,10 +559,12 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       const [id, symbol] = args;
       if (!id || !symbol) { warn('usage: idea add-symbol <ID> <SYMBOL>'); return 2; }
       const idea = addIdeaSymbol(dataDir, id, symbol);
+      recordAgentContext('idea.symbol_added', `added ${symbol.toUpperCase()} to ${idea.id}`, { idea: idea.id, symbol: symbol.toUpperCase(), symbols: idea.symbols });
       printText([
         `updated idea ${idea.id}`,
         `symbols: ${idea.symbols.join(', ') || '-'}`,
         `next  /idea status ${idea.id}`,
+        chatContinuationHint(`${symbol.toUpperCase()}로 어떤 반례/리서치/백테스트를 먼저 볼지 자연어로 물어보세요.`),
       ].join('\n'));
       return 0;
     }
@@ -566,10 +573,12 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       const hypothesis = args.slice(1).join(' ');
       if (!id || !hypothesis) { warn('usage: idea add-hypothesis <ID> <TEXT>'); return 2; }
       const idea = addIdeaHypothesis(dataDir, id, hypothesis);
+      recordAgentContext('idea.hypothesis_added', `added hypothesis to ${idea.id}`, { idea: idea.id, hypothesis });
       printText([
         `updated idea ${idea.id}`,
         `hypotheses: ${idea.hypotheses.length}`,
         `next  /idea status ${idea.id}`,
+        chatContinuationHint('이 가설이 틀릴 조건과 필요한 데이터를 자연어로 이어서 물어보세요.'),
       ].join('\n'));
       return 0;
     }
@@ -577,6 +586,7 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       const id = args[0];
       if (!id) { warn('usage: idea status <ID>'); return 2; }
       const status = ideaStatus(dataDir, id);
+      if (!plain) recordAgentContext('idea.status', `checked idea status ${status.idea.id}`, { idea: status.idea.id, readiness: status.readiness as unknown as JsonObject[] });
       printText(plain ? formatIdeaStatusPlain(status) : formatIdeaStatus(status));
       return 0;
     }
@@ -623,7 +633,18 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
       providerSymbol: explicitProvider ? request.providerSymbol : undefined,
       save: !noSave,
     }, useCodex ? runCodexPromptText : undefined);
-    printText(formatResearchReport(result));
+    recordAgentContext('research.report', `research ${symbol.toUpperCase()}${topic ? `: ${topic}` : ''}`, {
+      symbol: symbol.toUpperCase(),
+      topic: topic ?? '',
+      ok: !result.missing_data,
+      missing_data: Boolean(result.missing_data),
+      saved_to: result.saved_to ?? '',
+    });
+    printText([
+      formatResearchReport(result),
+      '',
+      chatContinuationHint(`${symbol.toUpperCase()} 리서치 결과에서 반례, 외부 요인, 다음 검증 포인트를 자연어로 이어서 물어보세요.`),
+    ].join('\n'));
     return result.missing_data ? 1 : 0;
   } catch (error) {
     printJson({ ok: false, symbol: symbol.toUpperCase(), error: error instanceof Error ? error.message : String(error) });
@@ -784,24 +805,23 @@ function commandSources(kind = 'list'): number {
 
 function commandStart(): number {
   printText([
-    'Start here — 초보자용 5단계',
+    'Start here — 채팅 먼저, 명령은 필요할 때만',
     '',
     table(
       ['step', 'command', 'why'],
       [
-        ['1', '/find', '실시간 후보 10개 찾기'],
-        ['2', '/symbol info NVDA', '고른 심볼이 뭔지 확인'],
-        ['3', '/download NVDA', '1년치 일봉 데이터 저장'],
-        ['4', '/stats NVDA', '수익률/변동성/추세 확인'],
-        ['5', '/idea new "NVDA momentum"', '전략 아이디어를 저장'],
-        ['6', '/lab workflow latest', '논의/검증/백테스트 작업 흐름 시작'],
-        ['7', '/backtest run latest --strategy ma-cross', '전략을 직접 백테스트'],
-        ['8', '/next', '현재 상태에서 다음 행동 추천'],
+        ['1', '그냥 질문 입력', '사람은 /agent 없이 자연어로 대화'],
+        ['2', 'NVDA 실적 모멘텀을 검증하고 싶어', '에이전트가 필요한 tool을 고름'],
+        ['3', '/tools', '에이전트가 쓸 수 있는 CLI/tool 표면 확인'],
+        ['4', '/idea new "NVDA momentum"', '필요하면 아이디어를 명시적으로 저장'],
+        ['5', '/lab workflow latest', '논의/검증/백테스트 작업 흐름 시작'],
+        ['6', '/backtest run latest --strategy ma-cross', '전략을 직접 백테스트'],
+        ['7', '/next', '현재 상태에서 다음 행동 추천'],
       ],
     ),
     '',
-    '기본 흐름: /find → /download <SYMBOL> → /stats <SYMBOL> → /idea new ... → /lab workflow latest → /backtest run latest',
-    '고급 명령: /idea, /lab, /backtest, /strategy, /discover, /data download, /stats, /sources, /runtime',
+    '기본 흐름: 자연어 채팅 → agent tool 실행/제안 → /idea 또는 /lab 저장 → /backtest 검증',
+    '고급/에이전트용 명령: /tools, /idea, /lab, /backtest, /strategy, /discover, /data download, /stats, /sources, /runtime',
   ].join('\n'));
   return 0;
 }
@@ -1123,19 +1143,6 @@ async function commandDiscover(dataDir: string, parts: string[]): Promise<number
   return 0;
 }
 
-function findAliasArgs(sub?: string, tail: string[] = []): string[] {
-  const category = sub && !sub.startsWith('--') ? sub : 'most-active';
-  const rest = sub && sub.startsWith('--') ? [sub, ...tail] : tail;
-  const hasSource = rest.includes('--source');
-  const hasLimit = rest.includes('--limit');
-  return [
-    category,
-    ...(hasSource ? [] : ['--source', 'yahoo']),
-    ...(hasLimit ? [] : ['--limit', '10']),
-    ...rest,
-  ];
-}
-
 function downloadAliasArgs(symbol?: string, tail: string[] = []): string[] {
   if (!symbol) return [];
   const hasRange = tail.includes('--period') || tail.includes('--start') || tail.includes('--end');
@@ -1243,7 +1250,7 @@ function runCodexPromptText(prompt: string): ResearchCodexResult {
 }
 
 function runCodexPrompt(prompt: string): number {
-  if (!prompt.trim()) { warn('usage: /ask <QUESTION>'); return 2; }
+  if (!prompt.trim()) { warn('usage: codex prompt text'); return 2; }
   const result = runCodexPromptText(prompt);
   if (result.error === 'codex CLI not found in PATH') { warn(result.error); return 127; }
   if (result.text) {
@@ -1302,10 +1309,11 @@ export function welcomeCard(): string {
     'runtime     TypeScript / Node 24+ / tmux HUD when available',
     'safety      read-only data by default · no real order mutation',
     '',
-    'beginner    /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list',
-    'flow        /idea new "NVDA momentum"  →  /idea add-symbol latest NVDA  →  /lab workflow latest',
-    'advanced    /tools · /agent ko · /agent "NVDA momentum" · /backtest run latest · /strategy list · /discover · /data info · /stats <SYMBOL>',
-    'codex       /skills · /tools · /agent · $quantops-idea-coach · /ask <question> · /codex · /quant · /exit',
+    'chat        그냥 입력하세요: “NVDA 실적 모멘텀을 검증하고 싶어”',
+    'beginner    /start · /next · /idea · /lab · /skills · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list',
+    'flow        자연어 채팅  →  agent tool 실행/제안  →  /idea 또는 /lab 저장  →  /backtest 검증',
+    'advanced    /tools · /backtest run latest · /strategy list · /discover · /data info · /stats <SYMBOL>',
+    'codex       /skills · /tools · $quantops-idea-coach · /codex · /quant · /exit',
     'plain mode  quant --no-tmux',
     '',
   ].join('\n');
@@ -1340,7 +1348,7 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (line === '/next') { commandNext(dataDir); lastAction = '/next'; return false; }
     if (line === '/skills') { commandSkills(); lastAction = '/skills'; return false; }
     if (line.startsWith('/tools')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/tools'; return false; }
-    if (line.startsWith('/agent')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/agent'; return false; }
+    if (line.startsWith('/agent')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = 'agent'; return false; }
     if (line.startsWith('/provider')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/provider'; return false; }
     if (line.startsWith('/session')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/session'; return false; }
     if (line === '/status') { printStatus(dataDir); lastAction = '/status'; return false; }
@@ -1348,19 +1356,18 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (line === '/hud') { emitChat(runtimeLine(dataDir, mode, lastAction)); lastAction = '/hud'; return false; }
     if (line === '/hud tmux') { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); lastAction = '/hud'; return false; }
     if (line.startsWith('/runtime')) { emitChat(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; return false; }
-    if (line.startsWith('/ask ')) { runCodexPrompt(line.slice(5)); lastAction = '/ask'; return false; }
     if (line.startsWith('/research ')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/research'; return false; }
     if (line.startsWith('$')) { runCodexPrompt(line); lastAction = 'skill'; return false; }
     if (mode === 'codex') { runCodexPrompt(line); lastAction = 'codex'; return false; }
     if (!line.startsWith('/')) {
-      emitChat(formatNaturalPlan(planNatural(line)));
-      lastAction = 'natural-plan';
+      await commandAgent(dataDir, [line]);
+      lastAction = 'agent-chat';
       return false;
     }
     const commandParts = line.slice(1).split(/\s+/);
     const code = await runOnce(['--data-dir', dataDir, ...commandParts], { quietUnknown: true });
     lastAction = commandParts.slice(0, 2).join(' ');
-    if (code === 2) warn('unknown slash command: try /start, /find, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or /exit');
+    if (code === 2) warn('unknown slash command: try /start, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or just type a natural-language chat message.');
     return false;
   };
   const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode, dataDir) });
@@ -1393,10 +1400,6 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (!cmd) return 2;
   if (cmd === 'start') return commandStart();
   if (cmd === 'next') return commandNext(dataDir);
-  if (cmd === 'find' && sub && !sub.startsWith('--') && !DISCOVER_CATEGORIES.includes(sub)) {
-    return commandSymbol(dataDir, 'search', [sub, ...tail].join(' '));
-  }
-  if (cmd === 'find') return commandDiscover(dataDir, findAliasArgs(sub, tail));
   if (cmd === 'download') return commandData(dataDir, 'download', downloadAliasArgs(sub, tail));
   if (cmd === 'analyze') return commandStats(dataDir, sub, tail);
   if (cmd === 'research') return commandResearch(dataDir, sub, tail);
@@ -1427,7 +1430,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'portfolio' && (sub === 'snapshot' || !sub)) return commandPortfolioSnapshot(dataDir);
   if (cmd === 'order' && sub === 'preview') return commandOrderPreview(tail);
   if (cmd === 'watchlist') return handleWatchlist(['watchlist', sub ?? 'list', ...tail], dataDir);
-  if (cmd === 'ask') return runCodexPrompt([sub, ...tail].filter(Boolean).join(' '));
+  if (cmd === 'codex-prompt') return runCodexPrompt([sub, ...tail].filter(Boolean).join(' '));
   if (cmd?.startsWith('$')) return runCodexPrompt([cmd, sub, ...tail].filter(Boolean).join(' '));
   if (cmd === 'runtime' && sub === 'snapshot') { printJson(recordRuntime({ base: dataDir, lastAction: 'snapshot' })); return 0; }
   if (cmd === 'runtime' && sub === 'line') { console.log(runtimeLine(dataDir)); return 0; }

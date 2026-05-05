@@ -24,17 +24,15 @@ use ratatui::Terminal;
 const TOSS_BLUE: Color = Color::Rgb(0, 100, 255);
 const CHAT_BG: Color = Color::Rgb(238, 238, 238);
 const PROMPT_LABEL: &str = " ❯ ";
-const INPUT_PLACEHOLDER: &str = "명령어를 입력하세요. 예: /find";
+const INPUT_PLACEHOLDER: &str = "자연어로 입력하세요. 예: NVDA 실적 모멘텀 검증";
 const ROOT_COMMANDS: &[&str] = &[
     "/start",
     "/next",
-    "/find",
     "/download",
     "/research",
     "/idea",
     "/lab",
     "/tools",
-    "/agent",
     "/provider",
     "/session",
     "/skills",
@@ -57,7 +55,6 @@ const ROOT_COMMANDS: &[&str] = &[
     "/watchlist",
     "/hud",
     "/runtime",
-    "/ask",
     "/codex",
     "/quant",
     "/exit",
@@ -295,7 +292,7 @@ impl App {
     fn start_line(&mut self, line: &str) -> Result<(), String> {
         let args = self.command_args(line);
         if args.is_empty() {
-            return Err("slash commands only: try /start, /idea, /find, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or /exit"
+            return Err("try /start, /idea, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or just type a natural-language chat message"
                 .to_string());
         }
         let child = Command::new(&self.node)
@@ -336,7 +333,7 @@ impl App {
                 text.push_str(&String::from_utf8_lossy(&output.stderr));
                 let cleaned = strip_ansi(&text).trim().to_string();
                 if output.status.code() == Some(2) && cleaned.contains("unknown command:") {
-                    "unknown slash command: try /start, /idea, /find, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or /exit"
+                    "unknown slash command: try /start, /idea, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or just type a natural-language chat message"
                         .to_string()
                 } else {
                     cleaned
@@ -363,19 +360,16 @@ impl App {
         if let Some(rest) = line.strip_prefix("/runtime") {
             return split_args(&format!("runtime{rest}"));
         }
-        if let Some(prompt) = line.strip_prefix("/ask ") {
-            return vec!["ask".to_string(), prompt.to_string()];
-        }
         if let Some(command) = line.strip_prefix('/') {
             return split_args(command);
         }
         if line.starts_with('$') {
-            return vec!["ask".to_string(), line.to_string()];
+            return vec!["codex-prompt".to_string(), line.to_string()];
         }
         if self.mode == "codex" {
-            return vec!["ask".to_string(), line.to_string()];
+            return vec!["codex-prompt".to_string(), line.to_string()];
         }
-        Vec::new()
+        vec!["agent".to_string(), line.to_string()]
     }
 }
 
@@ -393,10 +387,11 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "runtime  TypeScript CLI + Rust TUI + tmux HUD when available".to_string(),
         "safety   read-only data by default · trading mutations disabled".to_string(),
         "".to_string(),
-        "beginner /start · /next · /idea · /lab · /skills · /find · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list".to_string(),
-        "flow     /idea new \"NVDA momentum\" → /idea add-symbol latest NVDA → /lab workflow latest".to_string(),
+        "chat     그냥 입력: NVDA 실적 모멘텀을 검증하고 싶어".to_string(),
+        "beginner /start · /next · /idea · /lab · /skills · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list".to_string(),
+        "flow     자연어 채팅 → agent tool 실행/제안 → /idea 또는 /lab 저장 → /backtest".to_string(),
         "advanced /backtest run latest · /strategy list · /lab verify latest · /discover · /data info · /stats <SYMBOL>".to_string(),
-        "tools    /skills · /tools · /agent ko · $quantops-idea-coach · /hud · /ask <question> · /codex · /quant · /exit".to_string(),
+        "tools    /skills · /tools · $quantops-idea-coach · /hud · /codex · /quant · /exit".to_string(),
         "keys     Tab completes from the search row · ↑/↓ history · ←/→ move cursor".to_string(),
         "".to_string(),
         "try      /start".to_string(),
@@ -456,7 +451,6 @@ fn command_candidates(
     match command {
         "/collect" => collect_candidates(parts, trailing_space),
         "/data" => data_candidates(parts, trailing_space),
-        "/find" => find_candidates(parts, trailing_space),
         "/download" => download_candidates(parts, trailing_space),
         "/analyze" => &[],
         "/research" => research_candidates(parts, trailing_space),
@@ -704,16 +698,6 @@ fn discover_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'stat
         return DISCOVER_OPTIONS;
     }
     DISCOVER_CATEGORIES
-}
-
-fn find_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
-    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
-        return &["trending", "most-active", "gainers", "losers"];
-    }
-    if trailing_space && parts.last().copied() == Some("--limit") {
-        return DISCOVER_LIMITS;
-    }
-    &["--limit"]
 }
 
 fn download_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
@@ -1395,9 +1379,9 @@ mod tests {
         );
         assert_eq!(
             app.command_args("$quantops-idea-coach --lang ko"),
-            vec!["ask", "$quantops-idea-coach --lang ko"]
+            vec!["codex-prompt", "$quantops-idea-coach --lang ko"]
         );
-        assert_eq!(app.command_args("collect plan AAPL"), Vec::<String>::new());
+        assert_eq!(app.command_args("collect plan AAPL"), vec!["agent", "collect plan AAPL"]);
     }
 
     #[test]
@@ -1439,14 +1423,14 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/data".to_string()));
         assert!(completion_matches("", "quant").contains(&"/discover".to_string()));
         assert!(completion_matches("", "quant").contains(&"/start".to_string()));
-        assert!(completion_matches("", "quant").contains(&"/find".to_string()));
+        assert!(!completion_matches("", "quant").contains(&"/find".to_string()));
         assert!(completion_matches("", "quant").contains(&"/download".to_string()));
         assert!(!completion_matches("", "quant").contains(&"/analyze".to_string()));
         assert!(completion_matches("", "quant").contains(&"/research".to_string()));
         assert!(completion_matches("", "quant").contains(&"/idea".to_string()));
         assert!(completion_matches("", "quant").contains(&"/lab".to_string()));
         assert!(completion_matches("", "quant").contains(&"/tools".to_string()));
-        assert!(completion_matches("", "quant").contains(&"/agent".to_string()));
+        assert!(!completion_matches("", "quant").contains(&"/agent".to_string()));
         assert!(completion_matches("", "quant").contains(&"/skills".to_string()));
         assert!(completion_matches("", "quant").contains(&"/list".to_string()));
         assert!(completion_matches("", "quant").contains(&"/sources".to_string()));
@@ -1532,25 +1516,6 @@ mod tests {
         );
         assert!(
             completion_matches("/data watchlist ", "quant").contains(&"refresh".to_string())
-        );
-        assert_eq!(
-            completion_matches("/find ", "quant"),
-            vec![
-                "trending".to_string(),
-                "most-active".to_string(),
-                "gainers".to_string(),
-                "losers".to_string()
-            ]
-        );
-        assert!(completion_matches("/find trending ", "quant").contains(&"--limit".to_string()));
-        assert_eq!(
-            completion_matches("/find trending --limit ", "quant"),
-            vec![
-                "10".to_string(),
-                "25".to_string(),
-                "50".to_string(),
-                "100".to_string()
-            ]
         );
         assert!(completion_matches("/download NVDA ", "quant").contains(&"--period".to_string()));
         assert_eq!(
@@ -1825,7 +1790,7 @@ mod tests {
         let app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
 
         assert!(app.input.is_empty());
-        assert_eq!(INPUT_PLACEHOLDER, "명령어를 입력하세요. 예: /find");
+        assert_eq!(INPUT_PLACEHOLDER, "자연어로 입력하세요. 예: NVDA 실적 모멘텀 검증");
         assert_eq!(input_cursor_column(&app.input, app.cursor), 0);
     }
 
@@ -1849,7 +1814,8 @@ mod tests {
         let text = lines.join("\n");
         assert!(text.contains("QuantOps-cli"));
         assert!(text.contains("/start"));
-        assert!(text.contains("/find"));
+        assert!(text.contains("그냥 입력"));
+        assert!(!text.contains("/find"));
         assert!(text.contains("/download <SYMBOL>"));
         assert!(text.contains("/stats <SYMBOL>"));
         assert!(text.contains("/backtest run latest"));

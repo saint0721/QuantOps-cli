@@ -76,11 +76,11 @@ QuantOps quant ❯ collect quote AAPL
 QuantOps quant ❯ history AAPL
 QuantOps quant ❯ classify AAPL
 QuantOps quant ❯ portfolio
-QuantOps quant ❯ /ask what should I study next?
+QuantOps quant ❯ NVDA 실적 모멘텀을 검증하고 싶어
 QuantOps quant ❯ /skills
 QuantOps quant ❯ /tools
-QuantOps quant ❯ /agent ko
-QuantOps quant ❯ /agent NVDA earnings momentum research
+QuantOps quant ❯ agent ko
+QuantOps quant ❯ agent NVDA earnings momentum research
 QuantOps quant ❯ $quantops-idea-coach --lang ko
 QuantOps quant ❯ /brief
 QuantOps quant ❯ /research AAPL
@@ -219,15 +219,15 @@ bottom tmux HUD pane when you are already inside a tmux session.
 
 ## Codex bridge
 
-QuantOps is not an always-on chatbot. It starts in `quant` mode and only calls Codex when you explicitly ask:
+QuantOps is chat-first for humans and tool-first for agents. In interactive mode, plain text is routed to the shared `agent-chat` session, where the local agent can inspect safe tools and suggest or run only the minimum useful CLI actions:
 
-- `/ask <question>` runs one Codex request.
+- Just type naturally, e.g. `NVDA 실적 모멘텀을 검증하고 싶어`.
 - `/codex` changes the prompt to `quantops/codex>`; normal text is sent to Codex.
 - `/quant` returns to normal QuantOps commands.
 - `/skills` lists QuantOps-only local skills found under `quant-skills/` or `$QUANTOPS_SKILLS_DIR`.
 - `/tools` lists the safe QuantOps tool registry exposed to agents and MCP clients.
-- `/agent ko|en|auto` sets the default local agent report language.
-- `/agent <request>` runs a beginner-friendly local tool loop, continues the shared `.quant` `agent-chat` session by default, and can optionally ask a provider with `--provider codex|claude`. Use `--download` before allowing network/local data-download writes.
+- `quant agent ko|en|auto` sets the default local agent report language; `/agent ko` remains as an interactive compatibility shortcut.
+- `quant agent <request>` is the scriptable agent-facing command surface. It continues the shared `.quant` `agent-chat` session by default and can optionally ask a provider with `--provider codex|claude`. Use `--download` before allowing network/local data-download writes.
 - `/session handoff` prints the recent `.quant/` session summary so Codex/Claude can continue the conversation without raw credentials.
 - `$skill-name ...` invokes a QuantOps local skill from interactive quant/TUI; Tab completion suggests quant-only skills such as `$quantops-idea-coach`.
 - `/brief` or `/today` asks Codex for a local-data session brief and next QuantOps commands.
@@ -241,7 +241,7 @@ Market data defaults:
 - `quant idea status latest` shows whether each linked symbol has market data, validation status, saved research, and next QuantOps commands. You can also use a unique id prefix, title text, or a linked symbol instead of the full id.
 - `quant idea status latest --plain` prints a copy-friendly version for Codex/Claude discussions.
 - `quant lab workflow latest` shows the discuss → verify → backtest workflow for the saved idea.
-- `quant lab discuss latest <what you want to discuss>` starts a focused local discussion without quotes in the interactive prompt, records it in the shared `agent-chat` session, and suggests the next `/agent ...` follow-up; add `--codex` to ask Codex when available.
+- `quant lab discuss latest <what you want to discuss>` starts a focused local discussion without quotes in the interactive prompt, records it in the shared `agent-chat` session, and tells you to continue with plain natural-language chat; add `--codex` to ask Codex when available.
 - `quant lab verify latest` builds a skeptical validation/falsification checklist.
 - `quant lab backtest latest --prompt` prints the backtest coding prompt to copy into Codex/Claude.
 - `quant strategy list` shows deterministic strategy templates such as `ma-cross`, `momentum`, `mean-reversion`, and `buy-hold`.
