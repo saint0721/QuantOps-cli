@@ -208,6 +208,8 @@ The active TypeScript runtime now runs normal market download, list, stats, and 
 ```bash
 cargo build --manifest-path tui/Cargo.toml --bin quantops-stats
 cargo build --manifest-path tui/Cargo.toml --bin quantops-backtest
+# or build both through rtk:
+rtk setup rust
 rtk stats TSM --source yahoo --json
 rtk backtest run TSM --strategy ma-cross --source yahoo --json
 

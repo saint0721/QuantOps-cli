@@ -9,7 +9,7 @@ import { filteredCodexOutput } from './codex.ts';
 import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist, validateData } from './data.ts';
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxInstallHint, tmuxPath, watchHud } from './hud.ts';
 import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
-import { installLocalBins, pathHint } from './setup.ts';
+import { buildRustHelpers, installLocalBins, pathHint } from './setup.ts';
 import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist, type JsonObject } from './storage.ts';
 import { accountSummary, authStatus, orderPreview, portfolioPositions, version } from './toss.ts';
@@ -161,7 +161,7 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
   if (command === 'portfolio') return parts.length <= 2 ? ['snapshot'] : [];
   if (command === 'order') return parts.length <= 2 ? ['preview'] : [];
   if (command === 'tmux') return parts[1] === 'start' ? (parts.length <= 3 ? ['--session', '--height', '--interval'] : []) : ['start'];
-  if (command === 'setup') return ['bin'];
+  if (command === 'setup') return ['bin', 'rust'];
   return [];
 }
 
@@ -1523,6 +1523,11 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
       warn(error instanceof Error ? error.message : String(error));
       return 1;
     }
+  }
+  if (cmd === 'setup' && sub === 'rust') {
+    const result = buildRustHelpers({ release: tail.includes('--release') });
+    printJson(result);
+    return result.ok ? 0 : 1;
   }
   if (cmd === 'brief') return runCodexPrompt('Create a concise QuantOps session brief from local redacted data. Do not give buy/sell/hold advice.');
   if (!opts.quietUnknown) warn(`unknown command: ${cmd}`);
