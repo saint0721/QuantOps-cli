@@ -20,6 +20,6 @@ test('setup bin installs rtk, quant, and quantops symlinks', () => {
 test('setup rust builds Rust helper commands in dry-run mode', () => {
   const result = buildRustHelpers({ dryRun: true });
   assert.equal(result.ok, true);
-  assert.deepEqual(result.helpers.map((helper) => helper.name), ['quantops-stats', 'quantops-backtest', 'quantops-event']);
+  assert.deepEqual(result.helpers.map((helper) => helper.name), ['quantops-stats', 'quantops-backtest', 'quantops-event', 'quantops-validate']);
   assert.ok(result.helpers.every((helper) => helper.command.includes('build')));
 });

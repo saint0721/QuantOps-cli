@@ -8,7 +8,7 @@ export type InstallBinResult = { ok: boolean; links: Array<{ name: string; path:
 export type RustHelperBuildOptions = { release?: boolean; dryRun?: boolean };
 export type RustHelperBuildResult = { ok: boolean; helpers: Array<{ name: string; command: string[]; code: number | null; stdout: string; stderr: string; skipped?: boolean }>; error?: string };
 
-export const RUST_HELPERS = ['quantops-stats', 'quantops-backtest', 'quantops-event'] as const;
+export const RUST_HELPERS = ['quantops-stats', 'quantops-backtest', 'quantops-event', 'quantops-validate'] as const;
 
 function repoPath(relative: string): string {
   return fileURLToPath(new URL(`../${relative}`, import.meta.url));

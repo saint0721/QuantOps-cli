@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { dataInfo, validateData } from './data.ts';
+import { dataInfo } from './data.ts';
+import { validateDataRuntime } from './rustValidate.ts';
 import { researchReportPath } from './research.ts';
 import { dataDir, utcNow, type JsonObject, type JsonValue } from './storage.ts';
 
@@ -165,7 +166,7 @@ export function addIdeaHypothesis(base: string, id: string, hypothesis: string):
 
 function symbolReadiness(base: string, symbol: string, title: string): IdeaReadiness {
   const info = dataInfo(base, symbol);
-  const validation = info.ok ? validateData(base, symbol) : undefined;
+  const validation = info.ok ? validateDataRuntime(base, symbol) : undefined;
   const researchSaved = existsSync(researchReportPath(symbol, base));
   const nextCommands: string[] = [];
   if (!info.ok) nextCommands.push(`data download ${symbol} --period 1y`);

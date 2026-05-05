@@ -203,25 +203,28 @@ The active TypeScript runtime now runs normal market download, list, stats, and 
 
 ### Rust execution helpers
 
-`rtk stats <SYMBOL> --json`, `rtk backtest run <SYMBOL> --json`, and `rtk event study <SYMBOL> --event-date YYYY-MM-DD --json` use the TypeScript implementation by default, but they can use Rust helpers when the helpers are built or when explicitly requested:
+`rtk stats <SYMBOL> --json`, `rtk backtest run <SYMBOL> --json`, `rtk event study <SYMBOL> --event-date YYYY-MM-DD --json`, and `rtk data validate <SYMBOL> --json` use the TypeScript implementation by default, but they can use Rust helpers when the helpers are built or when explicitly requested:
 
 ```bash
 cargo build --manifest-path tui/Cargo.toml --bin quantops-stats
 cargo build --manifest-path tui/Cargo.toml --bin quantops-backtest
 cargo build --manifest-path tui/Cargo.toml --bin quantops-event
+cargo build --manifest-path tui/Cargo.toml --bin quantops-validate
 # or build all helpers through rtk:
 rtk setup rust
 rtk stats TSM --source yahoo --json
 rtk backtest run TSM --strategy ma-cross --source yahoo --json
 rtk event study TSM --event-date 2026-01-15 --benchmark SOXX --source yahoo --json
+rtk data validate TSM --json
 
 # Force cargo-backed Rust execution without relying on prebuilt helpers:
 QUANTOPS_STATS_ENGINE=rust-cargo rtk stats TSM --source yahoo --json
 QUANTOPS_BACKTEST_ENGINE=rust-cargo rtk backtest run TSM --strategy ma-cross --source yahoo --json
 QUANTOPS_EVENT_ENGINE=rust-cargo rtk event study TSM --event-date 2026-01-15 --benchmark SOXX --source yahoo --json
+QUANTOPS_VALIDATE_ENGINE=rust-cargo rtk data validate TSM --json
 ```
 
-`rtk doctor` reports the Rust helper paths, cargo availability, and build hints under `rust_stats`, `rust_backtest`, and `rust_event`. This keeps the stable Codex contract in `rtk ... --json` while moving isolated compute-heavy kernels to Rust incrementally.
+`rtk doctor` reports the Rust helper paths, cargo availability, and build hints under `rust_stats`, `rust_backtest`, `rust_event`, and `rust_validate`. This keeps the stable Codex contract in `rtk ... --json` while moving isolated compute-heavy kernels to Rust incrementally.
 
 Safety defaults:
 - no web UI
