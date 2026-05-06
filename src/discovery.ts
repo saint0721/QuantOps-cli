@@ -70,7 +70,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'historical OHLCV',
     auth: 'STOOQ_API_KEY may be required for CSV downloads',
     coverage: 'US stocks/ETFs and global indexes with provider symbols such as aapl.us or ^spx',
-    command: '/data download AAPL --source stooq --period 1y',
+    command: 'rtk data download AAPL --source stooq --period 1y',
     note: 'CSV 다운로드가 API key를 요구할 수 있어 기본 CLI 다운로드는 Yahoo를 우선 사용합니다.',
   },
   {
@@ -79,7 +79,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'account/quote bridge',
     auth: 'local tossctl auth',
     coverage: '사용자 로컬 tossctl이 제공하는 quote/account/portfolio',
-    command: '/quote fetch AAPL',
+    command: 'rtk quote fetch AAPL',
     note: '민감정보는 저장 전 redaction을 거칩니다.',
   },
   {
@@ -88,7 +88,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'live screeners / trending / quotes',
     auth: 'unofficial; no API key',
     coverage: 'daily OHLCV, trending, most active, day gainers, day losers; ETF/theme buckets fall back to local universe',
-    command: '/data download AAPL --source yahoo --period 1y',
+    command: 'rtk data download AAPL --source yahoo --period 1y',
     note: '기본 TS 다운로드/분석 소스입니다. 비공식 endpoint라 실패 시 메시지를 확인하세요.',
   },
   {
@@ -97,7 +97,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'historical OHLCV / market status / movers',
     auth: 'ALPHAVANTAGE_API_KEY or ALPHA_VANTAGE_API_KEY',
     coverage: 'US daily/weekly/monthly OHLCV, quote/status/movers APIs for beginner-friendly market context',
-    command: '/data download AAPL --source alphavantage --period 1y',
+    command: 'rtk data download AAPL --source alphavantage --period 1y',
     note: '무료 키로 시작하기 좋지만 rate limit이 있으므로 watchlist 일괄 다운로드는 천천히 실행하세요.',
   },
   {
@@ -106,7 +106,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'historical OHLCV / quote / indicators',
     auth: 'TWELVEDATA_API_KEY or TWELVE_DATA_API_KEY',
     coverage: 'US equities/ETFs with daily/weekly/monthly intervals and broader indicator APIs',
-    command: '/data download AAPL --source twelve --period 1y',
+    command: 'rtk data download AAPL --source twelve --period 1y',
     note: 'credit 기반 무료 플랜을 고려해 필요한 기간/종목만 좁혀 요청하세요.',
   },
   {
@@ -115,7 +115,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'aggregates / market status / reference',
     auth: 'POLYGON_API_KEY',
     coverage: 'US stock aggregates and market/reference APIs; free tier limits apply',
-    command: '/data download AAPL --source polygon --period 1y',
+    command: 'rtk data download AAPL --source polygon --period 1y',
     note: '품질 좋은 vendor API 후보입니다. 무료 tier는 호출량/히스토리 제한을 확인하세요.',
   },
   {
@@ -124,7 +124,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'daily OHLCV / fundamentals / calendars',
     auth: 'FMP_API_KEY or FINANCIAL_MODELING_PREP_API_KEY',
     coverage: 'US daily historical prices plus fundamentals and calendars for future research expansion',
-    command: '/data download AAPL --source fmp --period 1y',
+    command: 'rtk data download AAPL --source fmp --period 1y',
     note: '일봉 가격과 재무제표/캘린더 확장 후보입니다. 라이선스와 호출량을 확인하세요.',
   },
   {
@@ -133,7 +133,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'filings / company facts',
     auth: 'no API key; identify with a User-Agent when expanded',
     coverage: '10-K, 10-Q, 8-K, XBRL company facts; not an OHLCV price source',
-    command: '/sources sec',
+    command: 'rtk sources sec',
     note: '가격 데이터가 아니라 공시/재무 근거 데이터입니다. 다음 단계에서 filings/facts 명령으로 분리하는 게 맞습니다.',
   },
   {
@@ -142,7 +142,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'symbol universe',
     auth: 'web endpoint / no stable contract',
     coverage: 'listed stocks, ETFs, exchange metadata',
-    command: '/symbol search SOX',
+    command: 'rtk symbol search SOX',
     note: '전체 상장 심볼 목록과 ETF universe 보강 후보입니다.',
   },
   {
@@ -151,7 +151,7 @@ export const SOURCES: SourceInfo[] = [
     kind: 'realtime / aggregates / fundamentals',
     auth: 'API key required',
     coverage: 'Polygon, Tiingo, Twelve Data, Alpha Vantage 등',
-    command: '/sources vendor',
+    command: 'rtk sources vendor',
     note: '나중에 실시간/분봉/재무제표가 필요할 때 연결하는 영역입니다.',
   },
 ];
@@ -165,7 +165,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NASDAQ',
     tags: ['technology', 'mega-cap', 'hardware'],
-    next: '/data download AAPL --period 1y',
+    next: 'rtk data download AAPL --period 1y',
     note: '기본 smoke/example 심볼로 적합합니다.',
   },
   {
@@ -176,7 +176,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NASDAQ',
     tags: ['technology', 'mega-cap', 'software', 'ai'],
-    next: '/data download MSFT --period 1y',
+    next: 'rtk data download MSFT --period 1y',
     note: 'AAPL과 비교 예제로 좋습니다.',
   },
   {
@@ -187,7 +187,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NYSE Arca',
     tags: ['etf', 'broad-market', 's&p-500'],
-    next: '/data download SPY --period 1y',
+    next: 'rtk data download SPY --period 1y',
     note: '미국 대형주 벤치마크로 사용하기 좋습니다.',
   },
   {
@@ -198,7 +198,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NASDAQ',
     tags: ['etf', 'nasdaq-100', 'growth', 'technology'],
-    next: '/data download QQQ --period 1y',
+    next: 'rtk data download QQQ --period 1y',
     note: '기술주 성장 벤치마크로 사용하기 좋습니다.',
   },
   {
@@ -209,7 +209,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NYSE Arca',
     tags: ['etf', 'leveraged', 'semiconductor', '3x', 'high-risk'],
-    next: '/data download SOXL --period 6mo',
+    next: 'rtk data download SOXL --period 6mo',
     note: '반도체 3x 레버리지 ETF라 변동성과 손실위험이 큽니다.',
   },
   {
@@ -220,7 +220,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NYSE Arca',
     tags: ['etf', 'leveraged', 'inverse', 'semiconductor', '3x', 'high-risk'],
-    next: '/data download SOXS --period 6mo',
+    next: 'rtk data download SOXS --period 6mo',
     note: 'SOXL의 반대 방향 3x 일일 목표 ETF입니다.',
   },
   {
@@ -231,7 +231,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NASDAQ',
     tags: ['etf', 'leveraged', 'nasdaq-100', '3x', 'high-risk'],
-    next: '/data download TQQQ --period 6mo',
+    next: 'rtk data download TQQQ --period 6mo',
     note: 'QQQ의 3x 일일 목표 ETF입니다.',
   },
   {
@@ -242,7 +242,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NASDAQ',
     tags: ['etf', 'leveraged', 'inverse', 'nasdaq-100', '3x', 'high-risk'],
-    next: '/data download SQQQ --period 6mo',
+    next: 'rtk data download SQQQ --period 6mo',
     note: 'QQQ의 역방향 3x 일일 목표 ETF입니다.',
   },
   {
@@ -253,7 +253,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NASDAQ',
     tags: ['technology', 'ev', 'high-beta', 'popular'],
-    next: '/data download TSLA --period 1y',
+    next: 'rtk data download TSLA --period 1y',
     note: '변동성이 커서 risk/stat 예제로 좋습니다.',
   },
   {
@@ -264,7 +264,7 @@ export const SYMBOLS: SymbolInfo[] = [
     source: 'stooq',
     exchange: 'NASDAQ',
     tags: ['semiconductor', 'ai', 'mega-cap', 'popular'],
-    next: '/data download NVDA --period 1y',
+    next: 'rtk data download NVDA --period 1y',
     note: '반도체/AI 테마 대표 심볼입니다.',
   },
 ];
@@ -328,7 +328,7 @@ function dynamicSymbolInfo(raw: any, category: string, source: DiscoverSource): 
   const name = String(raw?.shortName ?? raw?.longName ?? raw?.displayName ?? symbol);
   const exchange = String(raw?.fullExchangeName ?? raw?.exchange ?? '').trim() || undefined;
   const tags = [category, assetClass, source].filter(Boolean);
-  const next = assetClass === 'crypto' ? `/symbol search ${symbol}` : `/data download ${symbol} --period 1y`;
+  const next = assetClass === 'crypto' ? `rtk symbol search ${symbol}` : `rtk data download ${symbol} --period 1y`;
   return {
     symbol,
     name,

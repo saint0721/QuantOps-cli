@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { ideaStatus, type IdeaStatusReport } from './idea.ts';
 import { appendJsonl, redact, utcNow, type JsonObject, type JsonValue } from './storage.ts';
-import type { ResearchCodexResult, ResearchCodexRunner } from './research.ts';
+
 
 export type LabStage = 'discuss' | 'verify' | 'backtest';
 
@@ -21,7 +21,6 @@ export type LabRun = {
   focus?: string;
   prompt: string;
   report: string;
-  codex?: ResearchCodexResult;
   saved_to?: string;
 };
 
@@ -109,10 +108,10 @@ function discussionOutput(status: IdeaStatusReport, focus: string): string[] {
   if (!target) {
     return [
       '- 아직 논의 주제가 없습니다.',
-      '- 자연스럽게 이렇게 입력하세요:',
-      `  /lab discuss ${idea.id} NVDA 실적 모멘텀이 가격에 반영되는지 검증하고 싶어`,
-      `  /lab discuss latest 뉴스 이벤트와 이동평균 백테스트를 연결해서 보고 싶어`,
-      '- 그 다음 질문은 그냥 자연어로 입력하면 같은 agent-chat 세션에 계속 쌓입니다.',
+      '- 아래처럼 rtk 명령에 focus를 붙여 프롬프트/검증 재료를 생성하세요:',
+      `  rtk lab discuss ${idea.id} "NVDA 실적 모멘텀이 가격에 반영되는지 검증하고 싶어"`,
+      `  rtk lab discuss latest "뉴스 이벤트와 이동평균 백테스트를 연결해서 보고 싶어"`,
+      '- 생성된 결과를 다음 rtk ... --json 명령의 입력 근거로 사용합니다.',
     ];
   }
   return [
@@ -122,14 +121,13 @@ function discussionOutput(status: IdeaStatusReport, focus: string): string[] {
     '- 필요한 증거: 저장된 OHLCV 데이터, 이벤트/뉴스 맥락, 비교 기준, 실패 조건.',
     '- 주의점: 매수/매도 결론이 아니라 검증 가능한 연구 질문으로 유지합니다.',
     '',
-    '이어가기',
-    `- 그냥 입력: ${target}`,
-    `- /lab verify ${idea.id}`,
-    `- /backtest run ${idea.symbols[0] ?? 'latest'} --strategy ma-cross`,
+    'Next rtk commands',
+    `- rtk lab verify ${idea.id} --prompt`,
+    `- rtk backtest run ${idea.symbols[0] ?? 'latest'} --strategy ma-cross --json`,
   ];
 }
 
-function deterministicReport(status: IdeaStatusReport, stage: LabStage, focus: string, codex?: ResearchCodexResult): string {
+function deterministicReport(status: IdeaStatusReport, stage: LabStage, focus: string): string {
   const idea = status.idea;
   const hasSymbols = idea.symbols.length > 0;
   const hasHypotheses = idea.hypotheses.length > 0;
@@ -173,25 +171,22 @@ function deterministicReport(status: IdeaStatusReport, stage: LabStage, focus: s
     ...(blocked.length ? blocked.map((item) => `- ${item}`) : ['- none detected in local state']),
     '',
     `${STAGE_LABELS[stage]} output`,
-    codex?.ok && codex.text?.trim()
-      ? codex.text.trim()
-      : (stage === 'discuss'
-        ? discussionOutput(status, focus).join('\n')
-        : `- Codex discussion was not run${codex?.error ? `: ${codex.error}` : ''}. Use --prompt to copy the exact prompt, or add --codex to ask the local Codex CLI when available.`),
+    stage === 'discuss'
+      ? discussionOutput(status, focus).join('\n')
+      : '- Use the prompt form as a research brief, then run the chosen next step through rtk ... --json.',
     '',
     'Next QuantOps commands',
-    ...[...new Set(stageNext[stage])].map((cmd) => `- ${cmd}`),
+    ...[...new Set(stageNext[stage])].map((cmd) => `- rtk ${cmd}${cmd.includes('--json') ? '' : ' --json'}`),
   ].join('\n');
 }
 
-export function runLabStage(stage: LabStage, ideaRef: string, options: LabOptions = {}, codexRunner?: ResearchCodexRunner): LabRun {
+export function runLabStage(stage: LabStage, ideaRef: string, options: LabOptions = {}): LabRun {
   const base = options.base ?? 'data';
   const createdAt = options.now ?? utcNow();
   const focus = options.focus?.trim() ?? '';
   const status = ideaStatus(base, ideaRef);
   const prompt = buildLabPrompt(status, stage, focus);
-  const codex = codexRunner ? codexRunner(prompt) : { ok: false, error: 'codex runner not configured' };
-  const report = deterministicReport(status, stage, focus, codex);
+  const report = deterministicReport(status, stage, focus);
   const run: LabRun = {
     ok: true,
     stage,
@@ -201,7 +196,6 @@ export function runLabStage(stage: LabStage, ideaRef: string, options: LabOption
     focus: focus || undefined,
     prompt,
     report,
-    codex,
   };
   if (options.save !== false) {
     const path = labReportPath(status.idea.id, base);
@@ -226,21 +220,21 @@ export function formatLabWorkflow(status: IdeaStatusReport): string {
     `id: ${idea.id}`,
     '',
     '1. discuss',
-    `   quant lab discuss ${idea.id}`,
+    `   rtk lab discuss ${idea.id} --prompt`,
     '   Turn the idea into research questions, search tasks, and evidence requirements.',
     '',
     '2. verify',
-    `   quant lab verify ${idea.id}`,
+    `   rtk lab verify ${idea.id} --prompt`,
     '   Challenge the hypothesis, check blockers, and define pass/fail gates.',
     '',
     '3. backtest',
-    `   quant lab backtest ${idea.id}`,
+    `   rtk lab backtest ${idea.id} --prompt`,
     '   Produce a safe coding brief for a future deterministic backtest module.',
     '',
     'Current readiness',
     ...(status.readiness.length ? status.readiness.map(readinessLine) : ['- no symbols yet']),
     '',
     'Next data/research commands',
-    ...status.next_commands.map((cmd) => `- ${cmd}`),
+    ...status.next_commands.map((cmd) => `- rtk ${cmd}`),
   ].join('\n');
 }

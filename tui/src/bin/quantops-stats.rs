@@ -1,6 +1,6 @@
 use std::env;
 
-use quantops_tui::market_data::{
+use quantops_core::market_data::{
     json_string, market_rows, max_drawdown, num, regime, returns, stddev, trailing_average,
     volume_ratio, MarketOptions, TRADING_DAYS,
 };
@@ -129,7 +129,7 @@ fn stats_json(options: &MarketOptions) -> String {
         json_string(&latest.date),
         num(Some(latest_close)),
         num(total_return),
-        num(quantops_tui::market_data::mean(&row_returns)),
+        num(quantops_core::market_data::mean(&row_returns)),
         num(volatility),
         num(volatility.map(|value| value * TRADING_DAYS.sqrt())),
         num(max_drawdown(&closes)),
@@ -150,7 +150,7 @@ fn stats_json(options: &MarketOptions) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quantops_tui::market_data::{moving_average, returns, stddev};
+    use quantops_core::market_data::{moving_average, returns, stddev};
 
     #[test]
     fn computes_same_core_regime_for_rising_prices() {

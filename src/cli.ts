@@ -1,39 +1,25 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { createInterface } from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { classify, historyRows } from './analysis.ts';
 import { auditAll } from './audit.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
-import { filteredCodexOutput } from './codex.ts';
 import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist, OHLCV_DOWNLOAD_SOURCES } from './data.ts';
-import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxPath, watchHud } from './hud.ts';
-import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
+import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
 import { buildRustHelpers, installLocalBins, pathHint } from './setup.ts';
-import { recordRuntime, renderRuntimeLine, statusSummary } from './runtime.ts';
-import { appendJsonl, quoteHistoryPath, readJsonl, readWatchlist, redact, snapshotPath, utcNow, writeWatchlist, type JsonObject } from './storage.ts';
-import { accountSummary, orderPreview, portfolioPositions } from './toss.ts';
+import { recordRuntime, renderRuntimeLine } from './runtime.ts';
+import { readWatchlist, writeWatchlist, type JsonObject } from './storage.ts';
 import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './lab.ts';
-import { listQuantSkills, quantSkillInvocationCandidates, type QuantSkill } from './skills.ts';
-import { listTools, runTool, toolSummaries } from './tools.ts';
-import { runAgent } from './agent.ts';
-import { providersJson, listProviders, listMarketDataProviders, codexExecArgs } from './providers.ts';
+import { providersJson, listMarketDataProviders } from './providers.ts';
 import { ensureQuantSession, listQuantSessions, recordSessionEvent, sessionHandoff } from './session.ts';
-import { CODEX_EFFORT_CHOICES, CODEX_MODEL_CHOICES, formatAgentLanguagePreference, formatCodexModelPreference, normalizeAgentLanguage, normalizeCodexEffort, readAgentPreferences, writeAgentLanguage, writeCodexEffort, writeCodexModel, writeCodexModelAndEffort } from './preferences.ts';
 import { formatBacktestResult, formatStrategyList, listBacktestStrategies } from './backtest.ts';
 import { runBacktestRuntime } from './rustBacktest.ts';
 import { validateDataRuntime } from './rustValidate.ts';
-import { runMcpServer } from './mcp.ts';
-import { chatBox, inputHintBox, interactivePrompt } from './ui/chat.ts';
 import { table } from './ui/table.ts';
 import { SOURCES, discoverMarket, searchSymbolsLive, sourceById, symbolInfo, type DiscoverResult, type SourceInfo, type SymbolInfo, type SymbolSearchResult } from './discovery.ts';
-import { nextRecommendation } from './next.ts';
 import { periodToDateRange } from './period.ts';
 import { marketStats } from './marketAnalysis.ts';
 import { marketStatsRuntime } from './rustStats.ts';
-import { formatResearchReport, runResearch, type ResearchCodexResult } from './research.ts';
+import { formatResearchReport, runResearch } from './research.ts';
 import { codexRuntimeGuide, formatCodexRuntimeGuide } from './guide.ts';
 import { defineEvent, parseEventWindows } from './events.ts';
 import { runEventStudyRuntime } from './rustEvent.ts';
@@ -47,18 +33,13 @@ export { periodToDateRange } from './period.ts';
 
 const APP = 'QuantOps';
 const VERSION = '0.1.0';
-const GREEN = '\u001b[92m';
 const CYAN = '\u001b[96m';
 const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
-let INTERACTIVE_CHAT_UI = false;
-
-export const ROOT_COMPLETIONS = ['start', 'help', 'codex-guide', 'next', 'download', 'research', 'event', 'compare', 'idea', 'lab', 'tools', 'mcp', 'agent', 'model', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/download', '/research', '/idea', '/lab', '/tools', '/model', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/backtest', '/strategy', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'help', 'codex-guide', 'runtime', 'symbol', 'data', 'stats', 'compare', 'research', 'event', 'backtest', 'session', 'provider', 'sources', 'doctor', 'setup'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
 const DATA_SOURCE_COMPLETIONS = [...OHLCV_DOWNLOAD_SOURCES];
-const INTERACTIVE_HIDDEN_SLASH = new Set(['/agent']);
 
 function discoverCompletionCandidates(parts: string[]): string[] {
   if (parts.length <= 2) return DISCOVER_CATEGORIES;
@@ -71,111 +52,50 @@ function discoverCompletionCandidates(parts: string[]): string[] {
   return DISCOVER_OPTIONS;
 }
 
-export function completionCandidates(line: string, mode = 'quant', completionDataDir = 'data'): string[] {
+export function completionCandidates(line: string, _mode = 'quant', _completionDataDir = 'data'): string[] {
   const trimmed = line.trimStart();
-  if (mode === 'codex') return SLASH_COMPLETIONS;
-  if (trimmed.startsWith('$')) return quantSkillInvocationCandidates();
-  if (!trimmed) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
+  if (!trimmed) return [...ROOT_COMPLETIONS].sort();
   const baseParts = trimmed.trimEnd().split(/\s+/).filter(Boolean);
   const parts = trimmed.endsWith(' ') ? [...baseParts, ''] : baseParts;
-  if (parts.length <= 1) return [...ROOT_COMPLETIONS, ...SLASH_COMPLETIONS].sort();
-  const first = parts[0];
-  const command = first?.startsWith('/') ? first.slice(1) : first;
-  if (command === 'watchlist') return ['add', 'fetch', 'list', 'remove'];
-  if (command === 'hud') return first?.startsWith('/') ? ['tmux'] : ['--tmux', '--watch'];
-  if (command === 'runtime') return ['line', 'snapshot', 'info'];
+  if (parts.length <= 1) return [...ROOT_COMPLETIONS].sort();
+  const command = parts[0];
+  if (command === 'runtime') return ['info', 'line', 'snapshot', '--json'];
   if (command === 'event') return parts.length <= 2 ? ['define', 'study', 'windows'] : ['--json', '--event-date', '--benchmark', '--window', '--type', '--target-symbol', '--source-symbol', '--topic', '--thesis'];
   if (command === 'compare') return parts.length <= 2 ? [] : ['--source', '--interval', '--provider-symbol', '--json'];
-  if (command === 'collect') {
-    if (parts[1] === 'plan') return parts.length <= 3 ? ['--watchlist'] : [];
-    return parts.length <= 2 ? ['plan', 'quote', 'watchlist'] : [];
-  }
-  if (command === 'idea') {
-    if (parts.length <= 2) return ['new', 'list', 'show', 'add-symbol', 'add-hypothesis', 'status'];
-    const action = parts[1];
-    const needsIdeaReference = action === 'show' || action === 'status' || action === 'add-symbol' || action === 'add-hypothesis';
-    if (needsIdeaReference && parts.length <= 3) return ideaReferenceCandidates(completionDataDir);
-    if ((action === 'status' || action === 'show') && parts.length <= 4) return ['--plain'];
-    return [];
-  }
-  if (command === 'tools') return parts.length <= 2 ? ['list', 'run'] : (parts[1] === 'run' && parts.length <= 3 ? listTools().map((tool) => tool.name) : ['--json', '--input']);
-  if (command === 'agent') {
-    if (parts.length <= 2) return ['ko', 'en', 'auto', '--provider', '--model', '--effort', '--download', '--json', '--session'];
-    if ((parts[1] === 'lang' || parts[1] === 'language') && parts.length <= 3) return ['ko', 'en', 'auto'];
-    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--lang') return ['ko', 'en', 'auto'];
-    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--model') return [...CODEX_MODEL_CHOICES];
-    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--effort') return CODEX_EFFORT_CHOICES;
-    return ['--provider', '--model', '--effort', '--download', '--json', '--session'];
-  }
-  if (command === 'model') {
-    if (parts.length <= 2) return ['status', 'default', 'effort', ...CODEX_MODEL_CHOICES];
-    if (parts[1] === 'effort') return CODEX_EFFORT_CHOICES;
-    if ((parts.at(-1) ?? '') === '' && parts.length <= 3) return CODEX_EFFORT_CHOICES;
-    return [];
-  }
   if (command === 'provider') return parts.length <= 2 ? ['list'] : ['--json'];
   if (command === 'session') return parts.length <= 2 ? ['current', 'list', 'handoff'] : ['--json'];
-  if (command === 'lab') {
-    if (parts.length <= 2) return ['workflow', 'discuss', 'verify', 'backtest'];
-    const action = parts[1];
-    if ((action === 'workflow' || action === 'discuss' || action === 'verify' || action === 'backtest') && parts.length <= 3) return ideaReferenceCandidates(completionDataDir);
-    if ((action === 'discuss' || action === 'verify' || action === 'backtest') && parts.length <= 4) return ['--codex', '--prompt', '--no-save'];
-    return [];
-  }
   if (command === 'data') {
     if (parts.length <= 2) return ['download', 'watchlist', 'list', 'info', 'validate', 'refresh'];
     if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return DATA_SOURCE_COMPLETIONS;
-    if (parts[1] === 'download') return ['--period', '--start', '--end', '--interval', '--source', '--provider-symbol'];
-    if (parts[1] === 'refresh') return ['--period', '--start', '--end', '--interval', '--source', '--provider-symbol'];
+    if (parts[1] === 'download' || parts[1] === 'refresh') return ['--period', '--start', '--end', '--interval', '--source', '--provider-symbol', '--json'];
     if (parts[1] === 'info') return ['--json', '--source', '--interval'];
     if (parts[1] === 'validate') return ['--json', '--max-stale-days'];
-    if (parts[1] === 'watchlist') {
-      if (parts.length <= 3) return ['refresh', '--period', '--start', '--end', '--interval', '--source'];
-      if (parts[2] === 'refresh') return ['--period', '--start', '--end', '--interval', '--source'];
-      return ['--period', '--start', '--end', '--interval', '--source'];
-    }
+    if (parts[1] === 'watchlist') return ['refresh', '--period', '--start', '--end', '--interval', '--source', '--json'];
     return [];
   }
-  if (command === 'download') return parts.length >= 3 && trimmed.endsWith(' ') ? ['--period', '--start', '--end'] : [];
-  if (command === 'analyze') return [];
   if (command === 'backtest') {
     if (parts.length <= 2) return ['run', 'strategies', 'list'];
     if (parts[1] === 'run') {
-      if (parts.length <= 3) return ['latest', 'AAPL', 'NVDA', 'SPY'];
+      if (parts.length <= 3) return ['AAPL', 'NVDA', 'SPY', 'TSM'];
       if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--strategy') return listBacktestStrategies().map((strategy) => strategy.name);
       if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return DATA_SOURCE_COMPLETIONS;
       return ['--strategy', '--fast', '--slow', '--lookback', '--threshold', '--source', '--interval', '--provider-symbol', '--no-save', '--json'];
     }
     return [];
   }
-  if (command === 'strategy') return parts.length <= 2 ? ['list'] : [];
   if (command === 'research') {
     if (parts.length <= 2) return ['AAPL', 'NVDA', 'TSM', 'SPY'];
     if (trimmed.endsWith(' ') && parts.at(-2) === '--source') return DATA_SOURCE_COMPLETIONS;
     if (trimmed.endsWith(' ') && parts.at(-2) === '--interval') return ['d', '1d', '1wk', '1mo'];
-    if (trimmed.endsWith(' ') && (parts.at(-2) === '--topic' || parts.at(-2) === '--provider-symbol')) return [];
-    return trimmed.endsWith(' ') || (parts.at(-1) ?? '').startsWith('--') ? ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--codex'] : [];
+    return trimmed.endsWith(' ') || (parts.at(-1) ?? '').startsWith('--') ? ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--json'] : [];
   }
-  if (command === 'list') return [];
-  if (command === 'audit') return [];
-  if (command === 'discover') {
-    return discoverCompletionCandidates(parts);
-  }
-  if (command === 'sources') return parts.length <= 2 ? ['list', 'stooq', 'tossctl', 'yahoo', 'alphavantage', 'twelve', 'polygon', 'fmp', 'sec', 'nasdaq', 'vendor'] : [];
+  if (command === 'sources') return parts.length <= 2 ? ['list', 'stooq', 'yahoo', 'alphavantage', 'twelve', 'polygon', 'fmp', 'sec', 'nasdaq', 'vendor'] : [];
   if (command === 'symbol') {
     if (parts.length <= 2) return ['search', 'info'];
-    if (parts[1] === 'search') {
-      if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return ['local', 'yahoo'];
-      if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--limit') return ['5', '10', '25', '50'];
-      return ['--source', '--limit'];
-    }
-    return [];
+    if (parts[1] === 'search') return ['--source', '--limit', '--json'];
+    return ['--json'];
   }
-  if (command === 'stats') return [];
-  if (command === 'quote') return parts.length <= 2 ? ['fetch', 'history'] : [];
-  if (command === 'portfolio') return parts.length <= 2 ? ['snapshot'] : [];
-  if (command === 'order') return parts.length <= 2 ? ['preview'] : [];
-  if (command === 'tmux') return parts[1] === 'start' ? (parts.length <= 3 ? ['--session', '--height', '--interval'] : []) : ['start'];
+  if (command === 'stats') return ['--source', '--interval', '--provider-symbol', '--json'];
   if (command === 'setup') return ['bin', 'rust'];
   return [];
 }
@@ -187,25 +107,14 @@ export function completeLine(line: string, mode = 'quant', completionDataDir = '
   return [matches.length ? matches : candidates, token];
 }
 
-function emitChat(text: string) {
-  console.log(chatBox(text.split(/\r?\n/)));
-}
-function ok(text: string) {
-  if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
-  console.log(`  ${GREEN}ok${RESET}    ${text}`);
-}
 function warn(text: string) {
-  if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
   console.log(`  ${YELLOW}warn${RESET}  ${text}`);
 }
 function printJson(value: unknown) {
-  const text = JSON.stringify(value, null, 2);
-  if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
-  console.log(text);
+  console.log(JSON.stringify(value, null, 2));
 }
 
 function printText(text: string) {
-  if (INTERACTIVE_CHAT_UI) { emitChat(text); return; }
   console.log(text);
 }
 
@@ -244,7 +153,7 @@ function formatDownloadResult(result: any): string {
       result.reason ?? 'dataset already current',
       `latest: ${result.latest_date ?? '-'}`,
       '',
-      `next  /${result.next_command ?? `stats ${result.ticker ?? result.symbol}`}`,
+    `next  rtk ${result.next_command ?? `stats ${result.ticker ?? result.symbol}`}`,
     ].join('\n');
   }
   if (!result?.ok) return JSON.stringify(result, null, 2);
@@ -267,7 +176,7 @@ function formatDownloadResult(result: any): string {
       ],
     ),
     '',
-    `next  /stats ${result.ticker ?? result.symbol}`,
+    `next  rtk stats ${result.ticker ?? result.symbol}`,
   ].join('\n');
 }
 
@@ -296,7 +205,7 @@ function formatWatchlistDownloadResult(result: any): string {
 
 function formatDataList(result: any): string {
   const datasets = result?.datasets ?? [];
-  if (!datasets.length) return '저장된 market dataset이 없습니다.\nnext  /data download AAPL --period 1y';
+  if (!datasets.length) return '저장된 market dataset이 없습니다.\nnext  rtk data download AAPL --period 1y';
   const rows = datasets.map((item: any) => [
     String(item.provider_symbol ?? item.name ?? '-').toUpperCase(),
     String(item.source ?? '-'),
@@ -311,7 +220,7 @@ function formatDataList(result: any): string {
 
 function formatDataInfo(result: any): string {
   const datasets = result?.datasets ?? [];
-  if (!datasets.length) return `저장된 market dataset이 없습니다.\nnext  /${result?.next_command ?? 'data download AAPL --period 1y'}`;
+  if (!datasets.length) return `저장된 market dataset이 없습니다.\nnext  rtk ${result?.next_command ?? 'data download AAPL --period 1y'}`;
   const rows = datasets.map((item: any) => [
     String(item.provider_symbol ?? item.name ?? '-').toUpperCase(),
     String(item.source ?? '-'),
@@ -343,7 +252,7 @@ function formatDataValidation(result: any): string {
     `datasets: ${(result.datasets ?? []).length}`,
     '',
     rows.length ? table(['sev', 'code', 'dataset', 'date', 'message'], rows) : 'No issues found.',
-    result.next_command ? `\nnext  /${result.next_command}` : '',
+    result.next_command ? `\nnext  rtk ${result.next_command}` : '',
   ].join('\n').trimEnd();
 }
 
@@ -359,28 +268,16 @@ function formatDataOutput(sub: string, stdout: string): string {
   return stdout;
 }
 
-function dataDirFrom(argv: string[]): { dataDir: string; rest: string[]; noTmux: boolean } {
+function dataDirFrom(argv: string[]): { dataDir: string; rest: string[] } {
   const rest: string[] = [];
   let dataDir = 'data';
-  let noTmux = false;
   for (let i = 0; i < argv.length; i += 1) {
     const item = argv[i]!;
     if (item === '--data-dir') { dataDir = argv[++i] ?? dataDir; continue; }
-    if (item === '--no-tmux') { noTmux = true; continue; }
+    if (item === '--no-tmux') continue;
     rest.push(item);
   }
-  return { dataDir, rest, noTmux };
-}
-
-function optionValue(args: string[], flag: string): string | undefined {
-  const index = args.indexOf(flag);
-  return index >= 0 ? args[index + 1] : undefined;
-}
-
-function optionNumber(args: string[], flag: string, fallback: number): number {
-  const value = optionValue(args, flag);
-  const parsed = value === undefined ? Number.NaN : Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  return { dataDir, rest };
 }
 
 function takeNumberOption(args: string[], flag: string): number | undefined {
@@ -389,10 +286,6 @@ function takeNumberOption(args: string[], flag: string): number | undefined {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) throw new Error(`${flag} requires a number`);
   return parsed;
-}
-
-function parseJsonOrRaw(stdout: string, stderr: string, returncode: number): unknown {
-  try { return JSON.parse(stdout); } catch { return { raw: stdout, stderr, returncode }; }
 }
 
 function commandDoctor(dataDir: string): number {
@@ -473,12 +366,12 @@ function formatIdeaPlain(idea: QuantIdea): string {
 }
 
 function formatReadiness(item: IdeaReadiness): string[] {
-  return [item.symbol, item.market_data, item.validation, item.research, item.next_commands.map((cmd) => `/${cmd}`).join(' | ')];
+  return [item.symbol, item.market_data, item.validation, item.research, item.next_commands.map((cmd) => `rtk ${cmd}`).join(' | ')];
 }
 
 function formatIdeaStatus(result: ReturnType<typeof ideaStatus>): string {
   const idea = result.idea;
-  const next = result.next_commands.map((cmd, index) => `${index + 1}. /${cmd}`);
+  const next = result.next_commands.map((cmd, index) => `${index + 1}. rtk ${cmd}`);
   return [
     formatIdea(idea),
     '',
@@ -486,7 +379,7 @@ function formatIdeaStatus(result: ReturnType<typeof ideaStatus>): string {
     result.readiness.length ? table(['symbol', 'market', 'validation', 'research', 'next'], result.readiness.map(formatReadiness)) : '- no symbols yet',
     '',
     'Next commands:',
-    ...(next.length ? next : [`1. /idea add-symbol ${idea.id} AAPL`]),
+    ...(next.length ? next : [`1. rtk idea add-symbol ${idea.id} AAPL`]),
   ].join('\n');
 }
 
@@ -499,17 +392,13 @@ function formatIdeaStatusPlain(result: ReturnType<typeof ideaStatus>): string {
       ? result.readiness.map((item) => `${item.symbol}: market=${item.market_data} validation=${item.validation} research=${item.research}`)
       : ['- no symbols yet']),
     'next:',
-    ...(result.next_commands.length ? result.next_commands.map((cmd) => `/${cmd}`) : [`/idea add-symbol ${idea.id} AAPL`]),
+    ...(result.next_commands.length ? result.next_commands.map((cmd) => `rtk ${cmd}`) : [`rtk idea add-symbol ${idea.id} AAPL`]),
   ].join('\n');
 }
 
-function recordAgentContext(type: string, summary: string, payload: JsonObject = {}): void {
-  const session = ensureQuantSession({ id: 'agent-chat', title: summary.slice(0, 80) || 'QuantOps agent chat' });
+function recordRuntimeContext(type: string, summary: string, payload: JsonObject = {}): void {
+  const session = ensureQuantSession({ id: 'codex-runtime', title: summary.slice(0, 80) || 'QuantOps Codex runtime' });
   recordSessionEvent(session, { type, summary, payload });
-}
-
-function chatContinuationHint(text: string): string {
-  return `chat  ${text}`;
 }
 
 function commandIdea(dataDir: string, action = 'list', tail: string[] = []): number {
@@ -520,19 +409,18 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       const title = args.join(' ');
       const idea = createIdea(dataDir, title);
       const suggestedSymbol = title.match(/\b[A-Z][A-Z0-9.-]{1,9}\b/)?.[0] ?? 'AAPL';
-      recordAgentContext('idea.created', `created idea ${idea.id}: ${idea.title}`, { idea: idea.id, title: idea.title, suggested_symbol: suggestedSymbol });
+      recordRuntimeContext('idea.created', `created idea ${idea.id}: ${idea.title}`, { idea: idea.id, title: idea.title, suggested_symbol: suggestedSymbol });
       printText([
         `created idea ${idea.id}`,
         `title: ${idea.title}`,
         `saved_to: ${ideaPath(dataDir, idea.id)}`,
-        `next  /idea add-symbol ${idea.id} ${suggestedSymbol}`,
-        chatContinuationHint('이제 그냥 자연어로 “이 아이디어를 어떤 데이터로 검증할까?”처럼 이어서 말하면 됩니다.'),
+        `next  rtk idea add-symbol ${idea.id} ${suggestedSymbol}`,
       ].join('\n'));
       return 0;
     }
     if (action === 'list') {
       const ideas = listIdeas(dataDir);
-      printText(ideas.length ? table(['id', 'status', 'symbols', 'hypotheses', 'title'], ideas.map(ideaSummaryRow)) : '저장된 idea가 없습니다.\nnext  /idea new "NVDA earnings momentum"');
+      printText(ideas.length ? table(['id', 'status', 'symbols', 'hypotheses', 'title'], ideas.map(ideaSummaryRow)) : '저장된 idea가 없습니다.\nnext  rtk idea new "NVDA earnings momentum"');
       return 0;
     }
     if (action === 'show') {
@@ -546,12 +434,11 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       const [id, symbol] = args;
       if (!id || !symbol) { warn('usage: idea add-symbol <ID> <SYMBOL>'); return 2; }
       const idea = addIdeaSymbol(dataDir, id, symbol);
-      recordAgentContext('idea.symbol_added', `added ${symbol.toUpperCase()} to ${idea.id}`, { idea: idea.id, symbol: symbol.toUpperCase(), symbols: idea.symbols });
+      recordRuntimeContext('idea.symbol_added', `added ${symbol.toUpperCase()} to ${idea.id}`, { idea: idea.id, symbol: symbol.toUpperCase(), symbols: idea.symbols });
       printText([
         `updated idea ${idea.id}`,
         `symbols: ${idea.symbols.join(', ') || '-'}`,
-        `next  /idea status ${idea.id}`,
-        chatContinuationHint(`${symbol.toUpperCase()}로 어떤 반례/리서치/백테스트를 먼저 볼지 자연어로 물어보세요.`),
+        `next  rtk idea status ${idea.id}`,
       ].join('\n'));
       return 0;
     }
@@ -560,12 +447,11 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       const hypothesis = args.slice(1).join(' ');
       if (!id || !hypothesis) { warn('usage: idea add-hypothesis <ID> <TEXT>'); return 2; }
       const idea = addIdeaHypothesis(dataDir, id, hypothesis);
-      recordAgentContext('idea.hypothesis_added', `added hypothesis to ${idea.id}`, { idea: idea.id, hypothesis });
+      recordRuntimeContext('idea.hypothesis_added', `added hypothesis to ${idea.id}`, { idea: idea.id, hypothesis });
       printText([
         `updated idea ${idea.id}`,
         `hypotheses: ${idea.hypotheses.length}`,
-        `next  /idea status ${idea.id}`,
-        chatContinuationHint('이 가설이 틀릴 조건과 필요한 데이터를 자연어로 이어서 물어보세요.'),
+        `next  rtk idea status ${idea.id}`,
       ].join('\n'));
       return 0;
     }
@@ -573,7 +459,7 @@ function commandIdea(dataDir: string, action = 'list', tail: string[] = []): num
       const id = args[0];
       if (!id) { warn('usage: idea status <ID>'); return 2; }
       const status = ideaStatus(dataDir, id);
-      if (!plain) recordAgentContext('idea.status', `checked idea status ${status.idea.id}`, { idea: status.idea.id, readiness: status.readiness as unknown as JsonObject[] });
+      if (!plain) recordRuntimeContext('idea.status', `checked idea status ${status.idea.id}`, { idea: status.idea.id, readiness: status.readiness as unknown as JsonObject[] });
       printText(plain ? formatIdeaStatusPlain(status) : formatIdeaStatus(status));
       return 0;
     }
@@ -591,9 +477,7 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
     const rest = [...tail];
     const json = rest.includes('--json');
     const noSave = rest.includes('--no-save');
-    const useCodex = rest.includes('--codex') || process.env.QUANTOPS_RESEARCH_CODEX === '1';
     for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-save' || rest[i] === '--json') rest.splice(i, 1);
-    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--no-codex' || rest[i] === '--codex') rest.splice(i, 1);
     const explicitSource = rest.includes('--source');
     const explicitInterval = rest.includes('--interval');
     const explicitProvider = rest.includes('--provider-symbol');
@@ -607,8 +491,8 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
       interval: explicitInterval ? request.interval : undefined,
       providerSymbol: explicitProvider ? request.providerSymbol : undefined,
       save: !noSave,
-    }, useCodex ? runCodexPromptText : undefined);
-    recordAgentContext('research.report', `research ${symbol.toUpperCase()}${topic ? `: ${topic}` : ''}`, {
+    });
+    recordRuntimeContext('research.report', `research ${symbol.toUpperCase()}${topic ? `: ${topic}` : ''}`, {
       symbol: symbol.toUpperCase(),
       topic: topic ?? '',
       ok: !result.missing_data,
@@ -618,7 +502,7 @@ function commandResearch(dataDir: string, symbol?: string, tail: string[] = []):
     printText(json ? JSON.stringify(result, null, 2) : [
       formatResearchReport(result),
       '',
-      chatContinuationHint(`${symbol.toUpperCase()} 리서치 결과에서 반례, 외부 요인, 다음 검증 포인트를 자연어로 이어서 물어보세요.`),
+      `next  rtk event define --target-symbol ${symbol.toUpperCase()} --json`,
     ].join('\n'));
     return result.missing_data ? 1 : 0;
   } catch (error) {
@@ -631,12 +515,11 @@ function commandLab(dataDir: string, action = 'workflow', tail: string[] = []): 
   const stages = new Set(['discuss', 'verify', 'backtest']);
   try {
     const promptOnly = tail.includes('--prompt');
-    const useCodex = tail.includes('--codex') || process.env.QUANTOPS_LAB_CODEX === '1';
     const noSave = tail.includes('--no-save') || promptOnly;
-    const args = tail.filter((item) => item !== '--prompt' && item !== '--no-save' && item !== '--no-codex' && item !== '--codex');
+    const args = tail.filter((item) => item !== '--prompt' && item !== '--no-save');
     const ref = args[0];
     if (!ref) {
-      warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--codex] [--prompt] [--no-save]');
+      warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--prompt] [--no-save]');
       return 2;
     }
     if (action === 'workflow') {
@@ -645,13 +528,13 @@ function commandLab(dataDir: string, action = 'workflow', tail: string[] = []): 
     }
     if (stages.has(action)) {
       const focus = args.slice(1).join(' ');
-      const result = runLabStage(action as LabStage, ref, { base: dataDir, save: !noSave, focus }, useCodex && !promptOnly ? runCodexPromptText : undefined);
+      const result = runLabStage(action as LabStage, ref, { base: dataDir, save: !noSave, focus });
       if (action === 'discuss') {
-        const session = ensureQuantSession({ id: 'agent-chat', title: `Discuss ${result.idea.title}` });
+        const session = ensureQuantSession({ id: 'codex-runtime', title: `Lab ${result.idea.title}` });
         recordSessionEvent(session, {
           type: 'lab.discuss',
-          summary: focus || `started discussion for ${result.idea.title}`,
-          payload: { idea: result.idea.id, focus: focus || '', next: ['agent <your follow-up>', `lab verify ${result.idea.id}`] },
+          summary: focus || `created discussion prompt for ${result.idea.title}`,
+          payload: { idea: result.idea.id, focus: focus || '', next: [`rtk lab verify ${result.idea.id} --prompt`] },
         });
       }
       printText(formatLabRun(result, { promptOnly }));
@@ -661,7 +544,7 @@ function commandLab(dataDir: string, action = 'workflow', tail: string[] = []): 
     printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
     return 1;
   }
-  warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--codex] [--prompt] [--no-save]');
+  warn('usage: lab [workflow|discuss|verify|backtest] <IDEA_REF> [--prompt] [--no-save]');
   return 2;
 }
 
@@ -862,319 +745,7 @@ function commandSources(kind = 'list'): number {
   return kind === 'list' ? 0 : 1;
 }
 
-function commandStart(): number {
-  printText([
-    'Start here — Codex-first QuantOps runtime',
-    '',
-    table(
-      ['step', 'command', 'why'],
-      [
-        ['1', 'codex-guide', 'Codex가 QuantOps를 어떻게 호출해야 하는지 확인'],
-        ['2', 'runtime info --json', '현재 런타임/계약/추천 시작 명령 확인'],
-        ['3', 'symbol search TSMC --json', '자연어 이름을 ticker 후보로 변환'],
-        ['4', 'data info/download/validate --json', '로컬 OHLCV 준비와 품질 확인'],
-        ['5', 'stats / compare / research --json', '분석 재료와 리서치 컨텍스트 생성'],
-        ['6', 'event define/study --json', '뉴스를 이벤트로 구조화하고 가격 반응 확인'],
-        ['7', 'backtest run --json', '전략 가설 검증'],
-      ],
-    ),
-    '',
-    '기본 흐름: User talks to Codex → Codex calls rtk CLI with --json → QuantOps returns artifacts/context.',
-    '주력 명령: codex-guide, runtime info, symbol, data, stats, compare, research, event, backtest, session',
-    '내린 기능: QuantOps 자체 chat/TUI, /agent 중심 UX, MCP-first 흐름',
-  ].join('\n'));
-  return 0;
-}
-
-
-function parseJsonInput(value: string | undefined): JsonObject {
-  if (!value) return {};
-  const parsed = JSON.parse(value) as unknown;
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('--input must be a JSON object');
-  return parsed as JsonObject;
-}
-
-function argsToObject(args: string[]): JsonObject {
-  const out: JsonObject = {};
-  for (let i = 0; i < args.length; i += 1) {
-    const item = args[i]!;
-    if (!item.startsWith('--')) continue;
-    const key = item.slice(2).replaceAll('-', '_');
-    const next = args[i + 1];
-    if (next === undefined || next.startsWith('--')) out[key] = true;
-    else { out[key] = next; i += 1; }
-  }
-  return out;
-}
-
-function toolRow(tool: ReturnType<typeof toolSummaries>[number]): string[] {
-  return [String(tool.name), tool.read_only ? 'read' : 'local-write', tool.mutates_trading ? 'yes' : 'no', String(tool.rtk_command), String(tool.description)];
-}
-
-async function commandTools(dataDir: string, action = 'list', tail: string[] = []): Promise<number> {
-  try {
-    const json = tail.includes('--json');
-    const args = tail.filter((item) => item !== '--json');
-    if (action === 'list') {
-      const payload = { ok: true, tools: toolSummaries() };
-      printText(json ? JSON.stringify(payload, null, 2) : table(['tool', 'mode', 'trading', 'rtk command', 'description'], payload.tools.map(toolRow)));
-      return 0;
-    }
-    if (action === 'run') {
-      const name = args[0];
-      if (!name) { warn('usage: tools run <TOOL_NAME> [--input JSON] [--key value] [--json]'); return 2; }
-      const rest = args.slice(1);
-      const inputJson = takeOption(rest, '--input');
-      const input = { ...argsToObject(rest), ...parseJsonInput(inputJson) };
-      const result = await runTool(name, input, { base: dataDir });
-      printText(json ? JSON.stringify(result.output, null, 2) : result.text);
-      return result.ok ? 0 : 1;
-    }
-  } catch (error) {
-    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
-    return 1;
-  }
-  warn('usage: tools [list|run <TOOL_NAME>] [--json]');
-  return 2;
-}
-
-async function commandAgent(dataDir: string, tail: string[] = []): Promise<number> {
-  try {
-    const args = [...tail];
-    const json = args.includes('--json');
-    const allowDownloads = args.includes('--download');
-    for (let i = args.length - 1; i >= 0; i -= 1) if (args[i] === '--json' || args[i] === '--download') args.splice(i, 1);
-    if (args[0] === 'lang' || args[0] === 'language' || args[0] === 'ko' || args[0] === 'en' || args[0] === 'auto') {
-      const requested = args[0] === 'lang' || args[0] === 'language' ? args[1] : args[0];
-      if (!requested) {
-        printText(formatAgentLanguagePreference(readAgentPreferences(dataDir)));
-        return 0;
-      }
-      const prefs = writeAgentLanguage(dataDir, normalizeAgentLanguage(requested));
-      printText(formatAgentLanguagePreference(prefs));
-      return 0;
-    }
-    const provider = takeOption(args, '--provider') || 'none';
-    const requestedLanguage = takeOption(args, '--lang');
-    const requestedModel = takeOption(args, '--model');
-    const requestedEffort = takeOption(args, '--effort');
-    const prefs = readAgentPreferences(dataDir);
-    const language = requestedLanguage ? normalizeAgentLanguage(requestedLanguage) : prefs.language;
-    const model = requestedModel ?? prefs.codex_model;
-    const effort = requestedEffort ? normalizeCodexEffort(requestedEffort) : prefs.codex_effort;
-    const sessionId = takeOption(args, '--session') || 'agent-chat';
-    const request = args.join(' ');
-    if (!request) { warn('사용법: agent <요청> [--provider codex|claude|none] [--model MODEL] [--effort low|medium|high|xhigh] [--download] [--session ID] [--json]\n       agent ko|en|auto 또는 /model'); return 2; }
-    const run = await runAgent(request, { base: dataDir, provider, model, effort, allowDownloads, sessionId, language });
-    printText(json ? JSON.stringify({ ...run, report: undefined }, null, 2) : run.report);
-    return run.ok ? 0 : 1;
-  } catch (error) {
-    printJson({ ok: false, error: error instanceof Error ? error.message : String(error) });
-    return 1;
-  }
-}
-
-function commandModel(dataDir: string, tail: string[] = []): number {
-  try {
-    const args = [...tail];
-    const json = args.includes('--json');
-    for (let i = args.length - 1; i >= 0; i -= 1) if (args[i] === '--json') args.splice(i, 1);
-    const [action, value] = args;
-    let prefs = readAgentPreferences(dataDir);
-    let hint = '';
-    if (!action || action === 'status') {
-      // Show current settings only.
-    } else if (action === 'reset' || action === 'clear') {
-      prefs = writeCodexModelAndEffort(dataDir, undefined, undefined);
-      hint = 'Codex 모델과 effort를 기본값으로 되돌렸습니다.';
-    } else if (action === 'effort') {
-      if (!value) {
-        hint = `effort를 선택하세요: /model effort ${CODEX_EFFORT_CHOICES.join('|')}`;
-      } else {
-        prefs = writeCodexEffort(dataDir, value);
-        hint = `Codex effort를 ${prefs.codex_effort ?? '기본값'}으로 설정했습니다.`;
-      }
-    } else {
-      const model = action;
-      if (value) {
-        prefs = writeCodexModelAndEffort(dataDir, model, value);
-        hint = `Codex 모델 ${prefs.codex_model ?? '기본값'}, effort ${prefs.codex_effort ?? '기본값'}으로 설정했습니다.`;
-      } else {
-        prefs = writeCodexModel(dataDir, model);
-        hint = `Codex 모델을 ${prefs.codex_model ?? '기본값'}으로 설정했습니다. 이제 effort를 선택하세요: /model effort ${CODEX_EFFORT_CHOICES.join('|')}`;
-      }
-    }
-    const payload = {
-      ok: true,
-      command: 'model.preference',
-      codex_model: prefs.codex_model ?? null,
-      codex_effort: prefs.codex_effort ?? null,
-      model_choices: CODEX_MODEL_CHOICES,
-      effort_choices: CODEX_EFFORT_CHOICES,
-      hint,
-    };
-    printText(json ? JSON.stringify(payload, null, 2) : [hint, formatCodexModelPreference(prefs)].filter(Boolean).join('\n\n'));
-    return 0;
-  } catch (error) {
-    printJson({ ok: false, error: error instanceof Error ? error.message : String(error) });
-    return 1;
-  }
-}
-
-function symbolFromBacktestTarget(dataDir: string, target: string): string {
-  if (target === 'latest' || target.startsWith('idea-')) {
-    const status = ideaStatus(dataDir, target);
-    const symbol = status.idea.symbols[0];
-    if (!symbol) throw new Error(`idea has no symbols yet: ${status.idea.id}`);
-    return symbol;
-  }
-  return target.toUpperCase();
-}
-
-function commandStrategy(action = 'list', tail: string[] = []): number {
-  const json = tail.includes('--json');
-  if (action === 'list') {
-    printText(json ? JSON.stringify({ ok: true, command: 'strategy.list', strategies: listBacktestStrategies() }, null, 2) : formatStrategyList());
-    return 0;
-  }
-  warn('usage: strategy list [--json]');
-  return 2;
-}
-
-function commandBacktest(dataDir: string, action = 'run', tail: string[] = []): number {
-  try {
-    if (action === 'list' || action === 'strategies') {
-      const json = tail.includes('--json');
-      printText(json ? JSON.stringify({ ok: true, command: 'backtest.strategies', strategies: listBacktestStrategies() }, null, 2) : formatStrategyList());
-      return 0;
-    }
-    if (action !== 'run') {
-      warn('usage: backtest [run <SYMBOL|latest>|strategies] [--strategy NAME] [--fast N] [--slow N] [--lookback N] [--threshold N] [--source yahoo|stooq] [--json] [--no-save]');
-      return 2;
-    }
-    const rest = [...tail];
-    const json = rest.includes('--json');
-    const noSave = rest.includes('--no-save');
-    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--json' || rest[i] === '--no-save') rest.splice(i, 1);
-    const strategy = takeOption(rest, '--strategy') || 'ma-cross';
-    const fast = numberOption(rest, '--fast');
-    const slow = numberOption(rest, '--slow');
-    const lookback = numberOption(rest, '--lookback');
-    const threshold = numberOption(rest, '--threshold');
-    const explicitSource = rest.includes('--source');
-    const explicitInterval = rest.includes('--interval');
-    const explicitProvider = rest.includes('--provider-symbol');
-    const { request, rest: expanded } = dataOptionsFromTail(rest);
-    const target = expanded[0];
-    if (!target) {
-      warn('usage: backtest run <SYMBOL|latest> [--strategy ma-cross|momentum|mean-reversion|buy-hold]');
-      return 2;
-    }
-    const symbol = symbolFromBacktestTarget(dataDir, target);
-    const result = runBacktestRuntime(symbol, {
-      base: dataDir,
-      source: explicitSource ? request.source : 'yahoo',
-      interval: explicitInterval ? request.interval : 'd',
-      providerSymbol: explicitProvider ? request.providerSymbol : undefined,
-      strategy,
-      fast,
-      slow,
-      lookback,
-      threshold,
-      save: !noSave,
-    });
-    printText(json ? JSON.stringify(result, null, 2) : formatBacktestResult(result));
-    return result.ok ? 0 : 1;
-  } catch (error) {
-    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
-    return 1;
-  }
-}
-
-function commandProviders(action = 'list', tail: string[] = []): number {
-  const json = tail.includes('--json');
-  if (action === 'list') {
-    const payload = providersJson();
-    printText(json ? JSON.stringify(payload, null, 2) : [
-      'LLM providers',
-      table(['provider', 'available', 'auth', 'detail'], listProviders().map((provider) => [provider.name, provider.available ? 'yes' : 'no', provider.auth, provider.detail])),
-      '',
-      'Market data providers',
-      table(['source', 'available', 'auth', 'env', 'detail'], listMarketDataProviders().map((provider) => [provider.name, provider.available ? 'yes' : 'no', provider.auth, (provider.env ?? []).join(' | ') || '-', provider.detail])),
-    ].join('\n'));
-    return 0;
-  }
-  warn('usage: provider list [--json]');
-  return 2;
-}
-
-function commandSession(action = 'current', tail: string[] = []): number {
-  try {
-    const json = tail.includes('--json');
-    const args = tail.filter((item) => item !== '--json');
-    if (action === 'current') {
-      const session = ensureQuantSession({ id: args[0] });
-      printText(json ? JSON.stringify({ ok: true, session }, null, 2) : sessionHandoff(session));
-      return 0;
-    }
-    if (action === 'list') {
-      const sessions = listQuantSessions();
-      printText(json ? JSON.stringify({ ok: true, sessions }, null, 2) : table(['id', 'updated', 'title'], sessions.map((session) => [session.id, session.updated_at, session.title])));
-      return 0;
-    }
-    if (action === 'handoff') {
-      const id = args[0] || listQuantSessions()[0]?.id;
-      if (!id) { warn('usage: session handoff <SESSION_ID>'); return 2; }
-      printText(sessionHandoff(id));
-      return 0;
-    }
-  } catch (error) {
-    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
-    return 1;
-  }
-  warn('usage: session [current|list|handoff] [--json]');
-  return 2;
-}
-
-function skillSummaryRow(skill: QuantSkill): string[] {
-  const shorten = (text: string, max: number) => text.length > max ? `${text.slice(0, max - 1)}…` : text;
-  return [skill.name, shorten(skill.description || '-', 96), skill.path];
-}
-
-function commandSkills(): number {
-  const skills = listQuantSkills();
-  const examples = [
-    '$quantops-agent-runtime --lang ko',
-    '$quantops-data-backtest-check latest --lang ko',
-    '$quantops-idea-coach --lang ko',
-    '$quantops-research-lab latest --lang ko',
-  ].filter((example) => skills.some((skill) => example.startsWith(`$${skill.name}`)));
-  printText([
-    'QuantOps local skills',
-    '',
-    skills.length ? table(['skill', 'description', 'path'], skills.map(skillSummaryRow)) : 'No QuantOps skills found under quant-skills/ or $QUANTOPS_SKILLS_DIR.',
-    '',
-    'Use inside quant:',
-    '  /skills',
-    ...examples.map((example) => `  ${example}`),
-  ].join('\n'));
-  return 0;
-}
-
-function commandNext(dataDir: string): number {
-  printText(nextRecommendation(dataDir));
-  return 0;
-}
-
-type DiscoverCommandOptions = {
-  category: string;
-  source: 'local' | 'yahoo' | 'live';
-  limit: number;
-  download: boolean;
-  dataArgs: string[];
-};
-
-function parseDiscoverArgs(parts: string[]): DiscoverCommandOptions {
+function parseDiscoverArgs(parts: string[]): { category: string; source: 'local' | 'yahoo' | 'live'; limit: number; download: boolean; dataArgs: string[] } {
   const rest = [...parts];
   const source = (takeOption(rest, '--source') ?? 'local').toLowerCase();
   const limit = Number(takeOption(rest, '--limit') ?? 25);
@@ -1266,14 +837,17 @@ function downloadAliasArgs(symbol?: string, tail: string[] = []): string[] {
   return [symbol, ...(hasRange ? [] : ['--period', '1y']), ...tail];
 }
 
-function parseSymbolSearchArgs(query: string): { query: string; source: 'local' | 'yahoo' | 'live'; limit: number } {
+function parseSymbolSearchArgs(query: string): { query: string; source: 'local' | 'yahoo' | 'live'; limit: number; json: boolean } {
   const parts = query.split(/\s+/).filter(Boolean);
+  const json = parts.includes('--json');
+  for (let i = parts.length - 1; i >= 0; i -= 1) if (parts[i] === '--json') parts.splice(i, 1);
   const source = (takeOption(parts, '--source') ?? 'yahoo').toLowerCase();
   const limit = Number(takeOption(parts, '--limit') ?? 10);
   return {
     query: parts.join(' '),
     source: source === 'local' || source === 'live' ? source : 'yahoo',
     limit: Number.isFinite(limit) ? limit : 10,
+    json,
   };
 }
 
@@ -1282,10 +856,12 @@ async function commandSymbol(dataDir: string, action = 'search', query = ''): Pr
     query = action;
     action = 'info';
   }
+  const options = parseSymbolSearchArgs(query);
   if (action === 'info') {
-    const item = symbolInfo(query);
-    if (!item) { warn(`unknown symbol: ${query}`); return 1; }
-    printText([
+    const item = symbolInfo(options.query);
+    if (!item) { warn(`unknown symbol: ${options.query}`); return 1; }
+    const payload = { ok: true, command: 'symbol.info', symbol: item };
+    printText(options.json ? JSON.stringify(payload, null, 2) : [
       `${item.symbol} — ${item.name}`,
       '',
       table(
@@ -1303,121 +879,165 @@ async function commandSymbol(dataDir: string, action = 'search', query = ''): Pr
     ].join('\n'));
     return 0;
   }
-  const options = parseSymbolSearchArgs(query);
   const result = await searchSymbolsLive({
     query: options.query,
     source: options.source,
     limit: options.limit,
     dataDir,
   });
-  printText(formatSymbolSearchResult(result));
+  const payload = { ok: true, command: 'symbol.search', ...result };
+  printText(options.json ? JSON.stringify(payload, null, 2) : formatSymbolSearchResult(result));
   return 0;
 }
 
-function commandQuoteHistory(dataDir: string, ticker?: string): number {
-  if (!ticker) { warn('usage: quote history <TICKER>'); return 2; }
-  const records = readJsonl(quoteHistoryPath(ticker, dataDir));
-  printJson({ ticker: ticker.toUpperCase(), samples: records.length, history: historyRows(records) });
+function commandStart(): number {
+  printText([
+    'Start here — QuantOps JSON runtime',
+    '',
+    table(
+      ['step', 'command', 'why'],
+      [
+        ['1', 'codex-guide', 'QuantOps JSON 런타임 계약 확인'],
+        ['2', 'runtime info --json', '현재 런타임/계약/추천 시작 명령 확인'],
+        ['3', 'symbol search TSMC --json', '자연어 이름을 ticker 후보로 변환'],
+        ['4', 'data info/download/validate --json', '로컬 OHLCV 준비와 품질 확인'],
+        ['5', 'stats / compare / research --json', '분석 재료와 리서치 컨텍스트 생성'],
+        ['6', 'event define/study --json', '뉴스를 이벤트로 구조화하고 가격 반응 확인'],
+        ['7', 'backtest run --json', '전략 가설 검증'],
+      ],
+    ),
+    '',
+    '기본 흐름: rtk CLI with --json → QuantOps returns artifacts/context.',
+    '주력 명령: codex-guide, runtime info, symbol, data, stats, compare, research, event, backtest, session',
+    '내린 기능: 로컬 대화 UI, 터미널 대시보드, 프로토콜-first 흐름',
+  ].join('\n'));
   return 0;
 }
 
-function commandClassify(dataDir: string, ticker?: string): number {
-  if (!ticker) { warn('usage: classify <TICKER>'); return 2; }
-  const records = readJsonl(quoteHistoryPath(ticker, dataDir));
-  printJson({ ticker: ticker.toUpperCase(), ...classify(records) });
-  return 0;
+
+
+function symbolFromBacktestTarget(dataDir: string, target: string): string {
+  if (target === 'latest' || target.startsWith('idea-')) {
+    const status = ideaStatus(dataDir, target);
+    const symbol = status.idea.symbols[0];
+    if (!symbol) throw new Error(`idea has no symbols yet: ${status.idea.id}`);
+    return symbol;
+  }
+  return target.toUpperCase();
 }
 
-function commandPortfolioSnapshot(dataDir: string): number {
-  const summary = accountSummary();
-  const positions = portfolioPositions();
-  const payload = {
-    account_summary: redact(parseJsonOrRaw(summary.stdout, summary.stderr, summary.returncode) as never),
-    positions: redact(parseJsonOrRaw(positions.stdout, positions.stderr, positions.returncode) as never),
-    errors: [summary.ok ? null : summary.stderr || summary.stdout, positions.ok ? null : positions.stderr || positions.stdout].filter(Boolean),
-  };
-  const record = { fetched_at: utcNow(), source: 'tossctl account/portfolio', payload };
-  const path = snapshotPath('portfolio', dataDir);
-  appendJsonl(path, record as never);
-  printJson({ ok: summary.ok && positions.ok, saved_to: path, fetched_at: record.fetched_at, errors: payload.errors });
-  return summary.ok && positions.ok ? 0 : 1;
-}
-
-function commandOrderPreview(args: string[]): number {
-  const result = orderPreview(args);
-  if (result.ok) {
-    const text = result.stdout.trim();
-    if (INTERACTIVE_CHAT_UI) emitChat(text);
-    else console.log(text);
+function commandStrategy(action = 'list', tail: string[] = []): number {
+  const json = tail.includes('--json');
+  if (action === 'list') {
+    printText(json ? JSON.stringify({ ok: true, command: 'strategy.list', strategies: listBacktestStrategies() }, null, 2) : formatStrategyList());
     return 0;
   }
-  printJson({ ok: false, command: result.command, error: result.stderr || result.stdout });
-  return result.returncode || 1;
+  warn('usage: strategy list [--json]');
+  return 2;
 }
 
-function runCodexPromptText(prompt: string, dataDir = 'data'): ResearchCodexResult {
-  if (!prompt.trim()) return { ok: false, error: 'empty prompt', returncode: 2 };
-  const hasCodex = spawnSync('sh', ['-lc', 'command -v codex'], { encoding: 'utf8' });
-  if (hasCodex.status !== 0) return { ok: false, error: 'codex CLI not found in PATH', returncode: 127 };
-  const codex = hasCodex.stdout.trim();
-  const prefs = readAgentPreferences(dataDir);
-  const result = spawnSync(codex, codexExecArgs(prompt, { model: prefs.codex_model, effort: prefs.codex_effort }), { encoding: 'utf8' });
-  const text = filteredCodexOutput(result.stdout ?? '', result.stderr ?? '');
-  const code = result.status ?? 1;
-  return code === 0 ? { ok: true, text, returncode: code } : { ok: false, text, error: text || result.stderr || result.stdout || `codex exited ${code}`, returncode: code };
-}
-
-function runCodexPrompt(prompt: string, dataDir = 'data'): number {
-  if (!prompt.trim()) { warn('usage: codex prompt text'); return 2; }
-  const result = runCodexPromptText(prompt, dataDir);
-  if (result.error === 'codex CLI not found in PATH') { warn(result.error); return 127; }
-  if (result.text) {
-    if (INTERACTIVE_CHAT_UI) emitChat(result.text);
-    else console.log(result.text);
+function commandBacktest(dataDir: string, action = 'run', tail: string[] = []): number {
+  try {
+    if (action === 'list' || action === 'strategies') {
+      const json = tail.includes('--json');
+      printText(json ? JSON.stringify({ ok: true, command: 'backtest.strategies', strategies: listBacktestStrategies() }, null, 2) : formatStrategyList());
+      return 0;
+    }
+    if (action !== 'run') {
+      warn('usage: backtest [run <SYMBOL|latest>|strategies] [--strategy NAME] [--fast N] [--slow N] [--lookback N] [--threshold N] [--source yahoo|stooq] [--json] [--no-save]');
+      return 2;
+    }
+    const rest = [...tail];
+    const json = rest.includes('--json');
+    const noSave = rest.includes('--no-save');
+    for (let i = rest.length - 1; i >= 0; i -= 1) if (rest[i] === '--json' || rest[i] === '--no-save') rest.splice(i, 1);
+    const strategy = takeOption(rest, '--strategy') || 'ma-cross';
+    const fast = numberOption(rest, '--fast');
+    const slow = numberOption(rest, '--slow');
+    const lookback = numberOption(rest, '--lookback');
+    const threshold = numberOption(rest, '--threshold');
+    const explicitSource = rest.includes('--source');
+    const explicitInterval = rest.includes('--interval');
+    const explicitProvider = rest.includes('--provider-symbol');
+    const { request, rest: expanded } = dataOptionsFromTail(rest);
+    const target = expanded[0];
+    if (!target) {
+      warn('usage: backtest run <SYMBOL|latest> [--strategy ma-cross|momentum|mean-reversion|buy-hold]');
+      return 2;
+    }
+    const symbol = symbolFromBacktestTarget(dataDir, target);
+    const result = runBacktestRuntime(symbol, {
+      base: dataDir,
+      source: explicitSource ? request.source : 'yahoo',
+      interval: explicitInterval ? request.interval : 'd',
+      providerSymbol: explicitProvider ? request.providerSymbol : undefined,
+      strategy,
+      fast,
+      slow,
+      lookback,
+      threshold,
+      save: !noSave,
+    });
+    printText(json ? JSON.stringify(result, null, 2) : formatBacktestResult(result));
+    return result.ok ? 0 : 1;
+  } catch (error) {
+    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
+    return 1;
   }
-  return result.returncode ?? (result.ok ? 0 : 1);
 }
 
-export function rustTuiCargoArgs(manifest: string, entry: string, dataDir: string, nodePath = process.execPath): string[] {
-  return [
-    'run',
-    '--quiet',
-    '--manifest-path',
-    manifest,
-    '--bin',
-    'quantops-tui',
-    '--',
-    '--entry',
-    entry,
-    '--data-dir',
-    dataDir,
-    '--node',
-    nodePath,
-  ];
+function commandProviders(action = 'list', tail: string[] = []): number {
+  const json = tail.includes('--json');
+  if (action === 'list') {
+    const payload = providersJson();
+    printText(json ? JSON.stringify(payload, null, 2) : [
+      'Market data providers',
+      table(['source', 'available', 'auth', 'env', 'detail'], listMarketDataProviders().map((provider) => [provider.name, provider.available ? 'yes' : 'no', provider.auth, (provider.env ?? []).join(' | ') || '-', provider.detail])),
+    ].join('\n'));
+    return 0;
+  }
+  warn('usage: provider list [--json]');
+  return 2;
 }
 
-function launchRustTui(dataDir: string): number | null {
-  const cargo = spawnSync('sh', ['-lc', 'command -v cargo'], { encoding: 'utf8' });
-  if (cargo.status !== 0 || !cargo.stdout.trim()) return null;
-  const manifest = new URL('../tui/Cargo.toml', import.meta.url).pathname;
-  const entry = new URL('./cli.ts', import.meta.url).pathname;
-  const result = spawnSync(cargo.stdout.trim(), rustTuiCargoArgs(manifest, entry, dataDir), { encoding: 'utf8', stdio: 'inherit' });
-  return result.status ?? 1;
+function commandSession(action = 'current', tail: string[] = []): number {
+  try {
+    const json = tail.includes('--json');
+    const args = tail.filter((item) => item !== '--json');
+    if (action === 'current') {
+      const session = ensureQuantSession({ id: args[0] });
+      printText(json ? JSON.stringify({ ok: true, session }, null, 2) : sessionHandoff(session));
+      return 0;
+    }
+    if (action === 'list') {
+      const sessions = listQuantSessions();
+      printText(json ? JSON.stringify({ ok: true, sessions }, null, 2) : table(['id', 'updated', 'title'], sessions.map((session) => [session.id, session.updated_at, session.title])));
+      return 0;
+    }
+    if (action === 'handoff') {
+      const id = args[0] || listQuantSessions()[0]?.id;
+      if (!id) { warn('usage: session handoff <SESSION_ID>'); return 2; }
+      printText(sessionHandoff(id));
+      return 0;
+    }
+  } catch (error) {
+    printJson({ ok: false, action, error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
+  warn('usage: session [current|list|handoff] [--json]');
+  return 2;
 }
 
-function printStatus(dataDir: string) {
-  const summary = statusSummary(dataDir);
-  printJson(summary);
-}
+
 
 function handleWatchlist(parts: string[], dataDir: string): number {
   const action = parts[1] ?? 'list';
   const tickers = readWatchlist(dataDir);
   if (action === 'list') { printJson({ watchlist: tickers }); return 0; }
-  if (action === 'add' && parts[2]) { writeWatchlist([...tickers, parts[2]], dataDir); ok(`${parts[2].toUpperCase()} added to watchlist`); return 0; }
-  if ((action === 'remove' || action === 'rm') && parts[2]) { writeWatchlist(tickers.filter((item) => item !== parts[2]!.toUpperCase()), dataDir); ok(`${parts[2].toUpperCase()} removed from watchlist`); return 0; }
+  if (action === 'add' && parts[2]) { writeWatchlist([...tickers, parts[2]], dataDir); printText(`${parts[2].toUpperCase()} added to watchlist`); return 0; }
+  if ((action === 'remove' || action === 'rm') && parts[2]) { writeWatchlist(tickers.filter((item) => item !== parts[2]!.toUpperCase()), dataDir); printText(`${parts[2].toUpperCase()} removed from watchlist`); return 0; }
   if (action === 'fetch') { let code = 0; for (const ticker of tickers) code = commandQuoteFetch(dataDir, ticker) || code; return code; }
-  warn('usage: /watchlist [list|add <TICKER>|remove <TICKER>|fetch]');
+  warn('usage: watchlist [list|add <TICKER>|remove <TICKER>|fetch]');
   return 2;
 }
 
@@ -1427,202 +1047,139 @@ function runtimeLine(dataDir: string, mode = 'quant', lastAction = 'line'): stri
 
 export function welcomeCard(): string {
   return [
-    `${CYAN}${APP}${RESET} ${VERSION} · TypeScript 런타임 · 실제 매매 변경 비활성화`,
+    `${CYAN}${APP}${RESET} ${VERSION} · headless quant runtime`,
     '',
-    '프로젝트   QuantOps-cli — 에이전트 기반 퀀트 리서치 실행 도구',
-    '런타임     TypeScript / Node 24+ / 가능하면 tmux HUD 사용',
-    '안전       기본은 읽기 전용 데이터 · 실제 주문/매매 변경 없음',
+    '기본 흐름: rtk ... --json → QuantOps returns artifacts/context.',
+    '주력 명령: codex-guide, runtime info, symbol, data, stats, compare, research, event, backtest, session',
     '',
-    '채팅       그냥 입력하세요: “NVDA 실적 모멘텀을 검증하고 싶어”',
-    '처음       /start · /next · /idea · /lab · /skills · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list',
-    '흐름       자연어 채팅  →  에이전트 도구 실행/제안  →  /idea 또는 /lab 저장  →  /backtest 검증',
-    '고급       /tools · /backtest run latest · /strategy list · /discover · /data info · /stats <SYMBOL>',
-    '도구       /skills · /tools · /model · $quantops-idea-coach · /codex · /quant · /exit',
-    '일반 모드  quant --no-tmux',
-    '',
+    'Start:',
+    '  rtk codex-guide --json',
+    '  rtk runtime info --json',
+    '  rtk symbol search TSMC --json',
+    '  rtk data download TSM --period 5y --json',
+    '  rtk stats TSM --json',
   ].join('\n');
 }
 
-async function runInteractive(dataDir: string): Promise<number> {
-  if (input.isTTY && output.isTTY) {
-    const code = launchRustTui(dataDir);
-    if (code !== null) return code;
-  }
-  let mode = 'quant';
-  let lastAction = 'ready';
-  INTERACTIVE_CHAT_UI = true;
-  console.log(inputHintBox(mode));
-  const handleLine = async (rawLine: string): Promise<boolean> => {
-    output.write(RESET);
-    const line = rawLine.trim();
-    if (!line) return false;
-    if (line === '/exit') {
-      shutdownManagedTmuxRuntime();
-      return true;
-    }
-    if (['exit', '/quit', 'quit', '/:q', ':q'].includes(line)) {
-      warn('Use /exit to close QuantOps and its managed tmux session.');
-      lastAction = 'exit-help';
-      return false;
-    }
-    const parts = line.split(/\s+/);
-    if (line === '/codex') { mode = 'codex'; lastAction = '/codex'; console.log(inputHintBox(mode)); return false; }
-    if (line === '/quant') { mode = 'quant'; lastAction = '/quant'; console.log(inputHintBox(mode)); return false; }
-    if (line === '/start') { commandStart(); lastAction = '/start'; return false; }
-    if (line === '/next') { commandNext(dataDir); lastAction = '/next'; return false; }
-    if (line === '/skills') { commandSkills(); lastAction = '/skills'; return false; }
-    if (line.startsWith('/tools')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/tools'; return false; }
-    if (line.startsWith('/agent')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = 'agent'; return false; }
-    if (line.startsWith('/model')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/model'; return false; }
-    if (line.startsWith('/provider')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/provider'; return false; }
-    if (line.startsWith('/session')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/session'; return false; }
-    if (line === '/status') { printStatus(dataDir); lastAction = '/status'; return false; }
-    if (line.startsWith('/watchlist')) { handleWatchlist(parts, dataDir); lastAction = '/watchlist'; return false; }
-    if (line === '/hud') { emitChat(runtimeLine(dataDir, mode, lastAction)); lastAction = '/hud'; return false; }
-    if (line === '/hud tmux') { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); lastAction = '/hud'; return false; }
-    if (line.startsWith('/runtime')) { emitChat(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; return false; }
-    if (line.startsWith('/research ')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/research'; return false; }
-    if (line.startsWith('$')) { runCodexPrompt(line, dataDir); lastAction = 'skill'; return false; }
-    if (mode === 'codex') { runCodexPrompt(line, dataDir); lastAction = 'codex'; return false; }
-    if (!line.startsWith('/')) {
-      await commandAgent(dataDir, [line]);
-      lastAction = 'agent-chat';
-      return false;
-    }
-    const commandParts = line.slice(1).split(/\s+/);
-    const slashRoot = `/${commandParts[0] ?? ''}`;
-    if (!SLASH_COMPLETIONS.includes(slashRoot) && !INTERACTIVE_HIDDEN_SLASH.has(slashRoot)) {
-      await commandAgent(dataDir, [`사용자가 알 수 없는 slash 입력을 했습니다: ${line}. 의도를 해석해서 다음 행동을 자연어로 안내해줘.`]);
-      lastAction = 'agent-chat';
-      return false;
-    }
-    const code = await runOnce(['--data-dir', dataDir, ...commandParts], { quietUnknown: true });
-    lastAction = commandParts.slice(0, 2).join(' ');
-    if (code === 2) warn('unknown slash command: try /start, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or just type a natural-language chat message.');
-    return false;
-  };
-  const rl = createInterface({ input, output, completer: (line: string) => completeLine(line, mode, dataDir) });
-  if (!input.isTTY) {
-    for await (const line of rl) {
-      recordRuntime({ base: dataDir, mode, lastAction });
-      if (await handleLine(line)) break;
-    }
-    output.write(RESET);
-    rl.close();
-    return 0;
-  }
-  const lines = rl[Symbol.asyncIterator]();
-  for (;;) {
-    recordRuntime({ base: dataDir, mode, lastAction });
-    rl.setPrompt(interactivePrompt(mode));
-    rl.prompt();
-    const answer = await lines.next();
-    if (answer.done) { output.write(RESET); rl.close(); return 0; }
-    if (await handleLine(answer.value)) {
-      rl.close();
-      return 0;
-    }
-  }
+
+type CommandContext = {
+  dataDir: string;
+  sub?: string;
+  tail: string[];
+};
+
+type CommandHandler = (ctx: CommandContext) => number | Promise<number>;
+
+function argsWithSub(sub: string | undefined, tail: string[]): string[] {
+  return [sub, ...tail].filter((item): item is string => Boolean(item));
 }
 
-export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } = {}): Promise<number> {
-  const { dataDir, rest } = dataDirFrom(argv);
-  const [cmd, sub, ...tail] = rest;
-  if (!cmd) return 2;
-  if (cmd === 'help' || cmd === '--help' || cmd === '-h') { printText(helpText()); return 0; }
-  if (cmd === 'start') return commandStart();
-  if (cmd === 'codex-guide') return commandCodexGuide([sub, ...tail].filter(Boolean));
-  if (cmd === 'next') return commandNext(dataDir);
-  if (cmd === 'download') return commandData(dataDir, 'download', downloadAliasArgs(sub, tail));
-  if (cmd === 'analyze') return commandStats(dataDir, sub, tail);
-  if (cmd === 'research') return commandResearch(dataDir, sub, tail);
-  if (cmd === 'event') return commandEvent(dataDir, sub ?? 'windows', tail);
-  if (cmd === 'compare') return commandCompare(dataDir, [sub, ...tail].filter(Boolean));
-  if (cmd === 'idea') return commandIdea(dataDir, sub ?? 'list', tail);
-  if (cmd === 'lab') return commandLab(dataDir, sub ?? 'workflow', tail);
-  if (cmd === 'backtest') return commandBacktest(dataDir, sub ?? 'run', tail);
-  if (cmd === 'strategy') return commandStrategy(sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
-  if (cmd === 'tools') return commandTools(dataDir, sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
-  if (cmd === 'agent') return commandAgent(dataDir, [sub, ...tail].filter(Boolean));
-  if (cmd === 'model') return commandModel(dataDir, [sub, ...tail].filter(Boolean));
-  if (cmd === 'provider' || cmd === 'providers') return commandProviders(sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
-  if (cmd === 'session') return commandSession(sub?.startsWith('--') ? 'current' : sub ?? 'current', sub?.startsWith('--') ? [sub, ...tail] : tail);
-  if (cmd === 'skills') return commandSkills();
-  if (cmd === 'list') return commandData(dataDir, 'list', tail);
-  if (cmd === 'status') { printStatus(dataDir); return 0; }
-  if (cmd === 'doctor') return commandDoctor(dataDir);
-  if (cmd === 'collect') return commandCollect(dataDir, sub, tail);
-  if (cmd === 'data') return commandData(dataDir, sub, tail);
-  if (cmd === 'sources') return commandSources(sub ?? 'list');
-  if (cmd === 'discover') return commandDiscover(dataDir, [sub, ...tail].filter(Boolean));
-  if (cmd === 'symbol') return commandSymbol(dataDir, sub ?? 'search', tail.join(' '));
-  if (cmd === 'stats') return commandStats(dataDir, sub, tail);
-  if (cmd === 'audit') return commandAudit(dataDir, sub);
-  if (cmd === 'quote' && sub === 'fetch') return commandQuoteFetch(dataDir, tail[0]);
-  if (cmd === 'quote' && sub === 'history') return commandQuoteHistory(dataDir, tail[0]);
-  if (cmd === 'quote' && sub) return commandQuoteFetch(dataDir, sub);
-  if (cmd === 'history') return commandQuoteHistory(dataDir, sub);
-  if (cmd === 'classify') return commandClassify(dataDir, sub);
-  if (cmd === 'portfolio' && (sub === 'snapshot' || !sub)) return commandPortfolioSnapshot(dataDir);
-  if (cmd === 'order' && sub === 'preview') return commandOrderPreview(tail);
-  if (cmd === 'watchlist') return handleWatchlist(['watchlist', sub ?? 'list', ...tail], dataDir);
-  if (cmd === 'codex-prompt') return runCodexPrompt([sub, ...tail].filter(Boolean).join(' '), dataDir);
-  if (cmd?.startsWith('$')) return runCodexPrompt([cmd, sub, ...tail].filter(Boolean).join(' '), dataDir);
-  if (cmd === 'runtime' && sub === 'snapshot') { printJson(recordRuntime({ base: dataDir, lastAction: 'snapshot' })); return 0; }
-  if (cmd === 'runtime' && sub === 'line') { console.log(runtimeLine(dataDir)); return 0; }
-  if (cmd === 'runtime' && (sub === 'info' || !sub || sub.startsWith('--'))) return commandRuntimeInfo(dataDir, [sub, ...tail].filter(Boolean).includes('--json'));
-  if (cmd === 'mcp') { await runMcpServer({ base: dataDir }); return 0; }
-  if (cmd === 'hud' && rest.includes('--watch')) { void watchHud(dataDir, Number(rest[rest.indexOf('--interval') + 1] ?? 1)); return 0; }
-  if (cmd === 'hud' && rest.includes('--tmux')) { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); return r.code; }
-  if (cmd === 'hud') { printHudOnce(dataDir); return 0; }
-  if (cmd === 'tmux' && sub === 'start') {
-    const session = optionValue(tail, '--session') || defaultTmuxSession();
-    const height = optionNumber(tail, '--height', 3);
-    const interval = optionNumber(tail, '--interval', 1);
-    const r = launchTmuxRuntime(dataDir, session, height, interval);
-    r.code === 0 ? ok(r.message) : warn(r.message);
-    return r.code;
-  }
-  if (cmd === 'setup' && sub === 'bin') {
+function optionSub(defaultSub: string, sub: string | undefined, tail: string[]): { action: string; tail: string[] } {
+  return sub?.startsWith('--')
+    ? { action: defaultSub, tail: [sub, ...tail] }
+    : { action: sub ?? defaultSub, tail };
+}
+
+function commandSetup(sub: string | undefined, tail: string[]): number {
+  if (sub === 'bin') {
     try {
       const dirFlag = tail.indexOf('--dir');
       const dir = dirFlag >= 0 ? tail[dirFlag + 1] : undefined;
       const result = installLocalBins({ dir, force: tail.includes('--force') });
       printJson(result);
-      if (INTERACTIVE_CHAT_UI) emitChat(pathHint(dir));
-      else console.log(pathHint(dir));
+      console.log(pathHint(dir));
       return 0;
     } catch (error) {
       warn(error instanceof Error ? error.message : String(error));
       return 1;
     }
   }
-  if (cmd === 'setup' && sub === 'rust') {
+  if (sub === 'rust') {
     const result = buildRustHelpers({ release: tail.includes('--release') });
     printJson(result);
     return result.ok ? 0 : 1;
   }
-  if (cmd === 'brief') return runCodexPrompt('Create a concise QuantOps session brief from local redacted data. Do not give buy/sell/hold advice.');
+  warn('usage: setup [bin|rust]');
+  return 2;
+}
+
+function commandRuntime(dataDir: string, sub: string | undefined, tail: string[]): number {
+  if (sub === 'snapshot') {
+    printJson(recordRuntime({ base: dataDir, lastAction: 'snapshot' }));
+    return 0;
+  }
+  if (sub === 'line') {
+    console.log(runtimeLine(dataDir));
+    return 0;
+  }
+  if (sub === 'info' || !sub || sub.startsWith('--')) {
+    return commandRuntimeInfo(dataDir, argsWithSub(sub, tail).includes('--json'));
+  }
+  warn('usage: runtime [info|line|snapshot] [--json]');
+  return 2;
+}
+
+const COMMAND_HANDLERS: Record<string, CommandHandler> = {
+  help: () => { printText(helpText()); return 0; },
+  '--help': () => { printText(helpText()); return 0; },
+  '-h': () => { printText(helpText()); return 0; },
+  start: () => commandStart(),
+  'codex-guide': ({ sub, tail }) => commandCodexGuide(argsWithSub(sub, tail)),
+  download: ({ dataDir, sub, tail }) => commandData(dataDir, 'download', downloadAliasArgs(sub, tail)),
+  analyze: ({ dataDir, sub, tail }) => commandStats(dataDir, sub, tail),
+  research: ({ dataDir, sub, tail }) => commandResearch(dataDir, sub, tail),
+  event: ({ dataDir, sub, tail }) => commandEvent(dataDir, sub ?? 'windows', tail),
+  compare: ({ dataDir, sub, tail }) => commandCompare(dataDir, argsWithSub(sub, tail)),
+  idea: ({ dataDir, sub, tail }) => commandIdea(dataDir, sub ?? 'list', tail),
+  lab: ({ dataDir, sub, tail }) => commandLab(dataDir, sub ?? 'workflow', tail),
+  backtest: ({ dataDir, sub, tail }) => commandBacktest(dataDir, sub ?? 'run', tail),
+  strategy: ({ sub, tail }) => {
+    const args = optionSub('list', sub, tail);
+    return commandStrategy(args.action, args.tail);
+  },
+  provider: ({ sub, tail }) => {
+    const args = optionSub('list', sub, tail);
+    return commandProviders(args.action, args.tail);
+  },
+  providers: ({ sub, tail }) => {
+    const args = optionSub('list', sub, tail);
+    return commandProviders(args.action, args.tail);
+  },
+  session: ({ sub, tail }) => {
+    const args = optionSub('current', sub, tail);
+    return commandSession(args.action, args.tail);
+  },
+  list: ({ dataDir, tail }) => commandData(dataDir, 'list', tail),
+  doctor: ({ dataDir }) => commandDoctor(dataDir),
+  collect: ({ dataDir, sub, tail }) => commandCollect(dataDir, sub, tail),
+  data: ({ dataDir, sub, tail }) => commandData(dataDir, sub, tail),
+  sources: ({ sub }) => commandSources(sub ?? 'list'),
+  discover: ({ dataDir, sub, tail }) => commandDiscover(dataDir, argsWithSub(sub, tail)),
+  symbol: ({ dataDir, sub, tail }) => commandSymbol(dataDir, sub ?? 'search', tail.join(' ')),
+  stats: ({ dataDir, sub, tail }) => commandStats(dataDir, sub, tail),
+  audit: ({ dataDir, sub }) => commandAudit(dataDir, sub),
+  quote: ({ dataDir, sub, tail }) => sub === 'fetch' ? commandQuoteFetch(dataDir, tail[0]) : commandQuoteFetch(dataDir, sub),
+  watchlist: ({ dataDir, sub, tail }) => handleWatchlist(['watchlist', sub ?? 'list', ...tail], dataDir),
+  runtime: ({ dataDir, sub, tail }) => commandRuntime(dataDir, sub, tail),
+  setup: ({ sub, tail }) => commandSetup(sub, tail),
+};
+
+export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } = {}): Promise<number> {
+  const { dataDir, rest } = dataDirFrom(argv);
+  const [cmd, sub, ...tail] = rest;
+  if (!cmd) return 2;
+  const handler = COMMAND_HANDLERS[cmd];
+  if (handler) return handler({ dataDir, sub, tail });
   if (!opts.quietUnknown) warn(`unknown command: ${cmd}`);
   return 2;
 }
 
-export function shouldAutoStartTmux(noTmux: boolean): boolean {
-  return !noTmux && !process.env.QUANTOPS_NO_TMUX && !process.env.TMUX && input.isTTY && output.isTTY && Boolean(tmuxPath());
-}
-
 export async function main(argv = process.argv.slice(2)): Promise<number> {
-  const { dataDir, rest, noTmux } = dataDirFrom(argv);
-  if (rest.length === 0) {
-    if (shouldAutoStartTmux(noTmux)) {
-      const r = launchTmuxRuntime(dataDir, defaultTmuxSession());
-      if (r.code !== 127) return r.code;
-      warn(r.message);
-    }
-    return runInteractive(dataDir);
-  }
+  const { rest } = dataDirFrom(argv);
+  if (rest.length === 0) return commandStart();
   return runOnce(argv);
 }
+
 
 function isCliEntrypoint(): boolean {
   const invoked = process.argv[1];

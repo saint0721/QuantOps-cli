@@ -1,153 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { completeLine, completionCandidates } from '../cli.ts';
-import { createIdea } from '../idea.ts';
 
-test('tab completion suggests root slash and nested commands', () => {
-  assert.ok(completionCandidates('', 'quant').includes('/status'));
-  assert.ok(completionCandidates('', 'quant').includes('doctor'));
-  assert.ok(completionCandidates('', 'quant').includes('research'));
-  assert.ok(completionCandidates('', 'quant').includes('codex-guide'));
-  assert.ok(completionCandidates('', 'quant').includes('event'));
-  assert.ok(completionCandidates('', 'quant').includes('compare'));
-  assert.ok(completionCandidates('', 'quant').includes('idea'));
-  assert.ok(completionCandidates('', 'quant').includes('lab'));
-  assert.ok(completionCandidates('', 'quant').includes('skills'));
-  assert.ok(completionCandidates('', 'quant').includes('tools'));
-  assert.ok(completionCandidates('', 'quant').includes('mcp'));
-  assert.ok(completionCandidates('', 'quant').includes('agent'));
-  assert.ok(completionCandidates('', 'quant').includes('model'));
-  assert.ok(completionCandidates('', 'quant').includes('collect'));
-  assert.ok(completionCandidates('', 'quant').includes('/collect'));
-  assert.ok(completionCandidates('', 'quant').includes('data'));
-  assert.ok(completionCandidates('', 'quant').includes('discover'));
-  assert.ok(completionCandidates('', 'quant').includes('sources'));
-  assert.ok(completionCandidates('', 'quant').includes('symbol'));
-  assert.ok(completionCandidates('', 'quant').includes('stats'));
-  assert.ok(completionCandidates('', 'quant').includes('research'));
-  assert.ok(completionCandidates('', 'quant').includes('/data'));
-  assert.ok(completionCandidates('', 'quant').includes('/start'));
-  assert.equal(completionCandidates('', 'quant').includes('/find'), false);
-  assert.equal(completionCandidates('', 'quant').includes('/ask'), false);
-  assert.ok(completionCandidates('', 'quant').includes('/download'));
-  assert.equal(completionCandidates('', 'quant').includes('/analyze'), false);
-  assert.ok(completionCandidates('', 'quant').includes('/research'));
-  assert.ok(completionCandidates('', 'quant').includes('/idea'));
-  assert.ok(completionCandidates('', 'quant').includes('/lab'));
-  assert.ok(completionCandidates('', 'quant').includes('/skills'));
-  assert.ok(completionCandidates('', 'quant').includes('/tools'));
-  assert.equal(completionCandidates('', 'quant').includes('/agent'), false);
-  assert.ok(completionCandidates('', 'quant').includes('/model'));
-  assert.ok(completionCandidates('', 'quant').includes('/list'));
-  assert.ok(completionCandidates('', 'quant').includes('/discover'));
-  assert.ok(completionCandidates('', 'quant').includes('/sources'));
-  assert.ok(completionCandidates('', 'quant').includes('/symbol'));
-  assert.ok(completionCandidates('', 'quant').includes('/stats'));
-  assert.ok(completionCandidates('', 'quant').includes('/backtest'));
-  assert.ok(completionCandidates('', 'quant').includes('/strategy'));
-  assert.ok(completionCandidates('', 'quant').includes('/research'));
-  assert.deepEqual(completionCandidates('quote ', 'quant'), ['fetch', 'history']);
-  assert.deepEqual(completionCandidates('/quote ', 'quant'), ['fetch', 'history']);
-  assert.deepEqual(completionCandidates('collect ', 'quant'), ['plan', 'quote', 'watchlist']);
-  assert.deepEqual(completionCandidates('/collect ', 'quant'), ['plan', 'quote', 'watchlist']);
-  assert.deepEqual(completionCandidates('collect plan ', 'quant'), ['--watchlist']);
-  assert.deepEqual(completionCandidates('/collect plan ', 'quant'), ['--watchlist']);
-  assert.deepEqual(completionCandidates('/collect plan --watchlist ', 'quant'), []);
-  assert.deepEqual(completionCandidates('/collect quote AAPL ', 'quant'), []);
-  assert.deepEqual(completionCandidates('/idea ', 'quant'), ['new', 'list', 'show', 'add-symbol', 'add-hypothesis', 'status']);
-  assert.deepEqual(completionCandidates('/idea status idea-20260505T031000-nvda ', 'quant'), ['--plain']);
-  assert.deepEqual(completionCandidates('/lab ', 'quant'), ['workflow', 'discuss', 'verify', 'backtest']);
-  assert.deepEqual(completionCandidates('/skills ', 'quant'), []);
-  assert.deepEqual(completionCandidates('/tools ', 'quant'), ['list', 'run']);
-  assert.ok(completionCandidates('runtime ', 'quant').includes('info'));
-  assert.deepEqual(completionCandidates('event ', 'quant'), ['define', 'study', 'windows']);
-  assert.ok(completionCandidates('/tools run ', 'quant').includes('stats.run'));
-  assert.ok(completionCandidates('/agent ', 'quant').includes('--provider'));
-  assert.ok(completionCandidates('/agent ', 'quant').includes('--model'));
-  assert.ok(completionCandidates('/agent ', 'quant').includes('ko'));
-  assert.equal(completionCandidates('/agent ', 'quant').includes('lang'), false);
-  assert.deepEqual(completionCandidates('/agent lang ', 'quant'), ['ko', 'en', 'auto']);
-  assert.ok(completionCandidates('/model ', 'quant').includes('gpt-5.5'));
-  assert.deepEqual(completionCandidates('/model gpt-5.5 ', 'quant'), ['low', 'medium', 'high', 'xhigh']);
-  assert.deepEqual(completionCandidates('/model effort ', 'quant'), ['low', 'medium', 'high', 'xhigh']);
-  assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
-  assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
-  assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));
-  assert.ok(completionCandidates('/data refresh AAPL ', 'quant').includes('--period'));
-  assert.ok(completionCandidates('/data info AAPL ', 'quant').includes('--json'));
-  assert.ok(completionCandidates('/data validate AAPL ', 'quant').includes('--max-stale-days'));
-  assert.ok(completionCandidates('/data watchlist ', 'quant').includes('refresh'));
-  assert.ok(completionCandidates('/data watchlist refresh ', 'quant').includes('--period'));
-  assert.ok(completionCandidates('/data watchlist ', 'quant').includes('--start'));
-  assert.deepEqual(completionCandidates('/data list ', 'quant'), []);
-  assert.ok(completionCandidates('/download NVDA ', 'quant').includes('--period'));
-  assert.deepEqual(completionCandidates('/analyze NVDA ', 'quant'), []);
-  assert.deepEqual(completionCandidates('/backtest ', 'quant'), ['run', 'strategies', 'list']);
-  assert.ok(completionCandidates('/backtest run NVDA ', 'quant').includes('--strategy'));
-  assert.deepEqual(completionCandidates('/backtest run NVDA --strategy ', 'quant'), ['buy-hold', 'ma-cross', 'momentum', 'mean-reversion']);
-  assert.deepEqual(completionCandidates('/strategy ', 'quant'), ['list']);
-  assert.ok(completionCandidates('/research NVDA ', 'quant').includes('--source'));
-  assert.deepEqual(completionCandidates('/list ', 'quant'), []);
-  assert.deepEqual(completionCandidates('/discover ', 'quant'), ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor']);
-  assert.ok(completionCandidates('/discover trending ', 'quant').includes('--source'));
-  assert.deepEqual(completionCandidates('/discover trending --source ', 'quant'), ['local', 'yahoo']);
-  assert.ok(completionCandidates('/discover trending --source yahoo ', 'quant').includes('--download'));
-  assert.deepEqual(completionCandidates('/discover trending --source yahoo --limit ', 'quant'), ['10', '25', '50', '100']);
-  assert.deepEqual(completionCandidates('/discover trending --period ', 'quant'), ['5d', '30d', '6mo', '1y', 'ytd', 'max']);
-  assert.deepEqual(completionCandidates('/sources ', 'quant'), ['list', 'stooq', 'tossctl', 'yahoo', 'alphavantage', 'twelve', 'polygon', 'fmp', 'sec', 'nasdaq', 'vendor']);
-  assert.deepEqual(completionCandidates('/symbol ', 'quant'), ['search', 'info']);
-  assert.ok(completionCandidates('/symbol search TSM ', 'quant').includes('--source'));
-  assert.deepEqual(completionCandidates('/symbol search TSM --source ', 'quant'), ['local', 'yahoo']);
-  assert.deepEqual(completionCandidates('/symbol search TSM --limit ', 'quant'), ['5', '10', '25', '50']);
-  assert.deepEqual(completionCandidates('/stats AAPL ', 'quant'), []);
-  assert.ok(completionCandidates('/research ', 'quant').includes('AAPL'));
-  assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--topic'));
-  assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--provider-symbol'));
-  assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--codex'));
-  assert.equal(completionCandidates('/research AAPL ', 'quant').includes('--no-codex'), false);
-  assert.deepEqual(completeLine('/research NVDA --', 'quant')[0], ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--codex']);
-  assert.deepEqual(completionCandidates('/research NVDA --source ', 'quant'), ['stooq', 'yahoo', 'alphavantage', 'twelve', 'polygon', 'fmp']);
-  assert.deepEqual(completionCandidates('/research NVDA --interval ', 'quant'), ['d', '1d', '1wk', '1mo']);
-  assert.deepEqual(completionCandidates('/research NVDA --topic ', 'quant'), []);
-  assert.deepEqual(completionCandidates('/watchlist ', 'quant'), ['add', 'fetch', 'list', 'remove']);
-  assert.ok(completeLine('/co', 'quant')[0].includes('/collect'));
-  assert.ok(completeLine('runt', 'quant')[0].includes('runtime'));
-  assert.ok(completeLine('tmux start --s', 'quant')[0].includes('--session'));
-});
-
-test('idea tab completion suggests latest and saved idea ids', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'tq-complete-idea-'));
-  const idea = createIdea(dir, 'NVDA earnings momentum', { now: '2026-05-05T03:15:00Z' });
-
-  assert.deepEqual(completionCandidates('/idea status ', 'quant', dir), ['latest', idea.id]);
-  assert.deepEqual(completeLine('/idea status idea-20260505', 'quant', dir)[0], [idea.id]);
-  assert.deepEqual(completionCandidates('/idea show latest ', 'quant', dir), ['--plain']);
-  assert.deepEqual(completeLine('/idea status latest --', 'quant', dir)[0], ['--plain']);
-  assert.deepEqual(completionCandidates('/lab verify ', 'quant', dir), ['latest', idea.id]);
-  assert.deepEqual(completeLine('/lab backtest idea-20260505', 'quant', dir)[0], [idea.id]);
-  assert.ok(completionCandidates('/lab discuss latest ', 'quant', dir).includes('--codex'));
-});
-
-test('codex mode limits completion to slash controls', () => {
-  const candidates = completionCandidates('hello', 'codex');
-  assert.ok(candidates.includes('/quant'));
-  assert.equal(candidates.includes('quote'), false);
-});
-
-test('skill invocation completion suggests QuantOps local skills', () => {
-  const skillsRoot = mkdtempSync(join(tmpdir(), 'tq-complete-skills-'));
-  const dir = join(skillsRoot, 'quantops-idea-coach');
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'SKILL.md'), '---\nname: quantops-idea-coach\ndescription: "Idea coach"\n---\n', 'utf8');
-  const previous = process.env.QUANTOPS_SKILLS_DIR;
-  process.env.QUANTOPS_SKILLS_DIR = skillsRoot;
-  try {
-    assert.deepEqual(completeLine('$quant', 'quant')[0], ['$quantops-idea-coach']);
-  } finally {
-    if (previous === undefined) delete process.env.QUANTOPS_SKILLS_DIR;
-    else process.env.QUANTOPS_SKILLS_DIR = previous;
+test('completion exposes only headless rtk command surface', () => {
+  const root = completionCandidates('', 'quant');
+  for (const command of ['codex-guide', 'runtime', 'symbol', 'data', 'stats', 'compare', 'research', 'event', 'backtest', 'session', 'provider', 'sources', 'doctor', 'setup']) {
+    assert.ok(root.includes(command), `${command} should be discoverable`);
   }
+  for (const removed of ['mcp', 'model', 'skills', 'tools', 'hud', 'tmux', '/hud', '/model', '/tools', '/skills']) {
+    assert.equal(root.includes(removed), false, `${removed} should not be suggested`);
+  }
+});
+
+test('completion suggests nested options for supported JSON runtime commands', () => {
+  assert.deepEqual(completionCandidates('runtime ', 'quant'), ['info', 'line', 'snapshot', '--json']);
+  assert.deepEqual(completionCandidates('event ', 'quant'), ['define', 'study', 'windows']);
+  assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
+  assert.ok(completionCandidates('data download AAPL ', 'quant').includes('--json'));
+  assert.ok(completionCandidates('data validate AAPL ', 'quant').includes('--max-stale-days'));
+  assert.deepEqual(completionCandidates('backtest ', 'quant'), ['run', 'strategies', 'list']);
+  assert.ok(completionCandidates('backtest run NVDA ', 'quant').includes('--strategy'));
+  assert.deepEqual(completionCandidates('backtest run NVDA --strategy ', 'quant'), ['buy-hold', 'ma-cross', 'momentum', 'mean-reversion']);
+  assert.ok(completionCandidates('research AAPL ', 'quant').includes('--topic'));
+  assert.ok(completionCandidates('research AAPL ', 'quant').includes('--json'));
+  assert.equal(completionCandidates('research AAPL ', 'quant').includes('--codex'), false);
+  assert.deepEqual(completeLine('runt', 'quant')[0], ['runtime']);
 });

@@ -232,6 +232,7 @@ def list_datasets(base: str | Path | None = None) -> list[dict[str, Any]]:
                 "rows": len(rows),
                 "first_date": first.get("date"),
                 "latest_date": latest.get("date"),
+                "symbol": latest.get("ticker"),
                 "provider_symbol": latest.get("provider_symbol"),
                 "interval": latest.get("interval"),
             }

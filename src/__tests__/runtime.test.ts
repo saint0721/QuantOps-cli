@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { buildRuntimeSnapshot, recordRuntime, renderRuntimeLine, runtimeStatePath } from '../runtime.ts';
 import { appendJsonl, quoteHistoryPath, readJsonl, writeWatchlist } from '../storage.ts';
 
-test('runtime snapshot writes and renders HUD line', () => {
+test('runtime snapshot writes and renders compact status line', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-ts-'));
   writeWatchlist(['AAPL'], dir);
   appendJsonl(quoteHistoryPath('AAPL', dir), { ticker: 'AAPL', fetched_at: 't1', payload: { price: 1 } } as any);

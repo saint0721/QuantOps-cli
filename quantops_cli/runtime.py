@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -88,7 +87,6 @@ def build_runtime_snapshot(
         "version": __version__,
         "branch": _git_branch(cwd),
         "pid": os.getpid(),
-        "tmux": bool(os.environ.get("TMUX")),
         "mode": mode,
         "last_action": last_action,
         "watchlist_count": len(summary["watchlist"]),
@@ -99,7 +97,6 @@ def build_runtime_snapshot(
         "latest_quotes": latest,
         "classify_ready": summary["ready"],
         "needs_more": summary["needs_more"],
-        "codex": "ready" if shutil.which("codex") else "missing",
         "tossctl": toss.tossctl_path(),
         "updated_at": utc_now(),
     }
@@ -141,13 +138,12 @@ def render_runtime_line(snapshot: dict[str, Any]) -> str:
     quote_files = snapshot.get("quote_files", 0)
     quote_samples = snapshot.get("quote_samples", 0)
     ready = len(snapshot.get("classify_ready") or [])
-    codex = snapshot.get("codex") or "missing"
     last_action = snapshot.get("last_action") or "ready"
     updated_at = snapshot.get("updated_at") or "unknown"
     return (
         f"[QuantOps] {branch} | mode:{mode} | watchlist:{watchlist} | "
         f"quotes:{quote_files}/{quote_samples} samples | classify-ready:{ready} | "
-        f"codex:{codex} | last:{last_action} | updated:{updated_at}"
+        f"last:{last_action} | updated:{updated_at}"
     )
 
 

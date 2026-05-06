@@ -37,8 +37,8 @@ test('lab run can save and format workflow artifacts without Codex', () => {
   assert.equal(existsSync(run.saved_to!), true);
   assert.match(formatted, /saved_to:/);
   assert.match(formatted, /아직 논의 주제가 없습니다/);
-  assert.match(workflow, /quant lab discuss/);
-  assert.match(workflow, /quant lab backtest/);
+  assert.match(workflow, /rtk lab discuss/);
+  assert.match(workflow, /rtk lab backtest/);
 });
 
 test('lab discuss accepts a natural-language focus without Codex', () => {
@@ -55,5 +55,5 @@ test('lab discuss accepts a natural-language focus without Codex', () => {
   assert.equal(run.focus, '실적 모멘텀이 가격에 반영되는지 보고 싶어');
   assert.match(run.report, /discussion_focus/);
   assert.match(run.report, /논의 주제: 실적 모멘텀이 가격에 반영되는지 보고 싶어/);
-  assert.match(run.report, /그냥 입력: 실적 모멘텀이 가격에 반영되는지 보고 싶어/);
+  assert.match(run.report, /rtk lab verify/);
 });

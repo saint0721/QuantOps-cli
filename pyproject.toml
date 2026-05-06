@@ -1,7 +1,7 @@
 [project]
 name = "quantops-cli"
 version = "0.1.0"
-description = "Agentic quant research, validation, backtesting, and execution workflow CLI"
+description = "Headless quant research runtime for rtk JSON workflows"
 requires-python = ">=3.11"
 dependencies = []
 
