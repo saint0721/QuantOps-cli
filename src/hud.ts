@@ -43,10 +43,37 @@ export function tmuxRuntimeOptions(session: string): string[][] {
   ];
 }
 
+export function commandPaneTarget(session: string): string {
+  return `${session}:main.0`;
+}
+
+export function hudPaneTarget(session: string): string {
+  return `${session}:main.1`;
+}
+
+export function clampedHudHeight(requested: number, windowHeight?: number): number {
+  const height = Math.max(1, Math.floor(requested));
+  if (!Number.isFinite(windowHeight) || !windowHeight) return height;
+  const maxHudHeight = Math.max(1, Math.floor(windowHeight) - 8);
+  return Math.min(height, maxHudHeight);
+}
+
 function applyTmuxRuntimeOptions(tmux: string, session: string): void {
   for (const args of tmuxRuntimeOptions(session)) {
     spawnSync(tmux, args, { encoding: 'utf8' });
   }
+}
+
+function tmuxWindowHeight(tmux: string, target: string): number | undefined {
+  const result = spawnSync(tmux, ['display-message', '-p', '-t', target, '#{window_height}'], { encoding: 'utf8' });
+  const parsed = Number(result.stdout.trim());
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function selectCommandPane(tmux: string, session: string): void {
+  const target = `${session}:main`;
+  spawnSync(tmux, ['select-window', '-t', target], { encoding: 'utf8' });
+  spawnSync(tmux, ['select-pane', '-t', commandPaneTarget(session)], { encoding: 'utf8' });
 }
 
 export function shutdownManagedTmuxRuntime(env: NodeJS.ProcessEnv = process.env): { code: number; message: string; skipped: boolean } {
@@ -90,6 +117,7 @@ export function launchTmuxRuntime(base = 'data', session = DEFAULT_SESSION, heig
     const exists = spawnSync(tmux, ['has-session', '-t', session], { encoding: 'utf8' });
     if (exists.status === 0) {
       applyTmuxRuntimeOptions(tmux, session);
+      selectCommandPane(tmux, session);
       const attachExisting = spawnSync(tmux, ['attach-session', '-t', session], { encoding: 'utf8', stdio: 'inherit' });
       return { code: attachExisting.status ?? 0, message: 'attached existing QuantOps tmux session' };
     }
@@ -97,11 +125,12 @@ export function launchTmuxRuntime(base = 'data', session = DEFAULT_SESSION, heig
   }
   applyTmuxRuntimeOptions(tmux, session);
   const target = `${session}:main`;
-  const split = spawnSync(tmux, ['split-window', '-t', target, '-v', '-l', String(Math.max(1, height)), '-c', cwd, hudWatchCommand(base, interval)], { encoding: 'utf8' });
+  spawnSync(tmux, ['select-pane', '-t', commandPaneTarget(session), '-T', 'QuantOps command'], { encoding: 'utf8' });
+  const hudHeight = clampedHudHeight(height, tmuxWindowHeight(tmux, target));
+  const split = spawnSync(tmux, ['split-window', '-t', target, '-v', '-l', String(hudHeight), '-c', cwd, hudWatchCommand(base, interval)], { encoding: 'utf8' });
   if (split.status !== 0) return { code: split.status ?? 1, message: (split.stderr || split.stdout || 'failed to create HUD pane').trim() };
-  spawnSync(tmux, ['select-pane', '-t', target, '-U'], { encoding: 'utf8' });
-  spawnSync(tmux, ['select-pane', '-t', `${target}.0`], { encoding: 'utf8' });
-  spawnSync(tmux, ['select-window', '-t', target], { encoding: 'utf8' });
+  spawnSync(tmux, ['select-pane', '-t', hudPaneTarget(session), '-T', 'QuantOps HUD'], { encoding: 'utf8' });
+  selectCommandPane(tmux, session);
   const attach = spawnSync(tmux, ['attach-session', '-t', session], { encoding: 'utf8', stdio: 'inherit' });
   return { code: attach.status ?? 0, message: 'QuantOps tmux runtime closed' };
 }
