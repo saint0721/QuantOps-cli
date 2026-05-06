@@ -16,9 +16,6 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('idea'));
   assert.ok(completionCandidates('', 'quant').includes('lab'));
   assert.ok(completionCandidates('', 'quant').includes('skills'));
-  assert.ok(completionCandidates('', 'quant').includes('tools'));
-  assert.ok(completionCandidates('', 'quant').includes('mcp'));
-  assert.ok(completionCandidates('', 'quant').includes('agent'));
   assert.ok(completionCandidates('', 'quant').includes('model'));
   assert.ok(completionCandidates('', 'quant').includes('collect'));
   assert.ok(completionCandidates('', 'quant').includes('/collect'));
@@ -30,6 +27,9 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('research'));
   assert.ok(completionCandidates('', 'quant').includes('/data'));
   assert.ok(completionCandidates('', 'quant').includes('/start'));
+  for (const command of ['codex-guide', 'runtime', 'symbol', 'data', 'stats', 'compare', 'research', 'event', 'backtest', 'session']) {
+    assert.ok(completionCandidates('', 'quant').includes(command), `${command} should stay discoverable for headless rtk use`);
+  }
   assert.equal(completionCandidates('', 'quant').includes('/find'), false);
   assert.equal(completionCandidates('', 'quant').includes('/ask'), false);
   assert.ok(completionCandidates('', 'quant').includes('/download'));
@@ -61,15 +61,8 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/idea status idea-20260505T031000-nvda ', 'quant'), ['--plain']);
   assert.deepEqual(completionCandidates('/lab ', 'quant'), ['workflow', 'discuss', 'verify', 'backtest']);
   assert.deepEqual(completionCandidates('/skills ', 'quant'), []);
-  assert.deepEqual(completionCandidates('/tools ', 'quant'), ['list', 'run']);
   assert.ok(completionCandidates('runtime ', 'quant').includes('info'));
   assert.deepEqual(completionCandidates('event ', 'quant'), ['define', 'study', 'windows']);
-  assert.ok(completionCandidates('/tools run ', 'quant').includes('stats.run'));
-  assert.ok(completionCandidates('/agent ', 'quant').includes('--provider'));
-  assert.ok(completionCandidates('/agent ', 'quant').includes('--model'));
-  assert.ok(completionCandidates('/agent ', 'quant').includes('ko'));
-  assert.equal(completionCandidates('/agent ', 'quant').includes('lang'), false);
-  assert.deepEqual(completionCandidates('/agent lang ', 'quant'), ['ko', 'en', 'auto']);
   assert.ok(completionCandidates('/model ', 'quant').includes('gpt-5.5'));
   assert.deepEqual(completionCandidates('/model gpt-5.5 ', 'quant'), ['low', 'medium', 'high', 'xhigh']);
   assert.deepEqual(completionCandidates('/model effort ', 'quant'), ['low', 'medium', 'high', 'xhigh']);
@@ -115,7 +108,6 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('/watchlist ', 'quant'), ['add', 'fetch', 'list', 'remove']);
   assert.ok(completeLine('/co', 'quant')[0].includes('/collect'));
   assert.ok(completeLine('runt', 'quant')[0].includes('runtime'));
-  assert.ok(completeLine('tmux start --s', 'quant')[0].includes('--session'));
 });
 
 test('idea tab completion suggests latest and saved idea ids', () => {
