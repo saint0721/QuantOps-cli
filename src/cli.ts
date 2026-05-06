@@ -892,12 +892,12 @@ async function commandSymbol(dataDir: string, action = 'search', query = ''): Pr
 
 function commandStart(): number {
   printText([
-    'Start here — Codex-first QuantOps runtime',
+    'Start here — QuantOps JSON runtime',
     '',
     table(
       ['step', 'command', 'why'],
       [
-        ['1', 'codex-guide', 'Codex가 QuantOps를 어떻게 호출해야 하는지 확인'],
+        ['1', 'codex-guide', 'QuantOps JSON 런타임 계약 확인'],
         ['2', 'runtime info --json', '현재 런타임/계약/추천 시작 명령 확인'],
         ['3', 'symbol search TSMC --json', '자연어 이름을 ticker 후보로 변환'],
         ['4', 'data info/download/validate --json', '로컬 OHLCV 준비와 품질 확인'],
@@ -907,9 +907,9 @@ function commandStart(): number {
       ],
     ),
     '',
-    '기본 흐름: User talks to Codex → Codex calls rtk CLI with --json → QuantOps returns artifacts/context.',
+    '기본 흐름: rtk CLI with --json → QuantOps returns artifacts/context.',
     '주력 명령: codex-guide, runtime info, symbol, data, stats, compare, research, event, backtest, session',
-    '내린 기능: QuantOps 자체 대화 UI, 로컬 에이전트 UX, 프로토콜-first 흐름',
+    '내린 기능: 로컬 대화 UI, 터미널 대시보드, 프로토콜-first 흐름',
   ].join('\n'));
   return 0;
 }
@@ -1047,9 +1047,9 @@ function runtimeLine(dataDir: string, mode = 'quant', lastAction = 'line'): stri
 
 export function welcomeCard(): string {
   return [
-    `${CYAN}${APP}${RESET} ${VERSION} · Codex-called headless quant runtime`,
+    `${CYAN}${APP}${RESET} ${VERSION} · headless quant runtime`,
     '',
-    '기본 흐름: User talks to Codex → Codex calls rtk ... --json → QuantOps returns artifacts/context.',
+    '기본 흐름: rtk ... --json → QuantOps returns artifacts/context.',
     '주력 명령: codex-guide, runtime info, symbol, data, stats, compare, research, event, backtest, session',
     '',
     'Start:',

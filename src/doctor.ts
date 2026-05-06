@@ -61,7 +61,7 @@ export function doctorPayload(dataDir: string, options: DoctorOptions): JsonObje
     version: options.version,
     data_dir: dataDir,
     interface: 'shell-cli-json',
-    human_surface: 'Codex conversation',
+    human_surface: 'shell CLI',
     node,
     launcher,
     warnings,

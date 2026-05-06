@@ -13,7 +13,7 @@ export function runtimeInfoPayload(dataDir: string): JsonObject {
       primary_interface: 'shell-cli-json',
       preferred_launcher: 'rtk',
       launcher_aliases: ['rtk', 'quantops', 'quant'],
-      human_primary_surface: 'Codex conversation',
+      human_primary_surface: 'shell CLI',
       quantops_role: guide.role,
       protocol_adapters: 'future only; shell CLI JSON is the stable contract',
       engines: {
@@ -34,7 +34,7 @@ export function formatRuntimeInfo(payload: JsonObject): string {
     'Headless runtime contract',
     '- Primary interface: shell CLI with --json',
     '- Preferred launcher: rtk',
-    '- Human talks to Codex; Codex calls rtk/quantops commands',
+    '- Call rtk/quantops commands directly from the shell',
     '- Protocol adapters can be added later after CLI JSON contracts stay stable',
   ].join('\n');
 }

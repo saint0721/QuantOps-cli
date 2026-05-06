@@ -1,13 +1,13 @@
 # QuantOps
 
-QuantOps is a headless quant research runtime for Codex-style workflows.
-The product direction is simple: **user talks to Codex → Codex calls `rtk ... --json` → QuantOps returns deterministic data, validation, research, backtest, session, and artifact context**.
+QuantOps is a headless quant research runtime for shell-driven workflows.
+The product direction is simple: **a caller runs `rtk ... --json` → QuantOps returns deterministic data, validation, research, backtest, session, and artifact context**.
 
 The active `rtk`, `quant`, and `quantops` launchers point at `src/cli.ts`. Python remains available only as a compatibility/reference module through `quantops_cli`.
 
 ## Runtime contract
 
-Use QuantOps from a Codex shell/session. Prefer JSON for every command that Codex will parse:
+Use QuantOps from a shell or automation harness. Prefer JSON for every command that another tool will parse:
 
 ```bash
 rtk codex-guide --json
@@ -31,9 +31,9 @@ rtk session current --json
 Runtime decisions:
 
 - Primary interface: shell CLI with stable `--json` outputs.
-- Primary human UX: Codex conversation, not a QuantOps-local chat surface.
+- Primary interface: direct `rtk` subcommands with stable JSON contracts.
 - QuantOps role: symbol lookup, market data, validation, stats, comparison, research context, event study, backtest, and session/artifact handoff.
-- Removed from the primary product: QuantOps-local chat, terminal dashboards, `/agent`-style UX, and MCP-first flows. Codex should call `rtk` shell commands instead.
+- Removed from the primary product: local conversational UI, terminal dashboards, and MCP-first flows.
 - Safety: no buy/sell/hold advice, no single trade score, and no live trading mutation by default.
 
 ## Install and launch
@@ -55,7 +55,7 @@ node ./src/cli.ts setup bin
 ```
 
 `rtk` is the preferred launcher. `quant` and `quantops` remain aliases for compatibility.
-For headless use, call subcommands directly with `--json`; running `rtk` without arguments prints the same start guide instead of launching a local chat/TUI.
+For headless use, call subcommands directly with `--json`; running `rtk` without arguments prints the same start guide.
 
 The Python reference prototype remains available for comparison:
 
@@ -73,7 +73,7 @@ rtk runtime info --json
 rtk doctor
 ```
 
-`codex-guide` prints the machine-readable contract Codex should follow. `runtime info` and `doctor` report local runtime readiness, launcher setup, optional helper availability, and safety state.
+`codex-guide` prints the machine-readable runtime contract. `runtime info` and `doctor` report local runtime readiness, launcher setup, optional helper availability, and safety state.
 
 ### Symbol resolution
 

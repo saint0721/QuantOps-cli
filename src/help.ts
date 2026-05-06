@@ -1,10 +1,9 @@
 export function helpText(): string {
   return [
-    'QuantOps CLI — Codex-first quant research harness (headless)',
+    'QuantOps CLI — headless quant research runtime',
     '',
     'Primary flow:',
-    '  Human asks Codex what to investigate.',
-    '  Codex calls rtk commands with --json.',
+    '  Run rtk commands directly, preferably with --json.',
     '  QuantOps returns local artifacts, data checks, stats, research context, events, backtests, and session handoff.',
     '',
     'Start:',
@@ -36,9 +35,6 @@ export function helpText(): string {
     '  rtk setup rust',
     '  rtk sources alphavantage',
     '  rtk provider list --json',
-    '',
-    '한국어 안내:',
-    '  Codex에게 한국어로 질문해도 됩니다. Codex가 필요한 rtk ... --json 명령을 호출하고, QuantOps는 데이터/검증/리서치/백테스트 결과를 반환합니다.',
     '',
     'Safety:',
     '  No buy/sell/hold advice. Trading mutations are disabled by default; broker/tossctl checks are optional diagnostics.',

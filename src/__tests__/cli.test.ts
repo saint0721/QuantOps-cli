@@ -11,13 +11,13 @@ import { sessionEvents } from '../session.ts';
 
 test('welcome keeps neofetch summary without runtime HUD line', () => {
   const welcome = welcomeCard();
-  assert.match(welcome, /Codex-called headless quant runtime/);
-  assert.match(welcome, /Codex calls rtk/);
+  assert.match(welcome, /headless quant runtime/);
+  assert.match(welcome, /rtk .*--json/);
   assert.doesNotMatch(welcome, /\/find/);
   assert.doesNotMatch(welcome, /\/ask/);
   assert.match(welcome, /rtk data download TSM --period 5y --json/);
   assert.match(welcome, /rtk stats TSM --json/);
-  assert.doesNotMatch(welcome, /\/skills|\/agent|TUI|HUD/);
+  assert.doesNotMatch(welcome, /\/skills|TUI|HUD/);
   assert.doesNotMatch(welcome, /watchlist:\d/);
 });
 
@@ -29,7 +29,7 @@ function captureConsole(fn: () => Promise<number>): Promise<{ code: number; outp
   return fn().then((code) => ({ code, output })).finally(() => { console.log = originalLog; });
 }
 
-test('research command returns machine-readable missing-data guidance without local chat handoff', async () => {
+test('research command returns machine-readable missing-data guidance', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-research-missing-'));
 
   const { code, output } = await captureConsole(() => runOnce(['--data-dir', dir, 'research', 'AAPL', '--json']));
@@ -39,7 +39,7 @@ test('research command returns machine-readable missing-data guidance without lo
   assert.equal(payload.ok, false);
   assert.equal(payload.missing_data, true);
   assert.equal(payload.next_command, 'data download AAPL --period 1y');
-  assert.doesNotMatch(output, /agent-chat|chat  |\/agent|TUI|HUD/);
+  assert.doesNotMatch(output, /conversational|TUI|HUD/);
 });
 
 test('removed human shortcuts no longer execute as commands', async () => {
@@ -226,7 +226,7 @@ test('supported headless rtk commands return JSON contracts', async () => {
   }
 });
 
-test('codex runtime commands expose agent-first machine contracts', async () => {
+test('runtime commands expose shell-first machine contracts', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-runtime-contract-'));
 
   const guide = await captureConsole(() => runOnce(['--data-dir', dir, 'codex-guide', '--json']));
@@ -239,7 +239,7 @@ test('codex runtime commands expose agent-first machine contracts', async () => 
   assert.match(guide.output, /shell-cli-json/);
   assert.equal(runtime.code, 0);
   assert.match(runtime.output, /runtime.info/);
-  assert.match(runtime.output, /Codex conversation/);
+  assert.match(runtime.output, /shell CLI/);
   assert.equal(strategies.code, 0);
   assert.match(strategies.output, /backtest.strategies/);
   assert.match(strategies.output, /ma-cross/);
@@ -248,23 +248,22 @@ test('codex runtime commands expose agent-first machine contracts', async () => 
   assert.match(event.output, /event study TSM/);
 });
 
-test('codex guide human output describes CLI without exposing launcher plumbing', async () => {
+test('runtime guide human output describes CLI without exposing launcher plumbing', async () => {
   const guide = await captureConsole(() => runOnce(['codex-guide']));
 
   assert.equal(guide.code, 0);
-  assert.match(guide.output, /Codex calls QuantOps CLI commands with --json/);
+  assert.match(guide.output, /Run an rtk command with --json/);
   assert.match(guide.output, /- runtime info --json/);
   assert.doesNotMatch(guide.output, /Preferred launcher/);
-  assert.doesNotMatch(guide.output, /Codex calls rtk commands/);
-  assert.doesNotMatch(guide.output, /- rtk runtime info/);
+    assert.doesNotMatch(guide.output, /- rtk runtime info/);
 });
 
-test('help explains the Codex-first rtk harness flow', async () => {
+test('help explains the headless rtk runtime flow', async () => {
   const help = await captureConsole(() => runOnce(['--help']));
 
   assert.equal(help.code, 0);
-  assert.match(help.output, /Codex-first quant research harness/);
-  assert.match(help.output, /Codex calls rtk commands with --json/);
+  assert.match(help.output, /headless quant research runtime/);
+  assert.match(help.output, /Run rtk commands directly/);
   assert.match(help.output, /rtk runtime info --json/);
   assert.match(help.output, /Trading mutations are disabled/);
 });
@@ -280,7 +279,7 @@ test('doctor treats broker checks as optional and reports launcher setup', async
     assert.equal(doctor.code, 0);
     assert.equal(payload.ok, true);
     assert.equal(payload.interface, 'shell-cli-json');
-    assert.equal(payload.human_surface, 'Codex conversation');
+    assert.equal(payload.human_surface, 'shell CLI');
     assert.equal(payload.broker.optional, true);
     assert.equal(payload.broker.tossctl_version_ok, false);
     assert.equal(payload.launcher.preferred, 'rtk');

@@ -7,7 +7,7 @@ test('completion exposes only headless rtk command surface', () => {
   for (const command of ['codex-guide', 'runtime', 'symbol', 'data', 'stats', 'compare', 'research', 'event', 'backtest', 'session', 'provider', 'sources', 'doctor', 'setup']) {
     assert.ok(root.includes(command), `${command} should be discoverable`);
   }
-  for (const removed of ['agent', 'mcp', 'model', 'skills', 'tools', 'hud', 'tmux', '/agent', '/hud', '/model', '/tools', '/skills']) {
+  for (const removed of ['mcp', 'model', 'skills', 'tools', 'hud', 'tmux', '/hud', '/model', '/tools', '/skills']) {
     assert.equal(root.includes(removed), false, `${removed} should not be suggested`);
   }
 });

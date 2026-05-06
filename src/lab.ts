@@ -108,10 +108,10 @@ function discussionOutput(status: IdeaStatusReport, focus: string): string[] {
   if (!target) {
     return [
       '- 아직 논의 주제가 없습니다.',
-      '- Codex에게 자연어로 논의한 뒤, 필요한 순간 아래처럼 rtk 명령으로 프롬프트/검증 재료를 꺼내세요:',
+      '- 아래처럼 rtk 명령에 focus를 붙여 프롬프트/검증 재료를 생성하세요:',
       `  rtk lab discuss ${idea.id} "NVDA 실적 모멘텀이 가격에 반영되는지 검증하고 싶어"`,
       `  rtk lab discuss latest "뉴스 이벤트와 이동평균 백테스트를 연결해서 보고 싶어"`,
-      '- 이 결과를 Codex가 읽고 다음 rtk ... --json 명령으로 검증을 이어갑니다.',
+      '- 생성된 결과를 다음 rtk ... --json 명령의 입력 근거로 사용합니다.',
     ];
   }
   return [
@@ -173,7 +173,7 @@ function deterministicReport(status: IdeaStatusReport, stage: LabStage, focus: s
     `${STAGE_LABELS[stage]} output`,
     stage === 'discuss'
       ? discussionOutput(status, focus).join('\n')
-      : '- Use the prompt form with Codex, then feed any chosen next step back through rtk ... --json.',
+      : '- Use the prompt form as a research brief, then run the chosen next step through rtk ... --json.',
     '',
     'Next QuantOps commands',
     ...[...new Set(stageNext[stage])].map((cmd) => `- rtk ${cmd}${cmd.includes('--json') ? '' : ' --json'}`),

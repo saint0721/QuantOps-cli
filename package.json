@@ -1,7 +1,7 @@
 {
   "name": "quantops-cli",
   "version": "0.1.0",
-  "description": "Headless quant research runtime for Codex-called rtk JSON workflows",
+  "description": "Headless quant research runtime for rtk JSON workflows",
   "type": "module",
   "bin": {
     "rtk": "./src/cli.ts",
