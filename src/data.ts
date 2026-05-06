@@ -4,9 +4,17 @@ import { appendJsonl, dataDir, readJsonl, readWatchlist, utcNow, type JsonObject
 
 export const STOOQ_BASE_URL = 'https://stooq.com/q/d/l/';
 export const YAHOO_CHART_BASE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+export const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
+export const TWELVE_DATA_BASE_URL = 'https://api.twelvedata.com/time_series';
+export const POLYGON_AGG_BASE_URL = 'https://api.polygon.io/v2/aggs/ticker/';
+export const FMP_HISTORICAL_BASE_URL = 'https://financialmodelingprep.com/api/v3/historical-price-full/';
 export const STOOQ_INTERVALS = new Set(['d', 'w', 'm']);
 export const YAHOO_INTERVALS: Record<string, string> = { d: '1d', w: '1wk', m: '1mo' };
+export const ALPHA_VANTAGE_FUNCTIONS: Record<string, string> = { d: 'TIME_SERIES_DAILY', w: 'TIME_SERIES_WEEKLY', m: 'TIME_SERIES_MONTHLY' };
+export const TWELVE_DATA_INTERVALS: Record<string, string> = { d: '1day', w: '1week', m: '1month' };
+export const POLYGON_MULTIPLIERS: Record<string, string> = { d: 'day', w: 'week', m: 'month' };
 export const OHLCV_FIELDS = ['open', 'high', 'low', 'close', 'volume'] as const;
+export const OHLCV_DOWNLOAD_SOURCES = ['stooq', 'yahoo', 'alphavantage', 'twelve', 'polygon', 'fmp'] as const;
 
 export type DownloadRequest = {
   symbol: string;
@@ -68,6 +76,37 @@ export function stooqUrl(request: DownloadRequest): string {
   return `${STOOQ_BASE_URL}?${params.toString()}`;
 }
 
+function dashedDate(value?: string): string | undefined {
+  const normalized = normalizeDate(value);
+  return normalized ? `${normalized.slice(0, 4)}-${normalized.slice(4, 6)}-${normalized.slice(6, 8)}` : undefined;
+}
+
+function envValue(names: string[], env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return names.map((name) => env[name]).find((value): value is string => Boolean(value?.trim()))?.trim();
+}
+
+function requiredApiKey(source: string, names: string[]): string {
+  const key = envValue(names);
+  if (!key) throw new Error(`${source} requires an API key; set ${names.join(' or ')}`);
+  return key;
+}
+
+export function alphaVantageApiKey(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return envValue(['ALPHAVANTAGE_API_KEY', 'ALPHA_VANTAGE_API_KEY'], env);
+}
+
+export function twelveDataApiKey(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return envValue(['TWELVEDATA_API_KEY', 'TWELVE_DATA_API_KEY'], env);
+}
+
+export function polygonApiKey(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return envValue(['POLYGON_API_KEY'], env);
+}
+
+export function fmpApiKey(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return envValue(['FMP_API_KEY', 'FINANCIAL_MODELING_PREP_API_KEY'], env);
+}
+
 function dateSeconds(value: string, addDays = 0): number {
   const normalized = normalizeDate(value)!;
   const year = Number(normalized.slice(0, 4));
@@ -95,6 +134,73 @@ export function yahooUrl(request: DownloadRequest): string {
     params.set('range', '1y');
   }
   return `${YAHOO_CHART_BASE_URL}${symbol}?${params.toString()}`;
+}
+
+export function alphaVantageUrl(request: DownloadRequest): string {
+  const interval = (request.interval || 'd').toLowerCase();
+  const fn = ALPHA_VANTAGE_FUNCTIONS[interval];
+  if (!fn) throw new Error(`unsupported alphavantage interval: ${request.interval}`);
+  const params = new URLSearchParams({
+    function: fn,
+    symbol: (request.providerSymbol || request.symbol).trim().toUpperCase(),
+    outputsize: request.start || request.end ? 'full' : 'compact',
+    apikey: requiredApiKey('alphavantage', ['ALPHAVANTAGE_API_KEY', 'ALPHA_VANTAGE_API_KEY']),
+  });
+  return `${ALPHA_VANTAGE_BASE_URL}?${params.toString()}`;
+}
+
+export function twelveDataUrl(request: DownloadRequest): string {
+  const interval = (request.interval || 'd').toLowerCase();
+  const twelveInterval = TWELVE_DATA_INTERVALS[interval];
+  if (!twelveInterval) throw new Error(`unsupported twelve interval: ${request.interval}`);
+  const params = new URLSearchParams({
+    symbol: (request.providerSymbol || request.symbol).trim().toUpperCase(),
+    interval: twelveInterval,
+    apikey: requiredApiKey('twelve', ['TWELVEDATA_API_KEY', 'TWELVE_DATA_API_KEY']),
+  });
+  const start = dashedDate(request.start);
+  const end = dashedDate(request.end);
+  if (start) params.set('start_date', start);
+  if (end) params.set('end_date', end);
+  return `${TWELVE_DATA_BASE_URL}?${params.toString()}`;
+}
+
+export function polygonUrl(request: DownloadRequest): string {
+  const interval = (request.interval || 'd').toLowerCase();
+  const span = POLYGON_MULTIPLIERS[interval];
+  if (!span) throw new Error(`unsupported polygon interval: ${request.interval}`);
+  const symbol = encodeURIComponent((request.providerSymbol || request.symbol).trim().toUpperCase());
+  const from = dashedDate(request.start) || '1970-01-01';
+  const to = dashedDate(request.end) || new Date().toISOString().slice(0, 10);
+  const params = new URLSearchParams({
+    adjusted: 'true',
+    sort: 'asc',
+    limit: '50000',
+    apiKey: requiredApiKey('polygon', ['POLYGON_API_KEY']),
+  });
+  return `${POLYGON_AGG_BASE_URL}${symbol}/range/1/${span}/${from}/${to}?${params.toString()}`;
+}
+
+export function fmpUrl(request: DownloadRequest): string {
+  const interval = (request.interval || 'd').toLowerCase();
+  if (interval !== 'd') throw new Error(`unsupported fmp interval: ${request.interval}; FMP historical-price-full is daily`);
+  const symbol = encodeURIComponent((request.providerSymbol || request.symbol).trim().toUpperCase());
+  const params = new URLSearchParams({
+    apikey: requiredApiKey('fmp', ['FMP_API_KEY', 'FINANCIAL_MODELING_PREP_API_KEY']),
+  });
+  const start = dashedDate(request.start);
+  const end = dashedDate(request.end);
+  if (start) params.set('from', start);
+  if (end) params.set('to', end);
+  return `${FMP_HISTORICAL_BASE_URL}${symbol}?${params.toString()}`;
+}
+
+function redactDownloadUrl(url: string): string {
+  const parsed = new URL(url);
+  for (const key of ['apikey', 'apiKey', 'token', 'access_token']) {
+    if (parsed.searchParams.has(key)) parsed.searchParams.set(key, '<redacted>');
+  }
+  return parsed.toString();
 }
 
 export async function downloadText(url: string, timeoutMs = 20_000): Promise<string> {
@@ -168,6 +274,80 @@ export function parseYahooChart(text: string): JsonObject[] {
   });
 }
 
+export function parseAlphaVantageTimeSeries(text: string): JsonObject[] {
+  const payload = JSON.parse(text) as any;
+  if (payload?.['Error Message']) throw new Error(String(payload['Error Message']));
+  if (payload?.Note) throw new Error(String(payload.Note));
+  if (payload?.Information) throw new Error(String(payload.Information));
+  const key = Object.keys(payload).find((item) => item.toLowerCase().includes('time series'));
+  const series = key ? payload[key] : null;
+  if (!series || typeof series !== 'object') return [];
+  return Object.entries(series).map(([date, row]) => {
+    const item = row as Record<string, string>;
+    return {
+      date,
+      open: numberOrNull(item['1. open']),
+      high: numberOrNull(item['2. high']),
+      low: numberOrNull(item['3. low']),
+      close: numberOrNull(item['4. close']),
+      volume: numberOrNull(item['5. volume']),
+    };
+  }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
+export function parseTwelveDataTimeSeries(text: string): JsonObject[] {
+  const payload = JSON.parse(text) as any;
+  if (payload?.status === 'error') throw new Error(payload.message || payload.code || 'twelve data error');
+  const values = Array.isArray(payload?.values) ? payload.values : [];
+  return values.map((row: any) => ({
+    date: String(row.datetime ?? '').slice(0, 10),
+    open: numberOrNull(row.open),
+    high: numberOrNull(row.high),
+    low: numberOrNull(row.low),
+    close: numberOrNull(row.close),
+    volume: numberOrNull(row.volume),
+  })).filter((row: JsonObject) => row.date).sort((a: JsonObject, b: JsonObject) => String(a.date).localeCompare(String(b.date)));
+}
+
+export function parsePolygonAggregates(text: string): JsonObject[] {
+  const payload = JSON.parse(text) as any;
+  if (payload?.status === 'ERROR') throw new Error(payload.error || 'polygon error');
+  const results = Array.isArray(payload?.results) ? payload.results : [];
+  return results.map((row: any) => ({
+    date: new Date(Number(row.t)).toISOString().slice(0, 10),
+    open: numberOrNull(String(row.o ?? '')),
+    high: numberOrNull(String(row.h ?? '')),
+    low: numberOrNull(String(row.l ?? '')),
+    close: numberOrNull(String(row.c ?? '')),
+    volume: numberOrNull(String(row.v ?? '')),
+    ...(row.vw === undefined ? {} : { vwap: numberOrNull(String(row.vw)) }),
+  }));
+}
+
+export function parseFmpHistorical(text: string): JsonObject[] {
+  const payload = JSON.parse(text) as any;
+  if (payload?.['Error Message']) throw new Error(String(payload['Error Message']));
+  const historical = Array.isArray(payload?.historical) ? payload.historical : [];
+  return historical.map((row: any) => ({
+    date: String(row.date ?? ''),
+    open: numberOrNull(String(row.open ?? '')),
+    high: numberOrNull(String(row.high ?? '')),
+    low: numberOrNull(String(row.low ?? '')),
+    close: numberOrNull(String(row.close ?? '')),
+    volume: numberOrNull(String(row.volume ?? '')),
+    ...(row.adjClose === undefined ? {} : { adj_close: numberOrNull(String(row.adjClose)) }),
+  })).filter((row: JsonObject) => row.date).sort((a: JsonObject, b: JsonObject) => String(a.date).localeCompare(String(b.date)));
+}
+
+function filterRowsByDate(rows: JsonObject[], request: DownloadRequest): JsonObject[] {
+  const start = dashedDate(request.start);
+  const end = dashedDate(request.end);
+  return rows.filter((row) => {
+    const date = String(row.date ?? '');
+    return (!start || date >= start) && (!end || date <= end);
+  });
+}
+
 export function safeDatasetName(symbol: string, interval: string): string {
   const safeSymbol = symbol.toLowerCase()
     .replaceAll('^', 'idx_')
@@ -178,7 +358,7 @@ export function safeDatasetName(symbol: string, interval: string): string {
 }
 
 export function rawDownloadPath(base: string, source: string, symbol: string, interval: string): string {
-  const extension = source === 'yahoo' ? 'json' : 'csv';
+  const extension = source === 'stooq' ? 'csv' : 'json';
   return join(dataDir(base), 'downloads', source, `${safeDatasetName(symbol, interval)}.${extension}`);
 }
 
@@ -244,14 +424,24 @@ function mergeByKey(path: string, rows: JsonObject[], keyFields: string[]): numb
 
 export async function downloadHistory(request: DownloadRequest, options: { base?: string; fetcher?: DownloadFetcher } = {}): Promise<JsonObject> {
   const source = request.source || 'stooq';
-  if (source !== 'stooq' && source !== 'yahoo') throw new Error(`unsupported source: ${source}`);
+  if (!(OHLCV_DOWNLOAD_SOURCES as readonly string[]).includes(source)) throw new Error(`unsupported source: ${source}`);
   const interval = (request.interval || 'd').toLowerCase();
   const providerSymbol = source === 'stooq' ? normalizeStooqSymbol(request.symbol, request.providerSymbol) : (request.providerSymbol || request.symbol).trim().toUpperCase();
   const normalized = { ...request, source, interval, providerSymbol, symbol: request.symbol.toUpperCase() };
-  const url = source === 'stooq' ? stooqUrl(normalized) : yahooUrl(normalized);
+  const url = source === 'stooq' ? stooqUrl(normalized)
+    : source === 'yahoo' ? yahooUrl(normalized)
+      : source === 'alphavantage' ? alphaVantageUrl(normalized)
+        : source === 'twelve' ? twelveDataUrl(normalized)
+          : source === 'polygon' ? polygonUrl(normalized)
+            : fmpUrl(normalized);
   const fetchedAt = utcNow();
   const rawText = await (options.fetcher || downloadText)(url);
-  const parsedRows = source === 'stooq' ? parseStooqCsv(rawText) : parseYahooChart(rawText);
+  const parsedRows = filterRowsByDate(source === 'stooq' ? parseStooqCsv(rawText)
+    : source === 'yahoo' ? parseYahooChart(rawText)
+      : source === 'alphavantage' ? parseAlphaVantageTimeSeries(rawText)
+        : source === 'twelve' ? parseTwelveDataTimeSeries(rawText)
+          : source === 'polygon' ? parsePolygonAggregates(rawText)
+            : parseFmpHistorical(rawText), normalized);
   const base = options.base || 'data';
   const rawPath = rawDownloadPath(base, source, providerSymbol, interval);
   mkdirSync(dirname(rawPath), { recursive: true });
@@ -284,7 +474,7 @@ export async function downloadHistory(request: DownloadRequest, options: { base?
     interval,
     ...(start === undefined ? {} : { start }),
     ...(end === undefined ? {} : { end }),
-    url,
+    url: redactDownloadUrl(url),
     raw_path: rawPath,
     dataset_path: datasetPath,
     rows: records.length,

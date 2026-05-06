@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, marketDatasetPath, normalizeDate, normalizeStooqSymbol, parseStooqCsv, parseYahooChart, refreshHistory, refreshWatchlist, safeDatasetName, stooqUrl, validateData, yahooUrl } from '../data.ts';
+import { alphaVantageUrl, dataInfo, downloadHistory, downloadWatchlist, fmpUrl, listDatasets, marketDatasetPath, normalizeDate, normalizeStooqSymbol, parseAlphaVantageTimeSeries, parseFmpHistorical, parsePolygonAggregates, parseStooqCsv, parseTwelveDataTimeSeries, parseYahooChart, polygonUrl, refreshHistory, refreshWatchlist, safeDatasetName, stooqUrl, twelveDataUrl, validateData, yahooUrl } from '../data.ts';
 import { validateDataRuntime } from '../rustValidate.ts';
 import { appendJsonl, readJsonl, writeWatchlist } from '../storage.ts';
 
@@ -32,6 +32,36 @@ const YAHOO = JSON.stringify({
   },
 });
 
+const ALPHA = JSON.stringify({
+  'Time Series (Daily)': {
+    '2024-01-03': { '1. open': '108', '2. high': '112', '3. low': '107', '4. close': '111', '5. volume': '23456' },
+    '2024-01-02': { '1. open': '100', '2. high': '110', '3. low': '99', '4. close': '108', '5. volume': '12345' },
+  },
+});
+
+const TWELVE = JSON.stringify({
+  status: 'ok',
+  values: [
+    { datetime: '2024-01-03', open: '108', high: '112', low: '107', close: '111', volume: '23456' },
+    { datetime: '2024-01-02', open: '100', high: '110', low: '99', close: '108', volume: '12345' },
+  ],
+});
+
+const POLYGON = JSON.stringify({
+  status: 'OK',
+  results: [
+    { t: 1704153600000, o: 100, h: 110, l: 99, c: 108, v: 12345, vw: 105 },
+    { t: 1704240000000, o: 108, h: 112, l: 107, c: 111, v: 23456, vw: 110 },
+  ],
+});
+
+const FMP = JSON.stringify({
+  historical: [
+    { date: '2024-01-03', open: 108, high: 112, low: 107, close: 111, adjClose: 110.5, volume: 23456 },
+    { date: '2024-01-02', open: 100, high: 110, low: 99, close: 108, adjClose: 107.5, volume: 12345 },
+  ],
+});
+
 test('stooq helpers normalize dates, symbols, and URLs', () => {
   assert.equal(normalizeDate('2026-01-02'), '20260102');
   assert.throws(() => normalizeDate('2026-02-31'), /invalid calendar date/);
@@ -55,6 +85,44 @@ test('yahoo helpers build chart URLs and parse OHLCV JSON', () => {
   assert.equal(rows.length, 2);
   assert.equal(rows[0]?.date, '2024-01-02');
   assert.equal((rows[1] as any)?.adj_close, 110.5);
+});
+
+test('API-key OHLCV providers build URLs and parse rows without leaking keys', async () => {
+  const previous = {
+    ALPHAVANTAGE_API_KEY: process.env.ALPHAVANTAGE_API_KEY,
+    TWELVEDATA_API_KEY: process.env.TWELVEDATA_API_KEY,
+    POLYGON_API_KEY: process.env.POLYGON_API_KEY,
+    FMP_API_KEY: process.env.FMP_API_KEY,
+  };
+  process.env.ALPHAVANTAGE_API_KEY = 'alpha-secret';
+  process.env.TWELVEDATA_API_KEY = 'twelve-secret';
+  process.env.POLYGON_API_KEY = 'polygon-secret';
+  process.env.FMP_API_KEY = 'fmp-secret';
+  try {
+    assert.match(alphaVantageUrl({ symbol: 'AAPL', source: 'alphavantage', start: '2024-01-02', end: '2024-01-03' }), /function=TIME_SERIES_DAILY/);
+    assert.match(twelveDataUrl({ symbol: 'AAPL', source: 'twelve', start: '2024-01-02', end: '2024-01-03' }), /start_date=2024-01-02/);
+    assert.match(polygonUrl({ symbol: 'AAPL', source: 'polygon', start: '2024-01-02', end: '2024-01-03' }), /range\/1\/day\/2024-01-02\/2024-01-03/);
+    assert.match(fmpUrl({ symbol: 'AAPL', source: 'fmp', start: '2024-01-02', end: '2024-01-03' }), /historical-price-full\/AAPL/);
+
+    assert.equal(parseAlphaVantageTimeSeries(ALPHA).length, 2);
+    assert.equal(parseTwelveDataTimeSeries(TWELVE).length, 2);
+    assert.equal(parsePolygonAggregates(POLYGON).length, 2);
+    assert.equal(parseFmpHistorical(FMP).length, 2);
+
+    const dir = mkdtempSync(join(tmpdir(), 'tq-alpha-data-'));
+    const result = await downloadHistory({ symbol: 'AAPL', source: 'alphavantage', start: '2024-01-02', end: '2024-01-03' }, { base: dir, fetcher: () => ALPHA });
+    const manifest = readJsonl(result.raw_path ? join(dir, 'downloads', 'manifest.jsonl') : '');
+
+    assert.equal(result.ok, true);
+    assert.equal(result.source, 'alphavantage');
+    assert.doesNotMatch(JSON.stringify(result), /alpha-secret/);
+    assert.doesNotMatch(JSON.stringify(manifest), /alpha-secret/);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test('parseStooqCsv extracts OHLCV rows', () => {

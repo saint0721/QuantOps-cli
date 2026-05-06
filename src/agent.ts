@@ -2,11 +2,13 @@ import { runTool, type ToolResult } from './tools.ts';
 import { providerStatus, runProviderPrompt } from './providers.ts';
 import { ensureQuantSession, recordSessionEvent, sessionEvents, sessionHandoff, redactSessionText, type QuantSession } from './session.ts';
 import type { JsonObject } from './storage.ts';
-import { normalizeAgentLanguage, type AgentLanguage } from './preferences.ts';
+import { normalizeAgentLanguage, type AgentLanguage, type CodexReasoningEffort } from './preferences.ts';
 
 export type AgentOptions = {
   base?: string;
   provider?: string;
+  model?: string;
+  effort?: CodexReasoningEffort;
   allowDownloads?: boolean;
   sessionId?: string;
   sessionRoot?: string;
@@ -439,7 +441,7 @@ export async function runAgent(request: string, options: AgentOptions = {}): Pro
   const localResponse = localAgentResponse({ ...partialWithoutResponse, local_response: '' });
   const partial: Omit<AgentRun, 'provider_response' | 'report'> = { ...partialWithoutResponse, local_response: localResponse };
   const status = providerStatus(provider);
-  const rawProviderResponse = provider !== 'none' && status.available ? runProviderPrompt(provider, safeProviderPrompt(partial)) : undefined;
+  const rawProviderResponse = provider !== 'none' && status.available ? runProviderPrompt(provider, safeProviderPrompt(partial), { model: options.model, effort: options.effort }) : undefined;
   const providerResponse = rawProviderResponse ? { ...rawProviderResponse, text: rawProviderResponse.text ? redactSessionText(rawProviderResponse.text) : undefined, error: rawProviderResponse.error ? redactSessionText(rawProviderResponse.error) : undefined } : undefined;
   const run: AgentRun = { ...partial, ok: true, provider_response: providerResponse, report: '' };
   run.report = formatAgentReport(run);

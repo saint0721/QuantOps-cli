@@ -299,6 +299,7 @@ QuantOps is chat-first for humans and tool-first for agents. In interactive mode
 - `/quant` returns to normal QuantOps commands.
 - `/skills` lists QuantOps-only local skills found under `quant-skills/` or `$QUANTOPS_SKILLS_DIR`.
 - `/tools` lists the safe QuantOps tool registry exposed to agents and MCP clients.
+- `/model` shows Codex model/effort settings; `/model gpt-5.5` selects a model, then `/model effort high` selects reasoning effort for Codex-backed agent calls.
 - `quant agent ko|en|auto` sets the default local agent report language; `/agent ko` remains as an interactive compatibility shortcut.
 - `quant agent <request>` is the scriptable agent-facing command surface. It continues the shared `.quant` `agent-chat` session by default and can optionally ask a provider with `--provider codex|claude`. Use `--download` before allowing network/local data-download writes.
 - `/session handoff` prints the recent `.quant/` session summary so Codex/Claude can continue the conversation without raw credentials.
@@ -325,6 +326,11 @@ Market data defaults:
 - `rtk data refresh AAPL` refreshes from the next day after the latest saved row through today; if no saved dataset exists, it falls back to the provider's default range.
 - `rtk data watchlist refresh` refreshes every ticker in `data/watchlist.json`.
 - `rtk data download AAPL --source stooq --period 1y` uses Stooq when `STOOQ_API_KEY` is available or Stooq allows CSV access.
+- `rtk data download AAPL --source alphavantage --period 1y` uses Alpha Vantage when `ALPHAVANTAGE_API_KEY` or `ALPHA_VANTAGE_API_KEY` is set.
+- `rtk data download AAPL --source twelve --period 1y` uses Twelve Data when `TWELVEDATA_API_KEY` or `TWELVE_DATA_API_KEY` is set.
+- `rtk data download AAPL --source polygon --period 1y` uses Polygon aggregates when `POLYGON_API_KEY` is set.
+- `rtk data download AAPL --source fmp --period 1y` uses Financial Modeling Prep daily historical prices when `FMP_API_KEY` or `FINANCIAL_MODELING_PREP_API_KEY` is set.
+- `rtk sources alphavantage`, `rtk sources twelve`, `rtk sources polygon`, `rtk sources fmp`, and `rtk provider list --json` show setup/auth status without printing API keys.
 - `rtk stats AAPL` reads the default Yahoo dataset unless you pass another `--source`.
 
 ## LLM tool/workbench mode
@@ -337,6 +343,7 @@ rtk tools run data.info --symbol NVDA --json
 rtk tools run strategy.list
 rtk tools run backtest.run --symbol NVDA --strategy ma-cross
 rtk agent ko
+rtk model gpt-5.5 high
 rtk agent "NVDA earnings momentum research"
 rtk agent "NVDA earnings momentum research" --download --provider codex
 rtk provider list --json

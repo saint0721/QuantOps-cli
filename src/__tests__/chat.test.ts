@@ -17,15 +17,15 @@ test('interactive prompt uses blue marker and black input text on chat backgroun
 test('input hint uses neofetch style without background or runtime HUD', () => {
   const hint = inputHintBox('quant');
   assert.match(hint, /QuantOps@quant/);
-  assert.match(hint, /project\u001b\[0m  QuantOps-cli/);
-  assert.match(hint, /chat\u001b\[0m     그냥 입력/);
-  assert.match(hint, /beginner\u001b\[0m \/start/);
-  assert.match(hint, /flow\u001b\[0m     자연어 채팅/);
-  assert.match(hint, /tools\u001b\[0m    \/skills · \/tools · \$quantops-idea-coach/);
+  assert.match(hint, /프로젝트\u001b\[0m QuantOps-cli/);
+  assert.match(hint, /채팅\u001b\[0m     그냥 입력/);
+  assert.match(hint, /처음\u001b\[0m     \/start/);
+  assert.match(hint, /흐름\u001b\[0m     자연어 채팅/);
+  assert.match(hint, /도구\u001b\[0m     \/skills · \/tools · \/model · \$quantops-idea-coach/);
   assert.doesNotMatch(hint, /\/ask/);
   assert.doesNotMatch(hint, /\/find/);
-  assert.match(hint, /keys\u001b\[0m     Tab completes/);
-  assert.match(hint, /try\u001b\[0m      \/start/);
+  assert.match(hint, /키\u001b\[0m       Tab 자동완성/);
+  assert.match(hint, /추천\u001b\[0m     \/start/);
   assert.doesNotMatch(hint, /48;2;/);
   assert.doesNotMatch(hint, /\[QuantOps\]/);
 });

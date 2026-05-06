@@ -11,3 +11,14 @@ test('codex transcript filter hides OMX tmux injection control lines', () => {
   const output = filteredCodexOutput(['Continue from current mode state. [OMX_TMUX_INJECT]', 'visible answer'].join('\n'));
   assert.equal(output, 'visible answer');
 });
+
+test('codex transcript filter does not duplicate the same response from stdout and stderr', () => {
+  const answer = ['분석 결과', '- TSM 데이터 확인이 필요합니다.'].join('\n');
+  const output = filteredCodexOutput(answer, answer);
+  assert.equal(output, answer);
+});
+
+test('codex transcript filter preserves distinct stderr evidence', () => {
+  const output = filteredCodexOutput('visible answer', 'provider warning');
+  assert.equal(output, 'visible answer\nprovider warning');
+});
