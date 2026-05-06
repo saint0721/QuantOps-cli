@@ -24,7 +24,7 @@ use ratatui::Terminal;
 const TOSS_BLUE: Color = Color::Rgb(0, 100, 255);
 const CHAT_BG: Color = Color::Rgb(238, 238, 238);
 const PROMPT_LABEL: &str = " ❯ ";
-const INPUT_PLACEHOLDER: &str = "Codex에서 논의하고, 여기서는 quantops CLI/JSON을 확인하세요";
+const INPUT_PLACEHOLDER: &str = "궁금한 내용을 한국어로 입력하세요. 예: TSM 1년 데이터 받아서 분석해줘";
 const ROOT_COMMANDS: &[&str] = &[
     "/start",
     "/codex-guide",
@@ -37,6 +37,7 @@ const ROOT_COMMANDS: &[&str] = &[
     "/lab",
     "/tools",
     "/mcp",
+    "/model",
     "/provider",
     "/session",
     "/skills",
@@ -83,6 +84,15 @@ struct PendingRun {
     child: Child,
     command: String,
     started_at: Instant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ModelSelection {
+    PromptModels,
+    PromptEfforts,
+    PromptEffort { model: String },
+    SetEffort { effort: String },
+    SetModelAndEffort { model: String, effort: String },
 }
 
 impl App {
@@ -249,8 +259,12 @@ impl App {
         if self.pending.is_some() {
             self.append_exchange(
                 &line,
-                "A command is still running. Wait for it to finish before submitting another command.",
+                "명령이 아직 실행 중입니다. 완료된 뒤 다음 명령을 입력해 주세요.",
             );
+            return false;
+        }
+        if let Some(selection) = model_selection(&line) {
+            self.handle_model_selection(&line, selection);
             return false;
         }
         match self.start_line(&line) {
@@ -293,10 +307,68 @@ impl App {
         }
     }
 
+    fn run_cli_sync(&self, args: &[String]) -> Result<String, String> {
+        let output = Command::new(&self.node)
+            .arg(&self.entry)
+            .arg("--no-tmux")
+            .arg("--data-dir")
+            .arg(&self.data_dir)
+            .args(args)
+            .output()
+            .map_err(|error| format!("failed to run command: {error}"))?;
+        let mut text = String::new();
+        text.push_str(&String::from_utf8_lossy(&output.stdout));
+        text.push_str(&String::from_utf8_lossy(&output.stderr));
+        let cleaned = strip_ansi(&text).trim().to_string();
+        if output.status.success() {
+            Ok(cleaned)
+        } else {
+            Err(cleaned)
+        }
+    }
+
+    fn handle_model_selection(&mut self, line: &str, selection: ModelSelection) {
+        match selection {
+            ModelSelection::PromptModels => {
+                self.set_input("/model ".to_string());
+            }
+            ModelSelection::PromptEfforts => {
+                self.set_input("/model effort ".to_string());
+            }
+            ModelSelection::PromptEffort { model } => {
+                let args = vec!["model".to_string(), model.clone()];
+                match self.run_cli_sync(&args) {
+                    Ok(_) => {
+                        self.append_exchange(line, &format!("Codex 모델: {model}"));
+                        self.set_input(format!("/model {model} "));
+                    }
+                    Err(output) => self.append_exchange(line, &output),
+                }
+            }
+            ModelSelection::SetEffort { effort } => {
+                let args = vec!["model".to_string(), "effort".to_string(), effort.clone()];
+                match self.run_cli_sync(&args) {
+                    Ok(_) => self.append_exchange(line, &format!("Codex effort: {effort}")),
+                    Err(output) => self.append_exchange(line, &output),
+                }
+            }
+            ModelSelection::SetModelAndEffort { model, effort } => {
+                let args = vec!["model".to_string(), model.clone(), effort.clone()];
+                match self.run_cli_sync(&args) {
+                    Ok(_) => self.append_exchange(
+                        line,
+                        &format!("Codex 모델: {model} · effort: {effort}"),
+                    ),
+                    Err(output) => self.append_exchange(line, &output),
+                }
+            }
+        }
+    }
+
     fn start_line(&mut self, line: &str) -> Result<(), String> {
         let args = self.command_args(line);
         if args.is_empty() {
-            return Err("try /start, /idea, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or just type a natural-language chat message"
+            return Err("먼저 /start, /idea, /download NVDA, /stats NVDA, /backtest run NVDA, /next 중 하나를 쓰거나 자연어로 질문해 주세요."
                 .to_string());
         }
         let child = Command::new(&self.node)
@@ -310,7 +382,7 @@ impl App {
             .spawn()
             .map_err(|error| format!("failed to run command: {error}"))?;
         self.append_command(line);
-        self.transcript.push("running...".to_string());
+        self.transcript.push("실행 중...".to_string());
         self.pending = Some(PendingRun {
             child,
             command: line.to_string(),
@@ -337,7 +409,7 @@ impl App {
                 text.push_str(&String::from_utf8_lossy(&output.stderr));
                 let cleaned = strip_ansi(&text).trim().to_string();
                 if output.status.code() == Some(2) && cleaned.contains("unknown command:") {
-                    "unknown slash command: try /start, /idea, /download NVDA, /stats NVDA, /backtest run NVDA, /next, or just type a natural-language chat message"
+                    "알 수 없는 슬래시 명령입니다. /start, /idea, /download NVDA, /stats NVDA, /backtest run NVDA, /next를 쓰거나 자연어로 질문해 주세요."
                         .to_string()
                 } else {
                     cleaned
@@ -345,7 +417,7 @@ impl App {
             }
             Err(error) => format!("failed to read command output: {error}"),
         };
-        if self.transcript.last().is_some_and(|line| line == "running...") {
+        if self.transcript.last().is_some_and(|line| line == "실행 중...") {
             self.transcript.pop();
         }
         self.append_output(&text);
@@ -391,18 +463,41 @@ fn welcome_lines(mode: &str) -> Vec<String> {
         "                                  |_|        ".to_string(),
         "".to_string(),
         format!("QuantOps@{mode}"),
-        "project  QuantOps-cli — Codex-first quant research runtime".to_string(),
-        "runtime  TypeScript CLI + optional Rust dashboard/TUI + tmux HUD".to_string(),
-        "safety   read-only data by default · trading mutations disabled".to_string(),
+        "프로젝트  QuantOps-cli — 에이전트 기반 퀀트 리서치 실행 도구".to_string(),
+        "런타임    TypeScript CLI + Rust TUI + 필요할 때 tmux HUD".to_string(),
+        "안전      기본은 읽기 전용 데이터 · 실제 매매 변경 비활성화".to_string(),
         "".to_string(),
-        "contract codex-guide · runtime info --json · all core commands prefer --json".to_string(),
-        "flow     User talks to Codex → Codex calls quantops CLI → QuantOps returns artifacts/context".to_string(),
-        "core     /symbol · /data · /stats · /compare · /research · /event · /backtest".to_string(),
-        "tools    /skills · /tools · /hud · /runtime · /codex · /quant · /exit".to_string(),
-        "keys     Tab completes · ↑/↓ history · mouse drag copies text · set QUANTOPS_TUI_MOUSE=1 for app scroll".to_string(),
+        "계약      codex-guide · runtime info --json · 핵심 명령은 --json 권장".to_string(),
+        "흐름      사용자가 질문 → 에이전트가 QuantOps CLI 실행 → 데이터/리포트/검증 결과 반환".to_string(),
+        "핵심      /symbol · /data · /stats · /compare · /research · /event · /backtest".to_string(),
+        "도구      /skills · /tools · /model · /hud · /runtime · /codex · /quant · /exit".to_string(),
+        "키        Tab 자동완성 · ↑/↓ 기록 · 마우스 드래그 복사 · 앱 스크롤은 QUANTOPS_TUI_MOUSE=1".to_string(),
         "".to_string(),
-        "try      /codex-guide".to_string(),
+        "추천      /start 또는 자연어 질문".to_string(),
     ]
+}
+
+fn model_selection(line: &str) -> Option<ModelSelection> {
+    let args = split_args(line.strip_prefix('/')?);
+    if args.first().map(String::as_str) != Some("model") {
+        return None;
+    }
+    match args.as_slice() {
+        [_] => Some(ModelSelection::PromptModels),
+        [_, action] if action == "status" || action == "reset" || action == "clear" => None,
+        [_, action] if action == "effort" => Some(ModelSelection::PromptEfforts),
+        [_, action, effort] if action == "effort" => Some(ModelSelection::SetEffort {
+            effort: effort.clone(),
+        }),
+        [_, model] => Some(ModelSelection::PromptEffort {
+            model: model.clone(),
+        }),
+        [_, model, effort] => Some(ModelSelection::SetModelAndEffort {
+            model: model.clone(),
+            effort: effort.clone(),
+        }),
+        _ => None,
+    }
 }
 
 fn split_args(line: &str) -> Vec<String> {
@@ -465,6 +560,7 @@ fn command_candidates(
         "/tools" => &["list", "run"],
         "/codex-guide" => &["--json"],
         "/agent" => agent_candidates(parts, trailing_space),
+        "/model" => model_candidates(parts, trailing_space),
         "/provider" => &["list", "--json"],
         "/session" => &["current", "list", "handoff", "--json"],
         "/idea" => one_level_candidates(
@@ -482,7 +578,7 @@ fn command_candidates(
         "/sources" => one_level_candidates(
             parts,
             trailing_space,
-            &["list", "stooq", "tossctl", "yahoo", "nasdaq", "vendor"],
+            SOURCE_CATALOG,
         ),
         "/symbol" => symbol_candidates(parts, trailing_space),
         "/stats" => &[],
@@ -504,7 +600,17 @@ fn command_candidates(
 
 fn agent_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
     if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
-        return &["ko", "en", "auto", "--provider", "--download", "--json", "--session"];
+        return &[
+            "ko",
+            "en",
+            "auto",
+            "--provider",
+            "--model",
+            "--effort",
+            "--download",
+            "--json",
+            "--session",
+        ];
     }
     if parts.get(1) == Some(&"lang") && (parts.len() <= 2 || (parts.len() == 3 && !trailing_space)) {
         return &["ko", "en", "auto"];
@@ -512,7 +618,33 @@ fn agent_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static 
     if trailing_space && parts.last() == Some(&"--lang") {
         return &["ko", "en", "auto"];
     }
-    &["--provider", "--download", "--json", "--session"]
+    if trailing_space && parts.last() == Some(&"--model") {
+        return &CODEX_MODELS[3..];
+    }
+    if trailing_space && parts.last() == Some(&"--effort") {
+        return CODEX_EFFORTS;
+    }
+    &[
+        "--provider",
+        "--model",
+        "--effort",
+        "--download",
+        "--json",
+        "--session",
+    ]
+}
+
+fn model_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
+    if parts.len() <= 1 || (parts.len() == 2 && !trailing_space) {
+        return CODEX_MODELS;
+    }
+    if parts.get(1) == Some(&"effort") {
+        return CODEX_EFFORTS;
+    }
+    if trailing_space && parts.len() == 2 {
+        return CODEX_EFFORTS;
+    }
+    &[]
 }
 
 fn backtest_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
@@ -527,7 +659,7 @@ fn backtest_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'stat
             return &["buy-hold", "ma-cross", "momentum", "mean-reversion"];
         }
         if trailing_space && parts.last() == Some(&"--source") {
-            return &["yahoo", "stooq"];
+            return DATA_SOURCES;
         }
         return &[
             "--strategy",
@@ -673,6 +805,32 @@ const DISCOVER_OPTIONS: &[&str] = &[
     "--end",
 ];
 
+const DATA_SOURCES: &[&str] = &["stooq", "yahoo", "alphavantage", "twelve", "polygon", "fmp"];
+const CODEX_MODELS: &[&str] = &[
+    "status",
+    "default",
+    "effort",
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.3-codex",
+    "gpt-5.3-codex-spark",
+    "gpt-5.2",
+];
+const CODEX_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
+const SOURCE_CATALOG: &[&str] = &[
+    "list",
+    "stooq",
+    "tossctl",
+    "yahoo",
+    "alphavantage",
+    "twelve",
+    "polygon",
+    "fmp",
+    "sec",
+    "nasdaq",
+    "vendor",
+];
 const DISCOVER_SOURCES: &[&str] = &["local", "yahoo"];
 const DISCOVER_LIMITS: &[&str] = &["10", "25", "50", "100"];
 const DISCOVER_PERIODS: &[&str] = &["5d", "30d", "6mo", "1y", "ytd", "max"];
@@ -722,7 +880,7 @@ fn research_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'stat
         return &["AAPL", "NVDA", "TSM", "SPY"];
     }
     if trailing_space && parts.last().copied() == Some("--source") {
-        return &["yahoo", "stooq"];
+        return DATA_SOURCES;
     }
     if trailing_space && parts.last().copied() == Some("--interval") {
         return &["d", "1d", "1wk", "1mo"];
@@ -775,6 +933,9 @@ fn collect_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'stati
 fn data_candidates(parts: &[&str], trailing_space: bool) -> &'static [&'static str] {
     if parts.len() <= 1 {
         return &["download", "watchlist", "list", "info", "validate", "refresh"];
+    }
+    if trailing_space && parts.last().copied() == Some("--source") {
+        return DATA_SOURCES;
     }
     match parts.get(1).copied() {
         Some("list") => &[],
@@ -927,8 +1088,23 @@ fn input_visual_rows(input: &str, width: u16) -> u16 {
 
 fn dynamic_input_height(input: &str, width: u16, frame_height: u16) -> u16 {
     let desired = input_visual_rows(input, width).saturating_add(1).max(3);
-    let max_height = frame_height.saturating_sub(3).max(1);
-    desired.min(max_height)
+    let min_visible_input = if frame_height >= 2 { 2 } else { 1 };
+    let transcript_min = if frame_height >= 5 { 1 } else { 0 };
+    let max_height = frame_height
+        .saturating_sub(suggestion_height(frame_height))
+        .saturating_sub(transcript_min)
+        .max(min_visible_input);
+    desired.min(max_height).max(min_visible_input)
+}
+
+fn suggestion_height(frame_height: u16) -> u16 {
+    if frame_height >= 5 {
+        2
+    } else if frame_height >= 3 {
+        1
+    } else {
+        0
+    }
 }
 
 fn strip_ansi(text: &str) -> String {
@@ -1068,12 +1244,13 @@ fn handle_key(app: &mut App, key: KeyEvent) -> bool {
 fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
     let area = frame.area();
     let input_height = dynamic_input_height(&app.input, area.width, area.height);
+    let suggestion_height = suggestion_height(area.height);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(1),
+            Constraint::Min(0),
             Constraint::Length(input_height),
-            Constraint::Length(2),
+            Constraint::Length(suggestion_height),
         ])
         .split(area);
 
@@ -1126,11 +1303,15 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
     let input = input.scroll((input_scroll, 0));
     frame.render_widget(input, chunks[1]);
 
-    let suggestions = Paragraph::new(suggestion_line(app)).style(Style::default().bg(CHAT_BG));
-    frame.render_widget(suggestions, chunks[2]);
+    if chunks[2].height > 0 {
+        let suggestions = Paragraph::new(suggestion_line(app)).style(Style::default().bg(CHAT_BG));
+        frame.render_widget(suggestions, chunks[2]);
+    }
 
     let cursor_x = chunks[1].x + cursor_col.min(chunks[1].width.saturating_sub(1));
-    let cursor_y = chunks[1].y + 1 + cursor_row.saturating_sub(input_scroll);
+    let cursor_y = chunks[1].y
+        + u16::from(chunks[1].height > 1)
+        + cursor_row.saturating_sub(input_scroll);
     frame.set_cursor_position(Position::new(cursor_x, cursor_y));
 }
 
@@ -1156,18 +1337,18 @@ fn suggestion_line(app: &App) -> Line<'static> {
     let matches = app.completion_matches();
     let token = active_completion_token(&app.input);
     let mut spans = vec![Span::styled(
-        "search ",
+        "검색 ",
         Style::default().fg(TOSS_BLUE).add_modifier(Modifier::BOLD),
     )];
     if matches.is_empty() {
         spans.push(Span::styled(
-            "Tab complete",
+            "Tab 자동완성",
             Style::default().fg(Color::DarkGray),
         ));
         return Line::from(spans);
     }
     spans.push(Span::styled(
-        "Tab complete  ",
+        "Tab 자동완성  ",
         Style::default().fg(Color::DarkGray),
     ));
     for (index, candidate) in matches.iter().take(6).enumerate() {
@@ -1192,7 +1373,7 @@ fn loading_line(command: &str, elapsed: Duration) -> Line<'static> {
     };
     Line::from(vec![
         Span::styled(
-            "running ",
+            "실행 중 ",
             Style::default().fg(TOSS_BLUE).add_modifier(Modifier::BOLD),
         ),
         Span::styled(frame.to_string(), Style::default().fg(TOSS_BLUE)),
@@ -1338,9 +1519,10 @@ mod tests {
     use super::{
         active_completion_token, completion_matches, completion_matches_with_data_dir,
         display_width, dynamic_input_height, input_cursor_column, input_cursor_visual_position,
-        input_visual_rows, loading_line, skill_invocation_candidates_in, suggestion_line,
-        transcript_line, visible_transcript_window, visual_transcript_lines, welcome_lines, App,
-        INPUT_PLACEHOLDER,
+        input_visual_rows, loading_line, skill_invocation_candidates_in, suggestion_height,
+        model_selection, ModelSelection,
+        suggestion_line, transcript_line, visible_transcript_window, visual_transcript_lines,
+        welcome_lines, App, INPUT_PLACEHOLDER,
     };
     use std::{env, fs, time::Duration};
 
@@ -1449,6 +1631,7 @@ mod tests {
         assert!(completion_matches("", "quant").contains(&"/lab".to_string()));
         assert!(completion_matches("", "quant").contains(&"/tools".to_string()));
         assert!(completion_matches("", "quant").contains(&"/codex-guide".to_string()));
+        assert!(completion_matches("", "quant").contains(&"/model".to_string()));
         assert!(completion_matches("", "quant").contains(&"/event".to_string()));
         assert!(completion_matches("", "quant").contains(&"/compare".to_string()));
         assert!(!completion_matches("", "quant").contains(&"/agent".to_string()));
@@ -1544,10 +1727,30 @@ mod tests {
             Vec::<String>::new()
         );
         assert!(completion_matches("/agent ", "quant").contains(&"ko".to_string()));
+        assert!(completion_matches("/agent ", "quant").contains(&"--model".to_string()));
         assert!(!completion_matches("/agent ", "quant").contains(&"lang".to_string()));
         assert_eq!(
             completion_matches("/agent lang ", "quant"),
             vec!["ko".to_string(), "en".to_string(), "auto".to_string()]
+        );
+        assert!(completion_matches("/model ", "quant").contains(&"gpt-5.5".to_string()));
+        assert_eq!(
+            completion_matches("/model gpt-5.5 ", "quant"),
+            vec![
+                "low".to_string(),
+                "medium".to_string(),
+                "high".to_string(),
+                "xhigh".to_string()
+            ]
+        );
+        assert_eq!(
+            completion_matches("/model effort ", "quant"),
+            vec![
+                "low".to_string(),
+                "medium".to_string(),
+                "high".to_string(),
+                "xhigh".to_string()
+            ]
         );
         assert!(completion_matches("/backtest run NVDA ", "quant").contains(&"--strategy".to_string()));
         assert_eq!(
@@ -1559,6 +1762,8 @@ mod tests {
                 "mean-reversion".to_string()
             ]
         );
+        assert!(completion_matches("/data download AAPL --source ", "quant")
+            .contains(&"alphavantage".to_string()));
         assert!(completion_matches("/research NVDA ", "quant").contains(&"--source".to_string()));
         assert_eq!(
             completion_matches("/research NVDA --", "quant"),
@@ -1573,7 +1778,14 @@ mod tests {
         );
         assert_eq!(
             completion_matches("/research NVDA --source ", "quant"),
-            vec!["yahoo".to_string(), "stooq".to_string()]
+            vec![
+                "stooq".to_string(),
+                "yahoo".to_string(),
+                "alphavantage".to_string(),
+                "twelve".to_string(),
+                "polygon".to_string(),
+                "fmp".to_string()
+            ]
         );
         assert_eq!(
             completion_matches("/research NVDA --interval ", "quant"),
@@ -1614,6 +1826,11 @@ mod tests {
                 "stooq".to_string(),
                 "tossctl".to_string(),
                 "yahoo".to_string(),
+                "alphavantage".to_string(),
+                "twelve".to_string(),
+                "polygon".to_string(),
+                "fmp".to_string(),
+                "sec".to_string(),
                 "nasdaq".to_string(),
                 "vendor".to_string()
             ]
@@ -1656,6 +1873,35 @@ mod tests {
         app.complete_current_token();
         assert_eq!(app.input, "/collect plan ");
         assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn model_selection_keeps_next_choice_in_the_input_bar() {
+        assert_eq!(model_selection("/model"), Some(ModelSelection::PromptModels));
+        assert_eq!(
+            model_selection("/model gpt-5.5"),
+            Some(ModelSelection::PromptEffort {
+                model: "gpt-5.5".to_string()
+            })
+        );
+        assert_eq!(
+            model_selection("/model gpt-5.5 high"),
+            Some(ModelSelection::SetModelAndEffort {
+                model: "gpt-5.5".to_string(),
+                effort: "high".to_string()
+            })
+        );
+        assert_eq!(
+            model_selection("/model effort"),
+            Some(ModelSelection::PromptEfforts)
+        );
+        assert_eq!(
+            model_selection("/model effort xhigh"),
+            Some(ModelSelection::SetEffort {
+                effort: "xhigh".to_string()
+            })
+        );
+        assert_eq!(model_selection("/model status"), None);
     }
 
     #[test]
@@ -1734,7 +1980,7 @@ mod tests {
             .map(|span| span.content.as_ref())
             .collect::<String>();
 
-        assert!(rendered.contains("running"));
+        assert!(rendered.contains("실행 중"));
         assert!(rendered.contains("0.4s"));
         assert!(rendered.contains("/research NVDA"));
         assert_ne!(line.spans[1].content.as_ref(), "");
@@ -1773,7 +2019,10 @@ mod tests {
         let input = "x".repeat(500);
 
         assert_eq!(dynamic_input_height(&input, 10, 6), 3);
-        assert_eq!(dynamic_input_height(&input, 10, 4), 1);
+        assert_eq!(dynamic_input_height(&input, 10, 4), 3);
+        assert_eq!(dynamic_input_height(&input, 10, 2), 2);
+        assert_eq!(suggestion_height(4), 1);
+        assert_eq!(suggestion_height(2), 0);
     }
 
     #[test]
@@ -1811,7 +2060,7 @@ mod tests {
         let app = App::new("src/cli.ts".into(), "data".to_string(), "node".to_string());
 
         assert!(app.input.is_empty());
-        assert_eq!(INPUT_PLACEHOLDER, "Codex에서 논의하고, 여기서는 quantops CLI/JSON을 확인하세요");
+        assert_eq!(INPUT_PLACEHOLDER, "궁금한 내용을 한국어로 입력하세요. 예: TSM 1년 데이터 받아서 분석해줘");
         assert_eq!(input_cursor_column(&app.input, app.cursor), 0);
     }
 
@@ -1834,13 +2083,13 @@ mod tests {
         let lines = welcome_lines("quant");
         let text = lines.join("\n");
         assert!(text.contains("QuantOps-cli"));
-        assert!(text.contains("codex-guide"));
-        assert!(text.contains("Codex → Codex calls quantops CLI"));
+        assert!(text.contains("에이전트 기반 퀀트 리서치"));
+        assert!(text.contains("사용자가 질문"));
         assert!(!text.contains("/find"));
         assert!(text.contains("/stats"));
         assert!(text.contains("/backtest"));
         assert!(text.contains("/research"));
         assert!(text.contains("/event"));
-        assert!(text.contains("Tab completes"));
+        assert!(text.contains("Tab 자동완성"));
     }
 }

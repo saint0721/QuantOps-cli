@@ -52,21 +52,21 @@ export function codexRuntimeGuide(): JsonObject {
 
 export function formatCodexRuntimeGuide(): string {
   const guide = codexRuntimeGuide();
+  const humanCommands = (guide.minimal_commands as string[]).map((command) => command.replace(/^rtk\s+/, ''));
   return [
     'QuantOps Codex runtime guide',
     '',
     `Role: ${guide.role}`,
-    `Preferred launcher: ${guide.preferred_launcher}`,
     `Primary user: ${guide.primary_user}`,
     '',
     'Use this pattern:',
     '1. User talks to Codex.',
-    '2. Codex calls rtk commands with --json.',
+    '2. Codex calls QuantOps CLI commands with --json.',
     '3. QuantOps returns data, validation, research, backtest, and artifact outputs.',
     '4. Codex explains the result with uncertainty and without trading advice.',
     '',
     'Minimal command sequence:',
-    ...((guide.minimal_commands as string[]).map((command) => `- ${command}`)),
+    ...(humanCommands.map((command) => `- ${command}`)),
     '',
     'De-emphasized:',
     ...((guide.de_emphasized as string[]).map((item) => `- ${item}`)),

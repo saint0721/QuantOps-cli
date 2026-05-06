@@ -8,7 +8,7 @@ import { classify, historyRows } from './analysis.ts';
 import { auditAll } from './audit.ts';
 import { collectionPlan, collectionSummary, collectQuote, runCollectionPlan } from './collect.ts';
 import { filteredCodexOutput } from './codex.ts';
-import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist } from './data.ts';
+import { dataInfo, downloadHistory, downloadWatchlist, listDatasets, refreshHistory, refreshWatchlist, OHLCV_DOWNLOAD_SOURCES } from './data.ts';
 import { defaultTmuxSession, launchTmuxHud, launchTmuxRuntime, printHudOnce, shutdownManagedTmuxRuntime, tmuxPath, watchHud } from './hud.ts';
 import { addIdeaHypothesis, addIdeaSymbol, createIdea, ideaPath, ideaReferenceCandidates, ideaStatus, listIdeas, readIdea, type IdeaReadiness, type QuantIdea } from './idea.ts';
 import { buildRustHelpers, installLocalBins, pathHint } from './setup.ts';
@@ -19,9 +19,9 @@ import { formatLabRun, formatLabWorkflow, runLabStage, type LabStage } from './l
 import { listQuantSkills, quantSkillInvocationCandidates, type QuantSkill } from './skills.ts';
 import { listTools, runTool, toolSummaries } from './tools.ts';
 import { runAgent } from './agent.ts';
-import { providersJson, listProviders } from './providers.ts';
+import { providersJson, listProviders, listMarketDataProviders, codexExecArgs } from './providers.ts';
 import { ensureQuantSession, listQuantSessions, recordSessionEvent, sessionHandoff } from './session.ts';
-import { formatAgentLanguagePreference, normalizeAgentLanguage, readAgentPreferences, writeAgentLanguage } from './preferences.ts';
+import { CODEX_EFFORT_CHOICES, CODEX_MODEL_CHOICES, formatAgentLanguagePreference, formatCodexModelPreference, normalizeAgentLanguage, normalizeCodexEffort, readAgentPreferences, writeAgentLanguage, writeCodexEffort, writeCodexModel, writeCodexModelAndEffort } from './preferences.ts';
 import { formatBacktestResult, formatStrategyList, listBacktestStrategies } from './backtest.ts';
 import { runBacktestRuntime } from './rustBacktest.ts';
 import { validateDataRuntime } from './rustValidate.ts';
@@ -53,10 +53,11 @@ const YELLOW = '\u001b[93m';
 const RESET = '\u001b[0m';
 let INTERACTIVE_CHAT_UI = false;
 
-export const ROOT_COMPLETIONS = ['start', 'help', 'codex-guide', 'next', 'download', 'research', 'event', 'compare', 'idea', 'lab', 'tools', 'mcp', 'agent', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
-export const SLASH_COMPLETIONS = ['/start', '/next', '/download', '/research', '/idea', '/lab', '/tools', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/backtest', '/strategy', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/codex', '/quant', '/exit'];
+export const ROOT_COMPLETIONS = ['start', 'help', 'codex-guide', 'next', 'download', 'research', 'event', 'compare', 'idea', 'lab', 'tools', 'mcp', 'agent', 'model', 'provider', 'session', 'skills', 'list', 'doctor', 'collect', 'data', 'discover', 'sources', 'symbol', 'stats', 'backtest', 'strategy', 'audit', 'quote', 'history', 'classify', 'portfolio', 'order', 'brief', 'runtime', 'hud', 'tmux', 'setup'];
+export const SLASH_COMPLETIONS = ['/start', '/next', '/download', '/research', '/idea', '/lab', '/tools', '/model', '/provider', '/session', '/skills', '/list', '/help', '/status', '/collect', '/data', '/discover', '/sources', '/symbol', '/stats', '/backtest', '/strategy', '/audit', '/quote', '/history', '/classify', '/portfolio', '/order', '/brief', '/watchlist', '/hud', '/runtime', '/codex', '/quant', '/exit'];
 const DISCOVER_CATEGORIES = ['trending', 'most-active', 'gainers', 'losers', 'etf', 'semiconductor'];
 const DISCOVER_OPTIONS = ['--source', '--limit', '--download', '--period', '--start', '--end'];
+const DATA_SOURCE_COMPLETIONS = [...OHLCV_DOWNLOAD_SOURCES];
 const INTERACTIVE_HIDDEN_SLASH = new Set(['/agent']);
 
 function discoverCompletionCandidates(parts: string[]): string[] {
@@ -99,10 +100,18 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
   }
   if (command === 'tools') return parts.length <= 2 ? ['list', 'run'] : (parts[1] === 'run' && parts.length <= 3 ? listTools().map((tool) => tool.name) : ['--json', '--input']);
   if (command === 'agent') {
-    if (parts.length <= 2) return ['ko', 'en', 'auto', '--provider', '--download', '--json', '--session'];
+    if (parts.length <= 2) return ['ko', 'en', 'auto', '--provider', '--model', '--effort', '--download', '--json', '--session'];
     if ((parts[1] === 'lang' || parts[1] === 'language') && parts.length <= 3) return ['ko', 'en', 'auto'];
     if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--lang') return ['ko', 'en', 'auto'];
-    return ['--provider', '--download', '--json', '--session'];
+    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--model') return [...CODEX_MODEL_CHOICES];
+    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--effort') return CODEX_EFFORT_CHOICES;
+    return ['--provider', '--model', '--effort', '--download', '--json', '--session'];
+  }
+  if (command === 'model') {
+    if (parts.length <= 2) return ['status', 'default', 'effort', ...CODEX_MODEL_CHOICES];
+    if (parts[1] === 'effort') return CODEX_EFFORT_CHOICES;
+    if ((parts.at(-1) ?? '') === '' && parts.length <= 3) return CODEX_EFFORT_CHOICES;
+    return [];
   }
   if (command === 'provider') return parts.length <= 2 ? ['list'] : ['--json'];
   if (command === 'session') return parts.length <= 2 ? ['current', 'list', 'handoff'] : ['--json'];
@@ -115,7 +124,7 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
   }
   if (command === 'data') {
     if (parts.length <= 2) return ['download', 'watchlist', 'list', 'info', 'validate', 'refresh'];
-    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return ['yahoo', 'stooq'];
+    if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return DATA_SOURCE_COMPLETIONS;
     if (parts[1] === 'download') return ['--period', '--start', '--end', '--interval', '--source', '--provider-symbol'];
     if (parts[1] === 'refresh') return ['--period', '--start', '--end', '--interval', '--source', '--provider-symbol'];
     if (parts[1] === 'info') return ['--json', '--source', '--interval'];
@@ -134,7 +143,7 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
     if (parts[1] === 'run') {
       if (parts.length <= 3) return ['latest', 'AAPL', 'NVDA', 'SPY'];
       if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--strategy') return listBacktestStrategies().map((strategy) => strategy.name);
-      if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return ['yahoo', 'stooq'];
+      if ((parts.at(-1) ?? '') === '' && parts.at(-2) === '--source') return DATA_SOURCE_COMPLETIONS;
       return ['--strategy', '--fast', '--slow', '--lookback', '--threshold', '--source', '--interval', '--provider-symbol', '--no-save', '--json'];
     }
     return [];
@@ -142,7 +151,7 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
   if (command === 'strategy') return parts.length <= 2 ? ['list'] : [];
   if (command === 'research') {
     if (parts.length <= 2) return ['AAPL', 'NVDA', 'TSM', 'SPY'];
-    if (trimmed.endsWith(' ') && parts.at(-2) === '--source') return ['yahoo', 'stooq'];
+    if (trimmed.endsWith(' ') && parts.at(-2) === '--source') return DATA_SOURCE_COMPLETIONS;
     if (trimmed.endsWith(' ') && parts.at(-2) === '--interval') return ['d', '1d', '1wk', '1mo'];
     if (trimmed.endsWith(' ') && (parts.at(-2) === '--topic' || parts.at(-2) === '--provider-symbol')) return [];
     return trimmed.endsWith(' ') || (parts.at(-1) ?? '').startsWith('--') ? ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--codex'] : [];
@@ -152,7 +161,7 @@ export function completionCandidates(line: string, mode = 'quant', completionDat
   if (command === 'discover') {
     return discoverCompletionCandidates(parts);
   }
-  if (command === 'sources') return parts.length <= 2 ? ['list', 'stooq', 'tossctl', 'yahoo', 'nasdaq', 'vendor'] : [];
+  if (command === 'sources') return parts.length <= 2 ? ['list', 'stooq', 'tossctl', 'yahoo', 'alphavantage', 'twelve', 'polygon', 'fmp', 'sec', 'nasdaq', 'vendor'] : [];
   if (command === 'symbol') {
     if (parts.length <= 2) return ['search', 'info'];
     if (parts[1] === 'search') {
@@ -947,13 +956,65 @@ async function commandAgent(dataDir: string, tail: string[] = []): Promise<numbe
     }
     const provider = takeOption(args, '--provider') || 'none';
     const requestedLanguage = takeOption(args, '--lang');
-    const language = requestedLanguage ? normalizeAgentLanguage(requestedLanguage) : readAgentPreferences(dataDir).language;
+    const requestedModel = takeOption(args, '--model');
+    const requestedEffort = takeOption(args, '--effort');
+    const prefs = readAgentPreferences(dataDir);
+    const language = requestedLanguage ? normalizeAgentLanguage(requestedLanguage) : prefs.language;
+    const model = requestedModel ?? prefs.codex_model;
+    const effort = requestedEffort ? normalizeCodexEffort(requestedEffort) : prefs.codex_effort;
     const sessionId = takeOption(args, '--session') || 'agent-chat';
     const request = args.join(' ');
-    if (!request) { warn('usage: agent <REQUEST> [--provider codex|claude|none] [--download] [--session ID] [--json]\n       agent ko|en|auto'); return 2; }
-    const run = await runAgent(request, { base: dataDir, provider, allowDownloads, sessionId, language });
+    if (!request) { warn('사용법: agent <요청> [--provider codex|claude|none] [--model MODEL] [--effort low|medium|high|xhigh] [--download] [--session ID] [--json]\n       agent ko|en|auto 또는 /model'); return 2; }
+    const run = await runAgent(request, { base: dataDir, provider, model, effort, allowDownloads, sessionId, language });
     printText(json ? JSON.stringify({ ...run, report: undefined }, null, 2) : run.report);
     return run.ok ? 0 : 1;
+  } catch (error) {
+    printJson({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    return 1;
+  }
+}
+
+function commandModel(dataDir: string, tail: string[] = []): number {
+  try {
+    const args = [...tail];
+    const json = args.includes('--json');
+    for (let i = args.length - 1; i >= 0; i -= 1) if (args[i] === '--json') args.splice(i, 1);
+    const [action, value] = args;
+    let prefs = readAgentPreferences(dataDir);
+    let hint = '';
+    if (!action || action === 'status') {
+      // Show current settings only.
+    } else if (action === 'reset' || action === 'clear') {
+      prefs = writeCodexModelAndEffort(dataDir, undefined, undefined);
+      hint = 'Codex 모델과 effort를 기본값으로 되돌렸습니다.';
+    } else if (action === 'effort') {
+      if (!value) {
+        hint = `effort를 선택하세요: /model effort ${CODEX_EFFORT_CHOICES.join('|')}`;
+      } else {
+        prefs = writeCodexEffort(dataDir, value);
+        hint = `Codex effort를 ${prefs.codex_effort ?? '기본값'}으로 설정했습니다.`;
+      }
+    } else {
+      const model = action;
+      if (value) {
+        prefs = writeCodexModelAndEffort(dataDir, model, value);
+        hint = `Codex 모델 ${prefs.codex_model ?? '기본값'}, effort ${prefs.codex_effort ?? '기본값'}으로 설정했습니다.`;
+      } else {
+        prefs = writeCodexModel(dataDir, model);
+        hint = `Codex 모델을 ${prefs.codex_model ?? '기본값'}으로 설정했습니다. 이제 effort를 선택하세요: /model effort ${CODEX_EFFORT_CHOICES.join('|')}`;
+      }
+    }
+    const payload = {
+      ok: true,
+      command: 'model.preference',
+      codex_model: prefs.codex_model ?? null,
+      codex_effort: prefs.codex_effort ?? null,
+      model_choices: CODEX_MODEL_CHOICES,
+      effort_choices: CODEX_EFFORT_CHOICES,
+      hint,
+    };
+    printText(json ? JSON.stringify(payload, null, 2) : [hint, formatCodexModelPreference(prefs)].filter(Boolean).join('\n\n'));
+    return 0;
   } catch (error) {
     printJson({ ok: false, error: error instanceof Error ? error.message : String(error) });
     return 1;
@@ -1034,7 +1095,13 @@ function commandProviders(action = 'list', tail: string[] = []): number {
   const json = tail.includes('--json');
   if (action === 'list') {
     const payload = providersJson();
-    printText(json ? JSON.stringify(payload, null, 2) : table(['provider', 'available', 'auth', 'detail'], listProviders().map((provider) => [provider.name, provider.available ? 'yes' : 'no', provider.auth, provider.detail])));
+    printText(json ? JSON.stringify(payload, null, 2) : [
+      'LLM providers',
+      table(['provider', 'available', 'auth', 'detail'], listProviders().map((provider) => [provider.name, provider.available ? 'yes' : 'no', provider.auth, provider.detail])),
+      '',
+      'Market data providers',
+      table(['source', 'available', 'auth', 'env', 'detail'], listMarketDataProviders().map((provider) => [provider.name, provider.available ? 'yes' : 'no', provider.auth, (provider.env ?? []).join(' | ') || '-', provider.detail])),
+    ].join('\n'));
     return 0;
   }
   warn('usage: provider list [--json]');
@@ -1288,20 +1355,21 @@ function commandOrderPreview(args: string[]): number {
   return result.returncode || 1;
 }
 
-function runCodexPromptText(prompt: string): ResearchCodexResult {
+function runCodexPromptText(prompt: string, dataDir = 'data'): ResearchCodexResult {
   if (!prompt.trim()) return { ok: false, error: 'empty prompt', returncode: 2 };
   const hasCodex = spawnSync('sh', ['-lc', 'command -v codex'], { encoding: 'utf8' });
   if (hasCodex.status !== 0) return { ok: false, error: 'codex CLI not found in PATH', returncode: 127 };
   const codex = hasCodex.stdout.trim();
-  const result = spawnSync(codex, ['exec', '--sandbox', 'read-only', '--cd', process.cwd(), prompt], { encoding: 'utf8' });
+  const prefs = readAgentPreferences(dataDir);
+  const result = spawnSync(codex, codexExecArgs(prompt, { model: prefs.codex_model, effort: prefs.codex_effort }), { encoding: 'utf8' });
   const text = filteredCodexOutput(result.stdout ?? '', result.stderr ?? '');
   const code = result.status ?? 1;
   return code === 0 ? { ok: true, text, returncode: code } : { ok: false, text, error: text || result.stderr || result.stdout || `codex exited ${code}`, returncode: code };
 }
 
-function runCodexPrompt(prompt: string): number {
+function runCodexPrompt(prompt: string, dataDir = 'data'): number {
   if (!prompt.trim()) { warn('usage: codex prompt text'); return 2; }
-  const result = runCodexPromptText(prompt);
+  const result = runCodexPromptText(prompt, dataDir);
   if (result.error === 'codex CLI not found in PATH') { warn(result.error); return 127; }
   if (result.text) {
     if (INTERACTIVE_CHAT_UI) emitChat(result.text);
@@ -1310,24 +1378,30 @@ function runCodexPrompt(prompt: string): number {
   return result.returncode ?? (result.ok ? 0 : 1);
 }
 
-function launchRustTui(dataDir: string): number | null {
-  const cargo = spawnSync('sh', ['-lc', 'command -v cargo'], { encoding: 'utf8' });
-  if (cargo.status !== 0 || !cargo.stdout.trim()) return null;
-  const manifest = new URL('../tui/Cargo.toml', import.meta.url).pathname;
-  const entry = new URL('./cli.ts', import.meta.url).pathname;
-  const result = spawnSync(cargo.stdout.trim(), [
+export function rustTuiCargoArgs(manifest: string, entry: string, dataDir: string, nodePath = process.execPath): string[] {
+  return [
     'run',
     '--quiet',
     '--manifest-path',
     manifest,
+    '--bin',
+    'quantops-tui',
     '--',
     '--entry',
     entry,
     '--data-dir',
     dataDir,
     '--node',
-    process.execPath,
-  ], { encoding: 'utf8', stdio: 'inherit' });
+    nodePath,
+  ];
+}
+
+function launchRustTui(dataDir: string): number | null {
+  const cargo = spawnSync('sh', ['-lc', 'command -v cargo'], { encoding: 'utf8' });
+  if (cargo.status !== 0 || !cargo.stdout.trim()) return null;
+  const manifest = new URL('../tui/Cargo.toml', import.meta.url).pathname;
+  const entry = new URL('./cli.ts', import.meta.url).pathname;
+  const result = spawnSync(cargo.stdout.trim(), rustTuiCargoArgs(manifest, entry, dataDir), { encoding: 'utf8', stdio: 'inherit' });
   return result.status ?? 1;
 }
 
@@ -1353,18 +1427,18 @@ function runtimeLine(dataDir: string, mode = 'quant', lastAction = 'line'): stri
 
 export function welcomeCard(): string {
   return [
-    `${CYAN}${APP}${RESET} ${VERSION} · TypeScript runtime · trading mutations disabled`,
+    `${CYAN}${APP}${RESET} ${VERSION} · TypeScript 런타임 · 실제 매매 변경 비활성화`,
     '',
-    'project     QuantOps-cli — agentic quant research and execution workflows',
-    'runtime     TypeScript / Node 24+ / tmux HUD when available',
-    'safety      read-only data by default · no real order mutation',
+    '프로젝트   QuantOps-cli — 에이전트 기반 퀀트 리서치 실행 도구',
+    '런타임     TypeScript / Node 24+ / 가능하면 tmux HUD 사용',
+    '안전       기본은 읽기 전용 데이터 · 실제 주문/매매 변경 없음',
     '',
-    'chat        그냥 입력하세요: “NVDA 실적 모멘텀을 검증하고 싶어”',
-    'beginner    /start · /next · /idea · /lab · /skills · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list',
-    'flow        자연어 채팅  →  agent tool 실행/제안  →  /idea 또는 /lab 저장  →  /backtest 검증',
-    'advanced    /tools · /backtest run latest · /strategy list · /discover · /data info · /stats <SYMBOL>',
-    'codex       /skills · /tools · $quantops-idea-coach · /codex · /quant · /exit',
-    'plain mode  quant --no-tmux',
+    '채팅       그냥 입력하세요: “NVDA 실적 모멘텀을 검증하고 싶어”',
+    '처음       /start · /next · /idea · /lab · /skills · /download <SYMBOL> · /stats <SYMBOL> · /research <SYMBOL> · /list',
+    '흐름       자연어 채팅  →  에이전트 도구 실행/제안  →  /idea 또는 /lab 저장  →  /backtest 검증',
+    '고급       /tools · /backtest run latest · /strategy list · /discover · /data info · /stats <SYMBOL>',
+    '도구       /skills · /tools · /model · $quantops-idea-coach · /codex · /quant · /exit',
+    '일반 모드  quant --no-tmux',
     '',
   ].join('\n');
 }
@@ -1399,6 +1473,7 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (line === '/skills') { commandSkills(); lastAction = '/skills'; return false; }
     if (line.startsWith('/tools')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/tools'; return false; }
     if (line.startsWith('/agent')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = 'agent'; return false; }
+    if (line.startsWith('/model')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/model'; return false; }
     if (line.startsWith('/provider')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/provider'; return false; }
     if (line.startsWith('/session')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/session'; return false; }
     if (line === '/status') { printStatus(dataDir); lastAction = '/status'; return false; }
@@ -1407,8 +1482,8 @@ async function runInteractive(dataDir: string): Promise<number> {
     if (line === '/hud tmux') { const r = launchTmuxHud(dataDir); r.code === 0 ? ok(r.message) : warn(r.message); lastAction = '/hud'; return false; }
     if (line.startsWith('/runtime')) { emitChat(runtimeLine(dataDir, mode, '/runtime')); lastAction = '/runtime'; return false; }
     if (line.startsWith('/research ')) { await runOnce(['--data-dir', dataDir, ...line.slice(1).split(/\s+/)], { quietUnknown: true }); lastAction = '/research'; return false; }
-    if (line.startsWith('$')) { runCodexPrompt(line); lastAction = 'skill'; return false; }
-    if (mode === 'codex') { runCodexPrompt(line); lastAction = 'codex'; return false; }
+    if (line.startsWith('$')) { runCodexPrompt(line, dataDir); lastAction = 'skill'; return false; }
+    if (mode === 'codex') { runCodexPrompt(line, dataDir); lastAction = 'codex'; return false; }
     if (!line.startsWith('/')) {
       await commandAgent(dataDir, [line]);
       lastAction = 'agent-chat';
@@ -1469,6 +1544,7 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'strategy') return commandStrategy(sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
   if (cmd === 'tools') return commandTools(dataDir, sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
   if (cmd === 'agent') return commandAgent(dataDir, [sub, ...tail].filter(Boolean));
+  if (cmd === 'model') return commandModel(dataDir, [sub, ...tail].filter(Boolean));
   if (cmd === 'provider' || cmd === 'providers') return commandProviders(sub?.startsWith('--') ? 'list' : sub ?? 'list', sub?.startsWith('--') ? [sub, ...tail] : tail);
   if (cmd === 'session') return commandSession(sub?.startsWith('--') ? 'current' : sub ?? 'current', sub?.startsWith('--') ? [sub, ...tail] : tail);
   if (cmd === 'skills') return commandSkills();
@@ -1490,8 +1566,8 @@ export async function runOnce(argv: string[], opts: { quietUnknown?: boolean } =
   if (cmd === 'portfolio' && (sub === 'snapshot' || !sub)) return commandPortfolioSnapshot(dataDir);
   if (cmd === 'order' && sub === 'preview') return commandOrderPreview(tail);
   if (cmd === 'watchlist') return handleWatchlist(['watchlist', sub ?? 'list', ...tail], dataDir);
-  if (cmd === 'codex-prompt') return runCodexPrompt([sub, ...tail].filter(Boolean).join(' '));
-  if (cmd?.startsWith('$')) return runCodexPrompt([cmd, sub, ...tail].filter(Boolean).join(' '));
+  if (cmd === 'codex-prompt') return runCodexPrompt([sub, ...tail].filter(Boolean).join(' '), dataDir);
+  if (cmd?.startsWith('$')) return runCodexPrompt([cmd, sub, ...tail].filter(Boolean).join(' '), dataDir);
   if (cmd === 'runtime' && sub === 'snapshot') { printJson(recordRuntime({ base: dataDir, lastAction: 'snapshot' })); return 0; }
   if (cmd === 'runtime' && sub === 'line') { console.log(runtimeLine(dataDir)); return 0; }
   if (cmd === 'runtime' && (sub === 'info' || !sub || sub.startsWith('--'))) return commandRuntimeInfo(dataDir, [sub, ...tail].filter(Boolean).includes('--json'));

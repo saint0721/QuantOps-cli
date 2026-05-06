@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { marketDatasetPath } from '../data.ts';
 import { listIdeas } from '../idea.ts';
-import { runOnce, welcomeCard } from '../cli.ts';
+import { runOnce, rustTuiCargoArgs, welcomeCard } from '../cli.ts';
 import { appendJsonl } from '../storage.ts';
 import { sessionEvents } from '../session.ts';
 
@@ -13,14 +13,32 @@ test('welcome keeps neofetch summary without runtime HUD line', () => {
   const welcome = welcomeCard();
   assert.match(welcome, /QuantOps-cli/);
   assert.match(welcome, /그냥 입력하세요/);
-  assert.match(welcome, /beginner/);
+  assert.match(welcome, /처음/);
   assert.doesNotMatch(welcome, /\/find/);
   assert.doesNotMatch(welcome, /\/ask/);
   assert.match(welcome, /\/download <SYMBOL>/);
   assert.match(welcome, /\/research <SYMBOL>/);
   assert.match(welcome, /\/skills/);
-  assert.match(welcome, /trading mutations disabled/);
+  assert.match(welcome, /실제 매매 변경 비활성화/);
   assert.doesNotMatch(welcome, /watchlist:\d/);
+});
+
+test('rust TUI launcher selects the quantops-tui binary explicitly', () => {
+  assert.deepEqual(rustTuiCargoArgs('/repo/tui/Cargo.toml', '/repo/src/cli.ts', 'data', '/usr/bin/node'), [
+    'run',
+    '--quiet',
+    '--manifest-path',
+    '/repo/tui/Cargo.toml',
+    '--bin',
+    'quantops-tui',
+    '--',
+    '--entry',
+    '/repo/src/cli.ts',
+    '--data-dir',
+    'data',
+    '--node',
+    '/usr/bin/node',
+  ]);
 });
 
 function captureConsole(fn: () => Promise<number>): Promise<{ code: number; output: string }> {
@@ -233,6 +251,22 @@ test('provider and session commands report local integration state', async () =>
   assert.match(session.output, /readme-test/);
 });
 
+test('model command persists Codex model and effort preferences', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-model-'));
+  const model = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'model', 'gpt-5.5']));
+  const effort = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'model', 'effort', 'high', '--json']));
+  const status = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'model']));
+
+  assert.equal(model.code, 0);
+  assert.match(model.output, /이제 effort를 선택하세요/);
+  assert.equal(effort.code, 0);
+  assert.match(effort.output, /"codex_model": "gpt-5.5"/);
+  assert.match(effort.output, /"codex_effort": "high"/);
+  assert.equal(status.code, 0);
+  assert.match(status.output, /현재 모델: gpt-5.5/);
+  assert.match(status.output, /현재 effort: high/);
+});
+
 test('codex runtime commands expose agent-first machine contracts', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-runtime-contract-'));
 
@@ -253,6 +287,17 @@ test('codex runtime commands expose agent-first machine contracts', async () => 
   assert.equal(event.code, 0);
   assert.match(event.output, /competitor_negative/);
   assert.match(event.output, /event study TSM/);
+});
+
+test('codex guide human output describes CLI without exposing launcher plumbing', async () => {
+  const guide = await captureConsole(() => runOnce(['--no-tmux', 'codex-guide']));
+
+  assert.equal(guide.code, 0);
+  assert.match(guide.output, /Codex calls QuantOps CLI commands with --json/);
+  assert.match(guide.output, /- runtime info --json/);
+  assert.doesNotMatch(guide.output, /Preferred launcher/);
+  assert.doesNotMatch(guide.output, /Codex calls rtk commands/);
+  assert.doesNotMatch(guide.output, /- rtk runtime info/);
 });
 
 test('help explains the Codex-first rtk harness flow', async () => {

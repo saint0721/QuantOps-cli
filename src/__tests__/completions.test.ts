@@ -19,6 +19,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('tools'));
   assert.ok(completionCandidates('', 'quant').includes('mcp'));
   assert.ok(completionCandidates('', 'quant').includes('agent'));
+  assert.ok(completionCandidates('', 'quant').includes('model'));
   assert.ok(completionCandidates('', 'quant').includes('collect'));
   assert.ok(completionCandidates('', 'quant').includes('/collect'));
   assert.ok(completionCandidates('', 'quant').includes('data'));
@@ -39,6 +40,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('', 'quant').includes('/skills'));
   assert.ok(completionCandidates('', 'quant').includes('/tools'));
   assert.equal(completionCandidates('', 'quant').includes('/agent'), false);
+  assert.ok(completionCandidates('', 'quant').includes('/model'));
   assert.ok(completionCandidates('', 'quant').includes('/list'));
   assert.ok(completionCandidates('', 'quant').includes('/discover'));
   assert.ok(completionCandidates('', 'quant').includes('/sources'));
@@ -64,9 +66,13 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.deepEqual(completionCandidates('event ', 'quant'), ['define', 'study', 'windows']);
   assert.ok(completionCandidates('/tools run ', 'quant').includes('stats.run'));
   assert.ok(completionCandidates('/agent ', 'quant').includes('--provider'));
+  assert.ok(completionCandidates('/agent ', 'quant').includes('--model'));
   assert.ok(completionCandidates('/agent ', 'quant').includes('ko'));
   assert.equal(completionCandidates('/agent ', 'quant').includes('lang'), false);
   assert.deepEqual(completionCandidates('/agent lang ', 'quant'), ['ko', 'en', 'auto']);
+  assert.ok(completionCandidates('/model ', 'quant').includes('gpt-5.5'));
+  assert.deepEqual(completionCandidates('/model gpt-5.5 ', 'quant'), ['low', 'medium', 'high', 'xhigh']);
+  assert.deepEqual(completionCandidates('/model effort ', 'quant'), ['low', 'medium', 'high', 'xhigh']);
   assert.deepEqual(completionCandidates('data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.deepEqual(completionCandidates('/data ', 'quant'), ['download', 'watchlist', 'list', 'info', 'validate', 'refresh']);
   assert.ok(completionCandidates('/data download AAPL ', 'quant').includes('--period'));
@@ -91,7 +97,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('/discover trending --source yahoo ', 'quant').includes('--download'));
   assert.deepEqual(completionCandidates('/discover trending --source yahoo --limit ', 'quant'), ['10', '25', '50', '100']);
   assert.deepEqual(completionCandidates('/discover trending --period ', 'quant'), ['5d', '30d', '6mo', '1y', 'ytd', 'max']);
-  assert.deepEqual(completionCandidates('/sources ', 'quant'), ['list', 'stooq', 'tossctl', 'yahoo', 'nasdaq', 'vendor']);
+  assert.deepEqual(completionCandidates('/sources ', 'quant'), ['list', 'stooq', 'tossctl', 'yahoo', 'alphavantage', 'twelve', 'polygon', 'fmp', 'sec', 'nasdaq', 'vendor']);
   assert.deepEqual(completionCandidates('/symbol ', 'quant'), ['search', 'info']);
   assert.ok(completionCandidates('/symbol search TSM ', 'quant').includes('--source'));
   assert.deepEqual(completionCandidates('/symbol search TSM --source ', 'quant'), ['local', 'yahoo']);
@@ -103,7 +109,7 @@ test('tab completion suggests root slash and nested commands', () => {
   assert.ok(completionCandidates('/research AAPL ', 'quant').includes('--codex'));
   assert.equal(completionCandidates('/research AAPL ', 'quant').includes('--no-codex'), false);
   assert.deepEqual(completeLine('/research NVDA --', 'quant')[0], ['--topic', '--source', '--interval', '--provider-symbol', '--no-save', '--codex']);
-  assert.deepEqual(completionCandidates('/research NVDA --source ', 'quant'), ['yahoo', 'stooq']);
+  assert.deepEqual(completionCandidates('/research NVDA --source ', 'quant'), ['stooq', 'yahoo', 'alphavantage', 'twelve', 'polygon', 'fmp']);
   assert.deepEqual(completionCandidates('/research NVDA --interval ', 'quant'), ['d', '1d', '1wk', '1mo']);
   assert.deepEqual(completionCandidates('/research NVDA --topic ', 'quant'), []);
   assert.deepEqual(completionCandidates('/watchlist ', 'quant'), ['add', 'fetch', 'list', 'remove']);

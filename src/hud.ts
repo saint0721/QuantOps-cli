@@ -43,19 +43,83 @@ export function tmuxRuntimeOptions(session: string): string[][] {
   ];
 }
 
-export function commandPaneTarget(session: string): string {
-  return `${session}:main.0`;
+export function commandPaneTarget(session: string, paneIndex = 0): string {
+  return `${session}:main.${paneIndex}`;
 }
 
-export function hudPaneTarget(session: string): string {
-  return `${session}:main.1`;
+export function hudPaneTarget(session: string, paneIndex = 1): string {
+  return `${session}:main.${paneIndex}`;
 }
+
+function paneTarget(session: string, pane: TmuxPaneSnapshot): string {
+  return `${session}:main.${pane.index}`;
+}
+
+export type TmuxPaneSnapshot = {
+  index: number;
+  dead: boolean;
+  title: string;
+  currentCommand: string;
+  startCommand: string;
+};
+
+const PANE_FIELD_SEPARATOR = '\t';
+const PANE_FORMAT = [
+  '#{pane_index}',
+  '#{pane_dead}',
+  '#{pane_title}',
+  '#{pane_current_command}',
+  '#{pane_start_command}',
+].join(PANE_FIELD_SEPARATOR);
 
 export function clampedHudHeight(requested: number, windowHeight?: number): number {
   const height = Math.max(1, Math.floor(requested));
   if (!Number.isFinite(windowHeight) || !windowHeight) return height;
   const maxHudHeight = Math.max(1, Math.floor(windowHeight) - 8);
   return Math.min(height, maxHudHeight);
+}
+
+export function parseTmuxPaneSnapshot(line: string): TmuxPaneSnapshot | null {
+  const [index, dead, title, currentCommand, startCommand] = line.split(PANE_FIELD_SEPARATOR);
+  const parsedIndex = Number(index);
+  if (!Number.isInteger(parsedIndex)) return null;
+  return {
+    index: parsedIndex,
+    dead: dead === '1',
+    title: title ?? '',
+    currentCommand: currentCommand ?? '',
+    startCommand: startCommand ?? '',
+  };
+}
+
+function paneRunsHudWatch(pane: TmuxPaneSnapshot): boolean {
+  return pane.startCommand.includes("'hud' '--watch'")
+    || pane.startCommand.includes(' hud --watch')
+    || (pane.startCommand.includes("'hud'") && pane.startCommand.includes("'--watch'"));
+}
+
+function paneRunsInteractiveCommand(pane: TmuxPaneSnapshot): boolean {
+  return pane.startCommand.includes('--no-tmux')
+    || pane.startCommand.includes('QUANTOPS_TMUX_MANAGED=1')
+    || pane.currentCommand.includes('quantops-tui')
+    || pane.title === 'QuantOps command';
+}
+
+function findCommandPane(panes: TmuxPaneSnapshot[]): TmuxPaneSnapshot | undefined {
+  return panes.find((pane) => !pane.dead && paneRunsInteractiveCommand(pane) && !paneRunsHudWatch(pane));
+}
+
+function findHudPane(panes: TmuxPaneSnapshot[]): TmuxPaneSnapshot | undefined {
+  return panes.find((pane) => !pane.dead && paneRunsHudWatch(pane))
+    ?? panes.find((pane) => !pane.dead && pane.title === 'QuantOps HUD' && !paneRunsInteractiveCommand(pane));
+}
+
+export function tmuxRuntimeHasUsableCommandPane(panes: TmuxPaneSnapshot[]): boolean {
+  return Boolean(findCommandPane(panes));
+}
+
+export function tmuxRuntimeHasHudPane(panes: TmuxPaneSnapshot[]): boolean {
+  return Boolean(findHudPane(panes));
 }
 
 function applyTmuxRuntimeOptions(tmux: string, session: string): void {
@@ -73,7 +137,59 @@ function tmuxWindowHeight(tmux: string, target: string): number | undefined {
 function selectCommandPane(tmux: string, session: string): void {
   const target = `${session}:main`;
   spawnSync(tmux, ['select-window', '-t', target], { encoding: 'utf8' });
-  spawnSync(tmux, ['select-pane', '-t', commandPaneTarget(session)], { encoding: 'utf8' });
+  const commandPane = findCommandPane(listRuntimePanes(tmux, session));
+  if (commandPane) spawnSync(tmux, ['select-pane', '-t', paneTarget(session, commandPane)], { encoding: 'utf8' });
+}
+
+function listRuntimePanes(tmux: string, session: string): TmuxPaneSnapshot[] {
+  const result = spawnSync(tmux, ['list-panes', '-t', `${session}:main`, '-F', PANE_FORMAT], { encoding: 'utf8' });
+  if ((result.status ?? 1) !== 0) return [];
+  return result.stdout.split(/\r?\n/).map(parseTmuxPaneSnapshot).filter((pane): pane is TmuxPaneSnapshot => Boolean(pane));
+}
+
+function renamePane(tmux: string, session: string, pane: TmuxPaneSnapshot | undefined, title: string): void {
+  if (!pane || pane.title === title) return;
+  spawnSync(tmux, ['select-pane', '-t', paneTarget(session, pane), '-T', title], { encoding: 'utf8' });
+}
+
+function syncRuntimePaneTitles(tmux: string, session: string): void {
+  const panes = listRuntimePanes(tmux, session);
+  renamePane(tmux, session, findCommandPane(panes), 'QuantOps command');
+  renamePane(tmux, session, findHudPane(panes), 'QuantOps HUD');
+}
+
+function ensureHudPane(tmux: string, session: string, base: string, height: number, interval: number, cwd: string): void {
+  const panes = listRuntimePanes(tmux, session);
+  const commandPane = findCommandPane(panes);
+  if (!commandPane) return;
+  if (findHudPane(panes)) {
+    syncRuntimePaneTitles(tmux, session);
+    return;
+  }
+  const target = `${session}:main`;
+  const hudHeight = clampedHudHeight(height, tmuxWindowHeight(tmux, target));
+  const split = spawnSync(tmux, [
+    'split-window',
+    '-P',
+    '-F',
+    '#{pane_index}',
+    '-t',
+    paneTarget(session, commandPane),
+    '-v',
+    '-l',
+    String(hudHeight),
+    '-c',
+    cwd,
+    hudWatchCommand(base, interval),
+  ], { encoding: 'utf8' });
+  if ((split.status ?? 1) === 0) {
+    const paneIndex = Number(split.stdout.trim());
+    const hudPane = Number.isInteger(paneIndex)
+      ? { ...commandPane, index: paneIndex, title: '' }
+      : findHudPane(listRuntimePanes(tmux, session));
+    renamePane(tmux, session, hudPane, 'QuantOps HUD');
+  }
+  syncRuntimePaneTitles(tmux, session);
 }
 
 export function shutdownManagedTmuxRuntime(env: NodeJS.ProcessEnv = process.env): { code: number; message: string; skipped: boolean } {
@@ -116,20 +232,43 @@ export function launchTmuxRuntime(base = 'data', session = DEFAULT_SESSION, heig
   if (create.status !== 0) {
     const exists = spawnSync(tmux, ['has-session', '-t', session], { encoding: 'utf8' });
     if (exists.status === 0) {
-      applyTmuxRuntimeOptions(tmux, session);
-      selectCommandPane(tmux, session);
-      const attachExisting = spawnSync(tmux, ['attach-session', '-t', session], { encoding: 'utf8', stdio: 'inherit' });
-      return { code: attachExisting.status ?? 0, message: 'attached existing QuantOps tmux session' };
+      const panes = listRuntimePanes(tmux, session);
+      if (tmuxRuntimeHasUsableCommandPane(panes)) {
+        applyTmuxRuntimeOptions(tmux, session);
+        ensureHudPane(tmux, session, base, height, interval, cwd);
+        selectCommandPane(tmux, session);
+        const attachExisting = spawnSync(tmux, ['attach-session', '-t', session], { encoding: 'utf8', stdio: 'inherit' });
+        return { code: attachExisting.status ?? 0, message: 'attached existing QuantOps tmux session' };
+      }
+      spawnSync(tmux, ['kill-session', '-t', session], { encoding: 'utf8' });
+      return launchTmuxRuntime(base, session, height, interval, cwd);
     }
     return { code: create.status ?? 1, message: (create.stderr || create.stdout || 'failed to create tmux session').trim() };
   }
   applyTmuxRuntimeOptions(tmux, session);
   const target = `${session}:main`;
-  spawnSync(tmux, ['select-pane', '-t', commandPaneTarget(session), '-T', 'QuantOps command'], { encoding: 'utf8' });
+  syncRuntimePaneTitles(tmux, session);
+  const commandPane = findCommandPane(listRuntimePanes(tmux, session));
+  if (!commandPane) return { code: 1, message: 'failed to locate QuantOps command pane after creating tmux session' };
   const hudHeight = clampedHudHeight(height, tmuxWindowHeight(tmux, target));
-  const split = spawnSync(tmux, ['split-window', '-t', target, '-v', '-l', String(hudHeight), '-c', cwd, hudWatchCommand(base, interval)], { encoding: 'utf8' });
+  const split = spawnSync(tmux, [
+    'split-window',
+    '-P',
+    '-F',
+    '#{pane_index}',
+    '-t',
+    paneTarget(session, commandPane),
+    '-v',
+    '-l',
+    String(hudHeight),
+    '-c',
+    cwd,
+    hudWatchCommand(base, interval),
+  ], { encoding: 'utf8' });
   if (split.status !== 0) return { code: split.status ?? 1, message: (split.stderr || split.stdout || 'failed to create HUD pane').trim() };
-  spawnSync(tmux, ['select-pane', '-t', hudPaneTarget(session), '-T', 'QuantOps HUD'], { encoding: 'utf8' });
+  const paneIndex = Number(split.stdout.trim());
+  if (Number.isInteger(paneIndex)) renamePane(tmux, session, { ...commandPane, index: paneIndex, title: '' }, 'QuantOps HUD');
+  syncRuntimePaneTitles(tmux, session);
   selectCommandPane(tmux, session);
   const attach = spawnSync(tmux, ['attach-session', '-t', session], { encoding: 'utf8', stdio: 'inherit' });
   return { code: attach.status ?? 0, message: 'QuantOps tmux runtime closed' };
