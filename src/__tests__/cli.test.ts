@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { marketDatasetPath } from '../data.ts';
 import { listIdeas } from '../idea.ts';
-import { runOnce, rustTuiCargoArgs, welcomeCard } from '../cli.ts';
+import { runOnce, welcomeCard } from '../cli.ts';
 import { appendJsonl } from '../storage.ts';
 import { sessionEvents } from '../session.ts';
 
@@ -23,23 +23,6 @@ test('welcome keeps neofetch summary without runtime HUD line', () => {
   assert.doesNotMatch(welcome, /watchlist:\d/);
 });
 
-test('rust TUI launcher selects the quantops-tui binary explicitly', () => {
-  assert.deepEqual(rustTuiCargoArgs('/repo/tui/Cargo.toml', '/repo/src/cli.ts', 'data', '/usr/bin/node'), [
-    'run',
-    '--quiet',
-    '--manifest-path',
-    '/repo/tui/Cargo.toml',
-    '--bin',
-    'quantops-tui',
-    '--',
-    '--entry',
-    '/repo/src/cli.ts',
-    '--data-dir',
-    'data',
-    '--node',
-    '/usr/bin/node',
-  ]);
-});
 
 function captureConsole(fn: () => Promise<number>): Promise<{ code: number; output: string }> {
   const originalLog = console.log;
@@ -48,21 +31,17 @@ function captureConsole(fn: () => Promise<number>): Promise<{ code: number; outp
   return fn().then((code) => ({ code, output })).finally(() => { console.log = originalLog; });
 }
 
-test('research command routes to missing-data guidance without invoking generic codex chat', async () => {
+test('research command returns machine-readable missing-data guidance without local chat handoff', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-cli-research-missing-'));
-  const sessionRoot = mkdtempSync(join(tmpdir(), 'tq-cli-session-'));
-  const previousSessionDir = process.env.QUANTOPS_SESSION_DIR;
-  process.env.QUANTOPS_SESSION_DIR = sessionRoot;
 
-  const { code, output } = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'research', 'AAPL']));
-  if (previousSessionDir === undefined) delete process.env.QUANTOPS_SESSION_DIR;
-  else process.env.QUANTOPS_SESSION_DIR = previousSessionDir;
+  const { code, output } = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'research', 'AAPL', '--json']));
+  const payload = JSON.parse(output);
 
   assert.equal(code, 1);
-  assert.match(output, /data download AAPL --period 1y/);
-  assert.match(output, /before external research/);
-  assert.match(output, /chat  AAPL 리서치 결과/);
-  assert.ok(sessionEvents('agent-chat', sessionRoot).some((event) => event.type === 'research.report'));
+  assert.equal(payload.ok, false);
+  assert.equal(payload.missing_data, true);
+  assert.equal(payload.next_command, 'data download AAPL --period 1y');
+  assert.doesNotMatch(output, /agent-chat|chat  |\/agent|TUI|HUD/);
 });
 
 test('removed human shortcuts no longer execute as commands', async () => {
@@ -217,30 +196,6 @@ test('skills command lists QuantOps local skills with dollar invocation hints', 
 });
 
 
-test('tools and agent commands expose LLM execution surfaces', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-agent-'));
-
-  const tools = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'tools', '--json']));
-  const lang = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'ko']));
-  const agent = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', 'NVDA', 'earnings', 'momentum', '--session', 'cli-test']));
-  const continued = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'agent', '다음엔', '뭐해?']));
-
-  assert.equal(tools.code, 0);
-  assert.match(tools.output, /stats.run/);
-  assert.match(tools.output, /backtest.run/);
-  assert.match(tools.output, /event.study/);
-  assert.match(tools.output, /rtk event study/);
-  assert.equal(lang.code, 0);
-  assert.match(lang.output, /current: ko/);
-  assert.equal(agent.code, 0);
-  assert.match(agent.output, /필요한 로컬 상태만 조용히 확인/);
-  assert.match(agent.output, /NVDA 로컬 가격 데이터/);
-  assert.doesNotMatch(agent.output, /data.download/);
-  assert.equal(continued.code, 0);
-  assert.match(continued.output, /agent-chat 대화/);
-  assert.doesNotMatch(continued.output, /세션: agent-chat/);
-});
-
 test('provider and session commands report local integration state', async () => {
   const providers = await captureConsole(() => runOnce(['--no-tmux', 'provider', '--json']));
   const session = await captureConsole(() => runOnce(['--no-tmux', 'session', 'current', 'readme-test', '--json']));
@@ -265,6 +220,47 @@ test('model command persists Codex model and effort preferences', async () => {
   assert.equal(status.code, 0);
   assert.match(status.output, /현재 모델: gpt-5.5/);
   assert.match(status.output, /현재 effort: high/);
+});
+
+
+test('supported headless rtk commands return JSON contracts', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tq-cli-headless-json-'));
+  for (const symbol of ['AAPL', 'MSFT']) {
+    for (let i = 1; i <= 60; i += 1) {
+      appendJsonl(marketDatasetPath(dir, 'yahoo', symbol, 'd'), {
+        ticker: symbol,
+        provider_symbol: symbol,
+        source: 'yahoo',
+        interval: 'd',
+        date: `2026-03-${String(i).padStart(2, '0')}`,
+        fetched_at: '2026-03-01T00:00:00Z',
+        payload: { open: 100 + i, high: 101 + i, low: 99 + i, close: 100 + i, volume: 1000 + i },
+      });
+    }
+  }
+
+  const commands = [
+    ['codex-guide', '--json'],
+    ['runtime', 'info', '--json'],
+    ['data', 'info', 'AAPL', '--source', 'yahoo', '--json'],
+    ['data', 'validate', 'AAPL', '--max-stale-days', '9999', '--json'],
+    ['stats', 'AAPL', '--source', 'yahoo', '--json'],
+    ['compare', 'AAPL', 'MSFT', '--source', 'yahoo', '--json'],
+    ['research', 'AAPL', '--source', 'yahoo', '--json'],
+    ['event', 'define', '--type', 'earnings', '--target-symbol', 'AAPL', '--json'],
+    ['backtest', 'strategies', '--json'],
+    ['session', 'current', 'headless-json-test', '--json'],
+  ];
+
+  const symbol = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, 'symbol', 'search', 'AAPL', '--source', 'local']));
+  assert.equal(symbol.code, 0);
+  assert.match(symbol.output, /Symbol search: AAPL/);
+
+  for (const command of commands) {
+    const result = await captureConsole(() => runOnce(['--no-tmux', '--data-dir', dir, ...command]));
+    assert.equal(result.code, 0, `${command.join(' ')} failed: ${result.output}`);
+    assert.doesNotThrow(() => JSON.parse(result.output), `${command.join(' ')} did not return JSON`);
+  }
 });
 
 test('codex runtime commands expose agent-first machine contracts', async () => {
