@@ -22,7 +22,7 @@ test('installed rtk symlink executes the CLI entrypoint', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tq-bin-exec-'));
   installLocalBins({ dir });
 
-  const result = spawnSync(join(dir, 'rtk'), ['--no-tmux', '--help'], { encoding: 'utf8' });
+  const result = spawnSync(join(dir, 'rtk'), ['--help'], { encoding: 'utf8' });
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Codex-first quant research harness/);

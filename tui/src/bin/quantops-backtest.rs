@@ -1,6 +1,6 @@
 use std::env;
 
-use quantops_tui::market_data::{
+use quantops_core::market_data::{
     json_string, market_rows, max_drawdown, moving_average, num, stddev, MarketOptions,
     TRADING_DAYS,
 };

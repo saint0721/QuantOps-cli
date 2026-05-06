@@ -33,7 +33,7 @@ Runtime decisions:
 - Primary interface: shell CLI with stable `--json` outputs.
 - Primary human UX: Codex conversation, not a QuantOps-local chat surface.
 - QuantOps role: symbol lookup, market data, validation, stats, comparison, research context, event study, backtest, and session/artifact handoff.
-- Secondary/debug-only surfaces: interactive launchers, terminal dashboards, and local compatibility shortcuts.
+- Removed from the primary product: QuantOps-local chat, terminal dashboards, `/agent`-style UX, and MCP-first flows. Codex should call `rtk` shell commands instead.
 - Safety: no buy/sell/hold advice, no single trade score, and no live trading mutation by default.
 
 ## Install and launch
@@ -55,12 +55,12 @@ node ./src/cli.ts setup bin
 ```
 
 `rtk` is the preferred launcher. `quant` and `quantops` remain aliases for compatibility.
-For headless use, call subcommands directly with `--json`; use `rtk --no-tmux` or `QUANTOPS_NO_TMUX=1 rtk` only when you need the plain interactive shell for debugging.
+For headless use, call subcommands directly with `--json`; running `rtk` without arguments prints the same start guide instead of launching a local chat/TUI.
 
 The Python reference prototype remains available for comparison:
 
 ```bash
-python3 -m quantops_cli --no-tmux
+python3 -m quantops_cli --help
 ```
 
 ## Supported command families

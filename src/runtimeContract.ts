@@ -15,8 +15,7 @@ export function runtimeInfoPayload(dataDir: string): JsonObject {
       launcher_aliases: ['rtk', 'quantops', 'quant'],
       human_primary_surface: 'Codex conversation',
       quantops_role: guide.role,
-      mcp: 'optional integration layer after CLI JSON contracts are stable',
-      tui: 'de-emphasized; dashboard/debug/report browser only',
+      protocol_adapters: 'future only; shell CLI JSON is the stable contract',
       engines: {
         cli_contract: 'TypeScript dispatcher',
         fast_kernels: 'Rust stats/backtest/event/data-validate helpers when built or explicitly requested',
@@ -32,10 +31,10 @@ export function formatRuntimeInfo(payload: JsonObject): string {
   return [
     renderRuntimeLine(payload.runtime as any),
     '',
-    'Agent runtime contract',
+    'Headless runtime contract',
     '- Primary interface: shell CLI with --json',
     '- Preferred launcher: rtk',
     '- Human talks to Codex; Codex calls rtk/quantops commands',
-    '- MCP is optional later; TUI is not the primary UX',
+    '- Protocol adapters can be added later after CLI JSON contracts stay stable',
   ].join('\n');
 }

@@ -1,6 +1,6 @@
 use std::env;
 
-use quantops_tui::market_data::{json_string, market_rows, num, MarketOptions, Row};
+use quantops_core::market_data::{json_string, market_rows, num, MarketOptions, Row};
 
 #[derive(Clone, Debug)]
 struct EventWindow {

@@ -1,5 +1,5 @@
-use quantops_tui::data_validate::run;
-use quantops_tui::market_data::json_string;
+use quantops_core::data_validate::run;
+use quantops_core::market_data::json_string;
 
 fn main() {
     match run() {

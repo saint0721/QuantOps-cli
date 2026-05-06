@@ -1,7 +1,7 @@
 {
   "name": "quantops-cli",
   "version": "0.1.0",
-  "description": "Agentic quant research, validation, backtesting, and execution workflow CLI",
+  "description": "Headless quant research runtime for Codex-called rtk JSON workflows",
   "type": "module",
   "bin": {
     "rtk": "./src/cli.ts",
@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node ./src/cli.ts",
     "test": "node --test src/__tests__/*.test.ts",
-    "smoke": "node ./src/cli.ts --no-tmux --data-dir /tmp/quantops-ts-smoke runtime line"
+    "smoke": "node ./src/cli.ts --data-dir /tmp/quantops-ts-smoke runtime info --json"
   },
   "engines": {
     "node": ">=24.0.0"
