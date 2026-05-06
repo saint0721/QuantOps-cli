@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultTmuxSession, hudWatchCommand, interactiveCommand, managedTmuxSession, sessionHash, shellCommand, tmuxRuntimeOptions } from '../hud.ts';
+import { clampedHudHeight, commandPaneTarget, defaultTmuxSession, hudPaneTarget, hudWatchCommand, interactiveCommand, managedTmuxSession, sessionHash, shellCommand, tmuxRuntimeOptions } from '../hud.ts';
 import { hudColor } from '../ui/hud.ts';
 
 test('tmux command builders quote runtime commands', () => {
@@ -20,6 +20,11 @@ test('default tmux session derives a short stable hash from Codex or project con
 
 test('tmux runtime commands pass data dir and reselect top command pane', () => {
   assert.match(interactiveCommand('/tmp/data'), /\/tmp\/data/);
+  assert.equal(commandPaneTarget('quantops-test'), 'quantops-test:main.0');
+  assert.equal(hudPaneTarget('quantops-test'), 'quantops-test:main.1');
+  assert.equal(clampedHudHeight(3, 24), 3);
+  assert.equal(clampedHudHeight(20, 24), 16);
+  assert.equal(clampedHudHeight(3, 5), 1);
 });
 
 test('tmux runtime enables mouse scroll friendly session options', () => {
