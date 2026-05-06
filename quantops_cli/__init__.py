@@ -1,5 +1,3 @@
-"""QuantOps Python compatibility package.
+"""QuantOps Python reference tools for headless quant research workflows."""
 
-The active runtime is TypeScript; this package forwards to the retained
-Python reference implementation while exposing the QuantOps import path.
-"""
+__version__ = "0.1.0"
